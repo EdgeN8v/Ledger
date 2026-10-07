@@ -186,10 +186,13 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
                                commute_allowance=last_biz.commute_allowance if last_biz else Decimal(80))
             db.add(trip)
             db.flush()
+            trip.open_end = not j["closed"]
             changed.append(trip)
-        elif trip.settled_at is None and not trip.dates_locked and (trip.start_date, trip.end_date) != (start.isoformat(), end.isoformat()):
-            trip.start_date, trip.end_date = start.isoformat(), end.isoformat()
-            changed.append(trip)
+        elif trip.settled_at is None and not trip.dates_locked:
+            if (trip.start_date, trip.end_date) != (start.isoformat(), end.isoformat()):
+                trip.start_date, trip.end_date = start.isoformat(), end.isoformat()
+                changed.append(trip)
+            trip.open_end = not j["closed"]
         for f in fl:
             f.trip_id = trip.id
         # the ticket payment: the only way a ticket becomes money. Same amount as the order, around the order day.

@@ -403,6 +403,8 @@ class TripOut(BaseModel):
     kind: str = "personal"
     days: int = 1
     flights: list[str] = []
+    open_end: bool = False        # the way back is not booked yet: the end date is a placeholder, no allowance is counted
+    long_trip: bool = False       # a month or more: allowances are paid on the employer's own schedule, not counted here
     daily_allowance: Optional[Decimal] = None
     commute_allowance: Optional[Decimal] = None
     allowance_total: Decimal = Decimal(0)

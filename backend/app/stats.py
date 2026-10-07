@@ -17,6 +17,25 @@ from sqlalchemy.orm import Session
 from app import models
 
 
+LONG_TRIP_DAYS = 20      # a trip of a month or two is paid out by the employer on its own schedule: no allowance maths
+
+
+def trip_days(trip) -> int:
+    return (datetime.strptime(trip.end_date, "%Y-%m-%d") - datetime.strptime(trip.start_date, "%Y-%m-%d")).days + 1
+
+
+def is_long_trip(trip) -> bool:
+    return trip_days(trip) > LONG_TRIP_DAYS
+
+
+def trip_allowance(trip) -> Decimal:
+    """What the allowances of a business trip add up to (commute once + daily x days). Nothing while the way back is
+    not booked (the length is unknown) and nothing for a long trip: that money comes whenever the employer pays it."""
+    if getattr(trip, "open_end", False) or is_long_trip(trip):
+        return Decimal(0)
+    return (trip.commute_allowance or Decimal(0)) + (trip.daily_allowance or Decimal(0)) * trip_days(trip)
+
+
 def cycle_bounds(start_day: int, year: int, month: int) -> tuple[datetime, datetime]:
     """[start, end) of the budget month that STARTS in (year, month) on start_day."""
     start = datetime(year, month, start_day)
@@ -87,8 +106,7 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime, inc
             continue
         if t.is_reimbursement and t.trip_id in business:
             trip = business[t.trip_id]
-            days = (datetime.strptime(trip.end_date, "%Y-%m-%d") - datetime.strptime(trip.start_date, "%Y-%m-%d")).days + 1
-            gain = (trip.commute_allowance or Decimal(0)) + (trip.daily_allowance or Decimal(0)) * days   # 80 + 180 x days
+            gain = trip_allowance(trip)       # 80 + 180 x days
             if gain > 0:
                 out.incomes.append(t)
                 out.income += gain

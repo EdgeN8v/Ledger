@@ -718,3 +718,18 @@ def test_old_or_broken_flight_chains_do_not_become_trips(client):
     jul = AGENT_OUT.replace("10月12日北京首都到上海虹桥T2，东航MU1000", "07月18日上海虹桥T2到银川T3，上航FM9225")
     client.post("/ingest", json={"source": "sms", "title": "x", "text": jul, "posted_at_ms": ms(2026, 7, 14, 6, 10)})
     assert client.get("/trips").json() == []
+
+
+def test_open_and_long_trips_count_no_allowance(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    _flight_sms(client, CSAIR)                                               # out, no way back booked
+    t = client.get("/trips").json()[0]
+    assert t["open_end"] is True and float(t["allowance_total"]) == 0 and float(t["expected_reimbursement"]) == 0
+    _flight_sms(client, AGENT_OUT, day=8)                                    # back on the 12th: closed, 5 days
+    t = client.get("/trips").json()[0]
+    assert t["open_end"] is False and float(t["allowance_total"]) == 80 + 180 * 5
+    # a month-long stay: the allowance is paid whenever the employer feels like it, so it is not counted
+    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-11-20", "kind": "business",
+                                          "daily_allowance": 180, "commute_allowance": 80})
+    t = client.get("/trips").json()[0]
+    assert t["long_trip"] is True and float(t["allowance_total"]) == 0

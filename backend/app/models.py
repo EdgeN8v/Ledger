@@ -192,6 +192,7 @@ class Trip(Base):
     received_amount = Column(Numeric(14, 2), nullable=True)
     reimbursement_tx_id = Column(Integer, nullable=True)
     auto_key = Column(String, nullable=True)                      # made from flight SMS: first flight of the journey
+    open_end = Column(Boolean, nullable=False, default=False)     # flights say the way back is not known yet
     dates_locked = Column(Boolean, nullable=False, default=False)  # the user edited the dates: flights no longer move them
     created_at = Column(DateTime, default=now_local)
 

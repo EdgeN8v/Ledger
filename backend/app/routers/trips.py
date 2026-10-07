@@ -18,7 +18,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.clock import now_local
 from app.fixed import item_for, load
-from app.stats import refunded_map
+from app.stats import refunded_map, is_long_trip, trip_allowance
 from app.flights import sync_flight_trips
 
 router = APIRouter(prefix="/trips", tags=["trips"])
@@ -91,7 +91,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
     business = trip.kind == "business"
     days = _days(trip)
     legs = db.query(models.Flight).filter(models.Flight.trip_id == trip.id).order_by(models.Flight.depart_at).all()
-    allowance = ((trip.commute_allowance or ZERO) + (trip.daily_allowance or ZERO) * days) if business else ZERO
+    allowance = trip_allowance(trip) if business else ZERO
     settled = trip.settled_at is not None
     return schemas.TripOut(
         id=trip.id, name=trip.name, start_date=trip.start_date, end_date=trip.end_date, total=total, count=len(rows),
@@ -100,6 +100,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
             for c, v in sorted(by.items(), key=lambda kv: kv[1], reverse=True)
         ],
         flights=[f"{f.depart_at:%m-%d %H:%M} {f.flight_no} {f.origin}→{f.dest}" for f in legs],
+        open_end=bool(business and trip.open_end), long_trip=bool(business and is_long_trip(trip)),
         kind=trip.kind or "personal", days=days, daily_allowance=trip.daily_allowance, commute_allowance=trip.commute_allowance,
         allowance_total=allowance, expected_reimbursement=(total + allowance) if business else ZERO, settled=settled,
         received_amount=trip.received_amount if settled else None,
@@ -181,7 +182,7 @@ def update_trip(trip_id: int, payload: schemas.TripIn, db: Session = Depends(get
     if not trip:
         raise HTTPException(404, "trip not found")
     if (trip.start_date, trip.end_date) != (payload.start_date, payload.end_date):
-        trip.dates_locked = True                   # the user knows better than the tickets (e.g. a changed return)
+        trip.dates_locked, trip.open_end = True, False                   # the user knows better than the tickets (e.g. a changed return)
     trip.name, trip.start_date, trip.end_date = payload.name.strip() or trip.name, payload.start_date, payload.end_date
     trip.kind, trip.daily_allowance, trip.commute_allowance = payload.kind, payload.daily_allowance, payload.commute_allowance
     if payload.auto_tag is not None:
