@@ -106,7 +106,8 @@ def business_receivable(db: Session, ledger_id: int):
 
 def retag(db: Session, trip: models.Trip) -> None:
     ledger = db.get(models.Ledger, trip.ledger_id)
-    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(False)).update({"trip_id": None})
+    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(False),
+                                        models.Transaction.trip_manual.is_(False)).update({"trip_id": None})
     for t in _eligible(db, ledger, _d(trip.start_date), _d(trip.end_date), business=trip.kind == "business"):
         if t.trip_id is None:
             t.trip_id = trip.id
@@ -184,12 +185,25 @@ def unsettle(trip_id: int, db: Session = Depends(get_db), user: models.User = De
     return _summary(db, trip)
 
 
+@router.post("/{trip_id}/add/{tx_id}", response_model=schemas.TripOut)
+def add_to_trip(trip_id: int, tx_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """The user decides: this purchase belongs to that trip (the app cannot tell a flight to Beijing for work from one for fun)."""
+    trip = db.query(models.Trip).filter(models.Trip.id == trip_id, models.Trip.ledger_id == user.ledger_id).first()
+    tx = db.query(models.Transaction).filter(models.Transaction.id == tx_id, models.Transaction.ledger_id == user.ledger_id,
+                                             models.Transaction.tx_type == models.TxType.expense).first()
+    if not trip or not tx:
+        raise HTTPException(404, "trip or expense not found")
+    tx.trip_id, tx.trip_manual = trip.id, True
+    db.commit()
+    return _summary(db, trip)
+
+
 @router.post("/{trip_id}/remove/{tx_id}", status_code=204)
 def remove_from_trip(trip_id: int, tx_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     tx = db.query(models.Transaction).filter(models.Transaction.id == tx_id, models.Transaction.ledger_id == user.ledger_id,
                                              models.Transaction.trip_id == trip_id).first()
     if tx:
-        tx.trip_id = None
+        tx.trip_id, tx.trip_manual = None, False
         db.commit()
 
 

@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -241,14 +242,18 @@ fun LedgerApp() {
                                 onLoadMore = { transactionViewModel.loadMore() },
                                 onFilterChange = { transactionViewModel.setFilter(it) },
                                 onSetCategory = { id, cat -> transactionViewModel.setCategory(id, cat) },
+                                onSetTrip = { tx, tripId -> transactionViewModel.setBusinessTrip(tx, tripId) },
                                 onEditTransaction = { tx -> editingTransaction = tx; navController.navigate("add") },
                                 isListening = isListening
                             )
                             1 -> {
                                 var statMode by remember { mutableIntStateOf(0) }
+                                var includeBiz by remember { mutableStateOf(com.ledger.app.data.Prefs.getIncludeBusiness(context)) }
+                                var bizVersion by remember { mutableIntStateOf(0) }
                                 androidx.compose.foundation.layout.Column {
                                     androidx.compose.foundation.layout.Row(
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                                     ) {
                                         listOf("总览", "花在哪里", "出行", "全年").forEachIndexed { i, label ->
@@ -256,9 +261,21 @@ fun LedgerApp() {
                                                 selected = statMode == i, onClick = { statMode = i }, label = { Text(label) }
                                             )
                                         }
+                                        androidx.compose.material3.FilterChip(
+                                            selected = includeBiz,
+                                            onClick = {
+                                                includeBiz = !includeBiz
+                                                com.ledger.app.data.Prefs.setIncludeBusiness(context, includeBiz)
+                                                bizVersion++
+                                                insightsViewModel.loadCycle()
+                                                insightsViewModel.loadYear()
+                                                transactionViewModel.refresh()
+                                            },
+                                            label = { Text(if (includeBiz) "含出差" else "不含出差") }
+                                        )
                                     }
                                     when (statMode) {
-                                        0 -> StatisticsScreen(onOpenDetail = { detailViewModel.open(it) })
+                                        0 -> androidx.compose.runtime.key(bizVersion) { StatisticsScreen(onOpenDetail = { detailViewModel.open(it) }) }
                                         1 -> {
                                             androidx.compose.runtime.LaunchedEffect(Unit) { reportViewModel.load() }
                                             CycleInsights(

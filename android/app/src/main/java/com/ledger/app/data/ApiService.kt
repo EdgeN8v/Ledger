@@ -52,6 +52,12 @@ interface ApiService {
     @POST("trips")
     suspend fun createTrip(@Body body: TripInRequest): TripDto
 
+    @POST("trips/{id}/add/{tx}")
+    suspend fun addToTrip(@Path("id") id: Int, @Path("tx") tx: Int): TripDto
+
+    @POST("trips/{id}/remove/{tx}")
+    suspend fun removeFromTrip(@Path("id") id: Int, @Path("tx") tx: Int)
+
     @POST("trips/{id}/settle")
     suspend fun settleTrip(@Path("id") id: Int, @Body body: SettleRequest): TripDto
 
@@ -71,10 +77,10 @@ interface ApiService {
     suspend fun planStatus(): PlanStatusDto
 
     @GET("analysis/cycle")
-    suspend fun analysisCycle(@Query("year") year: Int?, @Query("month") month: Int?): CycleAnalysisDto
+    suspend fun analysisCycle(@Query("year") year: Int?, @Query("month") month: Int?, @Query("include_business") includeBusiness: Boolean = false): CycleAnalysisDto
 
     @GET("analysis/year")
-    suspend fun analysisYear(@Query("year") year: Int): YearAnalysisDto
+    suspend fun analysisYear(@Query("year") year: Int, @Query("include_business") includeBusiness: Boolean = false): YearAnalysisDto
 
     @GET("auth/me")
     suspend fun me(): UserDto
@@ -98,6 +104,7 @@ interface ApiService {
         @Query("q") q: String? = null,
         @Query("needs_review") needsReview: Boolean? = null,
         @Query("trip_id") tripId: Int? = null,
+        @Query("exclude_business") excludeBusiness: Boolean = false,
         @Query("sort") sort: String? = null,
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0
@@ -110,5 +117,5 @@ interface ApiService {
     suspend fun deleteTransaction(@Path("id") id: Int)
 
     @GET("transactions/summary/monthly")
-    suspend fun monthlySummary(@Query("year") year: Int, @Query("month") month: Int): MonthSummaryDto
+    suspend fun monthlySummary(@Query("year") year: Int, @Query("month") month: Int, @Query("include_business") includeBusiness: Boolean = false): MonthSummaryDto
 }

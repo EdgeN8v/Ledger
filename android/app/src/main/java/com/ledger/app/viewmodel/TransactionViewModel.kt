@@ -36,6 +36,7 @@ data class TransactionUiState(
     val inviteCode: String? = null,
     val cycleStartDay: Int = 1,
     val cycleSummary: MonthSummaryDto? = null,
+    val businessTrips: List<com.ledger.app.data.TripDto> = emptyList(),
     val filter: TxFilter = TxFilter(),
     val syncing: Boolean = false,
     val message: String? = null,
@@ -84,8 +85,9 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             try {
                 val me = api().me()
                 val categories = api().listCategories()
+                val trips = try { api().listTrips().filter { it.kind == "business" } } catch (_: Exception) { emptyList() }
                 _state.value = _state.value.copy(
-                    inviteCode = me.invite_code, cycleStartDay = me.cycle_start_day, categories = categories
+                    inviteCode = me.invite_code, cycleStartDay = me.cycle_start_day, categories = categories, businessTrips = trips
                 )
                 val page = fetch(0, pageSize)
                 _state.value = _state.value.copy(
@@ -105,7 +107,7 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             var y = today.year
             var m = today.monthValue
             if (today.dayOfMonth < startDay) { m -= 1; if (m < 1) { m = 12; y -= 1 } }
-            _state.value = _state.value.copy(cycleSummary = api().monthlySummary(y, m))
+            _state.value = _state.value.copy(cycleSummary = api().monthlySummary(y, m, com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())))
         } catch (_: Exception) {
         }
     }
@@ -162,6 +164,19 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 _state.value = _state.value.copy(message = "已归类,同商户以后自动归到这一类")
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "修改失败")
+            }
+        }
+    }
+
+    /** tripId = null takes the purchase out of its trip. */
+    fun setBusinessTrip(tx: TransactionDto, tripId: Int?) {
+        viewModelScope.launch {
+            try {
+                if (tripId == null) tx.trip_id?.let { api().removeFromTrip(it, tx.id) } else api().addToTrip(tripId, tx.id)
+                reloadLoaded()
+                _state.value = _state.value.copy(message = if (tripId == null) "已移出出差" else "已归入出差, 待报销")
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "操作失败")
             }
         }
     }

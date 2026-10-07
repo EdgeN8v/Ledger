@@ -162,4 +162,9 @@ def fix_keyword_conflicts(db: Session) -> None:
         ent = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "娱乐").first()
         if ent and ent.keywords:
             ent.keywords = ",".join(k for k in ent.keywords.split(",") if k.strip() and k.strip() != "携程")
+    # the same word in two categories is decided by list order; keep each shop in exactly one place
+    for ledger in db.query(models.Ledger).all():
+        shop = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "购物").first()
+        if shop and shop.keywords:
+            shop.keywords = ",".join(k for k in shop.keywords.split(",") if k.strip() and k.strip() != "盒马")
     db.commit()

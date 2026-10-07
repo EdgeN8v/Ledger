@@ -29,6 +29,13 @@ object Prefs {
         prefs(context).edit().putString(KEY_BASE_URL, normalized).apply()
     }
 
+    /** Statistics view: also count business-trip advances (they cancel out once reimbursed). Off = your everyday spending. */
+    fun getIncludeBusiness(context: Context): Boolean = prefs(context).getBoolean("include_business", false)
+
+    fun setIncludeBusiness(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean("include_business", value).apply()
+    }
+
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun logout(context: Context) = setToken(context, null)

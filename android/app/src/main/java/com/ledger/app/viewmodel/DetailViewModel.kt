@@ -64,6 +64,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         return api().listTransactions(
             dateFrom = r.dateFrom, dateTo = r.dateTo, categoryId = r.categoryId,
             txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId,
+            excludeBusiness = r.tripId == null && !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()),
             sort = s.sort, limit = limit, offset = offset
         )
     }

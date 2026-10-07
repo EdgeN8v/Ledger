@@ -98,6 +98,7 @@ fun TransactionListScreen(
     onLoadMore: () -> Unit,
     onFilterChange: (TxFilter) -> Unit,
     onSetCategory: (txId: Int, categoryId: Int) -> Unit,
+    onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
     isListening: Boolean
 ) {
@@ -230,7 +231,9 @@ fun TransactionListScreen(
             tx = tx,
             categories = state.categories,
             onDismiss = { pickFor = null },
-            onPick = { catId -> pickFor = null; onSetCategory(tx.id, catId) }
+            onPick = { catId -> pickFor = null; onSetCategory(tx.id, catId) },
+            trips = state.businessTrips,
+            onTrip = { tripId -> pickFor = null; onSetTrip(tx, tripId) }
         )
     }
 }
@@ -452,7 +455,9 @@ internal fun CategoryPickerDialog(
     tx: TransactionDto,
     categories: List<CategoryDto>,
     onDismiss: () -> Unit,
-    onPick: (Int) -> Unit
+    onPick: (Int) -> Unit,
+    trips: List<com.ledger.app.data.TripDto> = emptyList(),
+    onTrip: (Int?) -> Unit = {}
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -479,6 +484,20 @@ internal fun CategoryPickerDialog(
                             label = { Text((c.icon ?: "") + " " + c.name) }
                         )
                     }
+                }
+                if (tx.tx_type == "expense" && !tx.is_reimbursement && (trips.isNotEmpty() || tx.trip_id != null)) {
+                    Text("或者: 这是出差垫的钱 (之后公司报销, 不算你的开销)", style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        trips.forEach { t ->
+                            FilterChip(selected = tx.trip_id == t.id, onClick = { onTrip(t.id) }, label = { Text("🧾 归入「${t.name}」") })
+                        }
+                        if (tx.trip_id != null) FilterChip(selected = false, onClick = { onTrip(null) }, label = { Text("移出出差") })
+                    }
+                }
+                if (tx.tx_type == "expense" && trips.isEmpty() && tx.trip_id == null) {
+                    Text("想标记成出差: 先到「统计 → 出行」新建一次出差。", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
                 }
             }
         },

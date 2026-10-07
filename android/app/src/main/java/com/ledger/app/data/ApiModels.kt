@@ -91,6 +91,7 @@ data class TransactionDto(
     val refund_of_id: Int? = null,
     val refunded_amount: String? = null,
     val is_reimbursement: Boolean = false,
+    val trip_id: Int? = null,
     val trip_kind: String? = null,
     val trip_name: String? = null,
     val is_transfer: Boolean = false,

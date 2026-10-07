@@ -54,9 +54,10 @@ class PeriodData:
     expenses: list = field(default_factory=list)
     incomes: list = field(default_factory=list)
     standalone_refunds: list = field(default_factory=list)
+    reimbursements: list = field(default_factory=list)   # (transaction, amount) paid back by the employer (include_business view)
 
 
-def period_data(db: Session, ledger_id: int, start: datetime, end: datetime) -> PeriodData:
+def period_data(db: Session, ledger_id: int, start: datetime, end: datetime, include_business: bool = False) -> PeriodData:
     T = models.Transaction
     refunds = refunded_map(db, ledger_id)
     rows = (
@@ -75,7 +76,12 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime) -> 
     for t in rows:
         if t.refund_of_id:
             continue                      # accounted for inside its purchase
-        if t.trip_id in business and t.tx_type == models.TxType.expense:
+        if t.trip_id in business and t.tx_type == models.TxType.expense and not include_business:
+            continue
+        if t.is_reimbursement and t.trip_id in business and include_business:
+            # the whole trip counts as spending in this view, so the money coming back simply cancels it
+            out.reimbursements.append((t, t.amount))
+            out.expense -= t.amount
             continue
         if t.is_reimbursement and t.trip_id in business:
             trip = business[t.trip_id]

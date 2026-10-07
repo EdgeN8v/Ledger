@@ -552,3 +552,41 @@ def test_business_income_is_exactly_the_allowances_even_if_the_payout_differs(cl
     listed = client.get("/transactions", params={"limit": 10}).json()
     flight = [t for t in listed if t["merchant"] and "携程" in t["merchant"]][0]
     assert flight["trip_kind"] == "business" and flight["trip_name"] == "出差"
+
+
+def test_manual_tag_and_the_two_views_of_business_spending(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    flight = _sms(client, "【某银行】您账户1234于10月7日11:26向支付宝外部商户-携程旅行网支出748.95元,可用余额9000元。", 11, 26, day=7)["transaction"]
+    _sms(client, "【某银行】您账户1234于10月8日12:00向美团外卖-某面馆支出30元,可用余额8970元。", 12, 0, day=8)
+    # a business trip whose date range does NOT cover the flight: the user adds it by hand
+    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-12", "end_date": "2026-10-13", "kind": "business",
+                                       "daily_allowance": 180, "commute_allowance": 80}).json()
+    assert trip["count"] == 0
+    after = client.post(f"/trips/{trip['id']}/add/{flight['id']}").json()
+    assert float(after["total"]) == 748.95
+    client.put("/trips/%d" % trip["id"], json={"name": "出差", "start_date": "2026-10-12", "end_date": "2026-10-14", "kind": "business",
+                                              "daily_allowance": 180, "commute_allowance": 80})        # editing dates keeps the hand-picked one
+    assert float(client.get("/trips").json()[0]["total"]) == 748.95
+    # view A (default): the advance is not spending
+    a = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
+    assert float(a["total_expense"]) == 30.0
+    # view B: it is counted...
+    b = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9, "include_business": True}).json()
+    assert float(b["total_expense"]) == 778.95
+    # ...and once reimbursed (748.95 + 80 + 180 x 3 = 1368.95 paid back) the trip cancels out
+    inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 15, 9, 0),
+        "text": "【某银行】您账户1234于10月15日09:00存入1368.95元,可用余额9000元。"}).json()["transaction"]
+    client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]})
+    b = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9, "include_business": True}).json()
+    assert float(b["total_expense"]) == 30.0 - 620.0           # 30 meal + 748.95 advance - 1368.95 paid back
+    assert any(c["category_name"] == "出差报销冲抵" for c in b["by_category"])
+    x = client.get("/analysis/cycle", params={"year": 2026, "month": 9, "include_business": True}).json()
+    assert float(x["total_expense"]) == 30.0 - 620.0
+    y = client.get("/analysis/year", params={"year": 2026, "include_business": True}).json()
+    assert y["months"]
+
+
+def test_hema_goes_to_food(client):
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    r = _sms(client, "【某银行】您账户1234于10月7日12:00向支付宝-盒马支出29.9元,可用余额900元。", 12, 0, day=7)
+    assert cats[r["transaction"]["category_id"]] == "餐饮"

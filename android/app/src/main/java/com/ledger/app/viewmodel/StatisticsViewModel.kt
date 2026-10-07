@@ -41,7 +41,7 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
                     if (now.get(Calendar.DAY_OF_MONTH) < startDay) { m -= 1; if (m < 1) { m = 12; y -= 1 } }
                     _state.value = _state.value.copy(year = y, month = m, initialised = true)
                 }
-                val summary = api().monthlySummary(_state.value.year, _state.value.month)
+                val summary = api().monthlySummary(_state.value.year, _state.value.month, com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()))
                 _state.value = _state.value.copy(loading = false, summary = summary)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")

@@ -68,7 +68,8 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
             _state.value = _state.value.copy(loading = true, error = null)
             try {
                 val s = _state.value
-                val c = if (s.selMonth == 0) api().analysisCycle(null, null) else api().analysisCycle(s.selYear, s.selMonth)
+                val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
+                val c = if (s.selMonth == 0) api().analysisCycle(null, null, inc) else api().analysisCycle(s.selYear, s.selMonth, inc)
                 _state.value = _state.value.copy(loading = false, cycle = c, selYear = c.year, selMonth = c.month)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
@@ -102,7 +103,7 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             try {
-                _state.value = _state.value.copy(loading = false, year = api().analysisYear(year), selYear = year)
+                _state.value = _state.value.copy(loading = false, year = api().analysisYear(year, com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())), selYear = year)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }
