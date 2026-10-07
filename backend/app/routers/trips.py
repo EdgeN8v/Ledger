@@ -37,8 +37,14 @@ def _d(s: str) -> date:
         raise HTTPException(400, "date must be YYYY-MM-DD")
 
 
+BOOKING_LEAD_DAYS = 14      # flights and hotels are booked well before the trip starts
+
+
 def _eligible(db: Session, ledger: models.Ledger, start: date, end: date, business: bool = False):
-    """Expenses inside the range that look like travel spending and are not already in another trip / fixed item."""
+    """Expenses inside the range that look like travel spending and are not already in another trip / fixed item.
+    For a business trip the range reaches back BOOKING_LEAD_DAYS: the ticket is bought before the day of departure."""
+    if business:
+        start = start - timedelta(days=BOOKING_LEAD_DAYS)
     cats = {c.id: c.name for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id)}
     items = load(ledger)
     T = models.Transaction

@@ -228,6 +228,14 @@ class PlanOut(BaseModel):
     fixed_items: list[dict] = []
 
 
+class BillReminder(BaseModel):
+    name: str
+    amount: Decimal
+    due_date: str
+    days_left: int
+    note: Optional[str] = None
+
+
 class FixedItemStatus(BaseModel):
     name: str
     reserve: Decimal            # set aside every cycle

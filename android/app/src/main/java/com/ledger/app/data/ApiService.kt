@@ -79,6 +79,9 @@ interface ApiService {
     @PUT("plan")
     suspend fun setPlan(@Body body: PlanInRequest): PlanDto
 
+    @GET("plan/reminders")
+    suspend fun billReminders(): List<BillReminderDto>
+
     @GET("plan/status")
     suspend fun planStatus(): PlanStatusDto
 

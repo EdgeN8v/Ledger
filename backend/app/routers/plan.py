@@ -11,7 +11,8 @@ from app.database import get_db
 from app.deps import get_current_user
 import json
 
-from app.fixed import item_for, load
+from app.fixed import item_for, load, matches, reminders
+from app.clock import now_local
 from app.stats import current_cycle, cycle_bounds, period_data
 
 router = APIRouter(prefix="/plan", tags=["plan"])
@@ -43,6 +44,25 @@ def get_plan(db: Session = Depends(get_db), user: models.User = Depends(get_curr
         expected_income=l.expected_income, savings_target=l.savings_target, fixed_expenses=l.fixed_expenses,
         estimated_income=est, fixed_items=load(l),
     )
+
+
+@router.get("/reminders", response_model=list[schemas.BillReminder])
+def bill_reminders(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Fixed bills that are due by the end of this month and have not been paid yet (shown 5 days ahead)."""
+    l = user.ledger
+    today = now_local().date()
+    first = today.replace(day=1)
+    rows = (
+        db.query(models.Transaction)
+        .filter(models.Transaction.ledger_id == l.id, models.Transaction.tx_type == models.TxType.expense,
+                models.Transaction.is_transfer.is_(False), models.Transaction.occurred_at >= first)
+        .all()
+    )
+
+    def paid(item) -> bool:
+        return any(matches(item, t.amount, t.merchant, t.raw_text or "", None) for t in rows)
+
+    return reminders(load(l), today, paid)
 
 
 @router.put("", response_model=schemas.PlanOut)

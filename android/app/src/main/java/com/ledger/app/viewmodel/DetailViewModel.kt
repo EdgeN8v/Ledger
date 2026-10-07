@@ -76,7 +76,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         val s = _state.value
         val r = s.request ?: return emptyList()
         return api().listTransactions(
-            dateFrom = r.dateFrom, dateTo = r.dateTo, categoryId = r.categoryId,
+            dateFrom = if (r.tripId != null) null else r.dateFrom, dateTo = if (r.tripId != null) null else r.dateTo, categoryId = r.categoryId,
             txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId, businessOnly = r.businessOnly,
             excludeBusiness = r.tripId == null && !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()),
             sort = s.sort, limit = limit, offset = offset

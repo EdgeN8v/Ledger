@@ -1,6 +1,8 @@
 package com.ledger.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,12 +49,49 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
     val plan = state.plan
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("存钱计划", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "目的只有一个: 每个月把该存的先存下来, 剩下的才是能花的",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp)
+        var help by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("存钱计划", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            androidx.compose.material3.Surface(
+                shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(22.dp).clickable { help = true }
+            ) {
+                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text("i", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+        }
+        if (help) AlertDialog(
+            onDismissRequest = { help = false },
+            confirmButton = { TextButton(onClick = { help = false }) { Text("知道了") } },
+            title = { Text("计划是怎么算的") },
+            text = {
+                Text(
+                    "· 可花预算 = 月收入 − 固定支出 − 要存的钱。先存,剩下的才是能花的。\n" +
+                        "· 工资每月不固定:发工资前按最近三次里最低的一次估算,发了以后按实际到账的算。\n" +
+                        "· 房租、停车费这种一次付好几个月的钱,每月先预留,不会让某一天的额度突然变成负数。\n" +
+                        "· 出行的花销照样计入账期,但不算进日常花钱的速度里。\n" +
+                        "· 月底前5天,快到期的固定账单会在这页顶部显示,并且推送通知。"
+                )
+            }
         )
+
+        if (state.reminders.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("🔔 月底前要交", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    state.reminders.forEach { b ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(b.name + (if (b.days_left == 0) "  今天" else "  还剩${b.days_left}天"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Text(money(b.amount), fontWeight = FontWeight.Medium, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
 
         if (st != null) {
             val (title, color) = when (st.state) {
@@ -94,13 +133,9 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
                         Metric("预计月底能存", money(st.projected_saving), if ((st.projected_saving.toDoubleOrNull() ?: 0.0) >= (st.savings_target.toDoubleOrNull() ?: 0.0)) IncomeColor else ExpenseColor)
                         Metric("目标存款", money(st.savings_target), MaterialTheme.colorScheme.onSurface)
                     }
-                    if ((st.trip_total.toDoubleOrNull() ?: 0.0) > 0) Text(
-                        "其中出行 ${money(st.trip_total)} 已花掉, 但没有算进日常速度里",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
                     Text(
-                        "按现在的速度, 本账期预计花 ${money(st.projected_spend)}",
+                        "照现在的速度预计花 ${money(st.projected_spend)}" +
+                            (if ((st.trip_total.toDoubleOrNull() ?: 0.0) > 0) " · 出行 ${money(st.trip_total)} 不计入速度" else ""),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp)
                     )
@@ -119,7 +154,6 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(f.name + (f.due_day?.let { "  (每月${it}号)" } ?: ""), style = MaterialTheme.typography.bodyMedium)
-                                if (!f.note.isNullOrBlank()) Text(f.note, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(money(f.reserve), fontWeight = FontWeight.Medium, maxLines = 1)
@@ -128,11 +162,6 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
                             }
                         }
                     }
-                    Text(
-                        "上面这些先扣掉再算可花预算, 所以房租、停车费这种一次付好几个月的钱, 不会让你某一天的可花额度突然变成负数。",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 10.dp)
-                    )
                 }
             }
         }
@@ -147,11 +176,6 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
                     (plan?.expected_income?.let { money(it) } ?: ("自动 " + money(plan?.estimated_income))))
                 PlanRow("固定支出", if (st != null && st.fixed_items.isNotEmpty()) "按上面的明细" else (plan?.fixed_expenses?.let { money(it) } ?: "未设置"))
                 PlanRow("每月要存", plan?.savings_target?.let { money(it) } ?: "未设置")
-                Text(
-                    "可花预算 = 月收入 − 固定支出 − 要存的钱。你的工资每月不固定, 月收入可以不填: 发工资前按最近三次工资里最低的一次估算, 发了以后按实际到账的算。",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 10.dp)
-                )
                 Button(onClick = { editing = true }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("修改计划") }
             }
         }

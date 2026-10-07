@@ -18,6 +18,7 @@ data class PlanUiState(
     val loading: Boolean = false,
     val plan: PlanDto? = null,
     val status: PlanStatusDto? = null,
+    val reminders: List<com.ledger.app.data.BillReminderDto> = emptyList(),
     val error: String? = null
 )
 
@@ -31,7 +32,7 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
             if (_state.value.plan == null) {
                 val p = com.ledger.app.data.DiskCache.get<PlanDto>(getApplication<Application>(), "plan")
                 val st = com.ledger.app.data.DiskCache.get<PlanStatusDto>(getApplication<Application>(), "plan_status")
-                if (p != null) _state.value = PlanUiState(plan = p, status = st)
+                if (p != null) _state.value = PlanUiState(plan = p, status = st, reminders = com.ledger.app.data.DiskCache.get<List<com.ledger.app.data.BillReminderDto>>(getApplication<Application>(), "reminders") ?: emptyList())
             }
             _state.value = _state.value.copy(loading = _state.value.plan == null, error = null)
             try {
@@ -39,7 +40,9 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
                 val st = api().planStatus()
                 com.ledger.app.data.DiskCache.put(getApplication<Application>(), "plan", p)
                 com.ledger.app.data.DiskCache.put(getApplication<Application>(), "plan_status", st)
-                _state.value = PlanUiState(plan = p, status = st)
+                val rm = try { api().billReminders() } catch (_: Exception) { _state.value.reminders }
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "reminders", rm)
+                _state.value = PlanUiState(plan = p, status = st, reminders = rm)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }
@@ -50,7 +53,7 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 api().setPlan(PlanInRequest(expectedIncome, savingsTarget, fixedExpenses))
-                _state.value = PlanUiState(plan = api().getPlan(), status = api().planStatus())
+                _state.value = _state.value.copy(plan = api().getPlan(), status = api().planStatus())
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "保存失败")
             }

@@ -29,6 +29,36 @@ object DailyReminder {
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
+    /** Bills due by the end of the month (rent, parking, the two servers...): one notification a day from 5 days before. */
+    suspend fun maybeRemind(c: Context) {
+        if (!Prefs.isLoggedIn(c) || !canNotify(c)) return
+        val now = LocalTime.now()
+        if (now.hour < 9 || now.hour >= 22) return
+        val prefs = c.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val today = LocalDate.now().toString()
+        if (prefs.getString("last_bill_notice", null) == today) return
+        val bills = try { ApiClient.create(c).billReminders() } catch (_: Exception) { return }
+        if (bills.isEmpty()) return
+        val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= 26) {
+            nm.createNotificationChannel(NotificationChannel("bills", "账单提醒", NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val open = PendingIntent.getActivity(
+            c, 1, Intent(c, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val lines = bills.joinToString("\n") { "· ${it.name} ¥${it.amount.removeSuffix(".00")}" + (if (it.days_left == 0) "(今天)" else "(还剩${it.days_left}天)") }
+        val n = NotificationCompat.Builder(c, "bills")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("月底前要交 ${bills.size} 笔")
+            .setContentText(bills.joinToString("、") { it.name })
+            .setStyle(NotificationCompat.BigTextStyle().bigText(lines))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(c).notify(7002, n)
+        prefs.edit().putString("last_bill_notice", today).apply()
+    }
+
     suspend fun maybeNotify(c: Context) {
         if (!Prefs.isLoggedIn(c) || !canNotify(c)) return
         val now = LocalTime.now()

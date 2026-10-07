@@ -199,6 +199,8 @@ data class TripInRequest(
     val auto_tag: Boolean? = null           // null: keep as it is (edit) / on (new)
 )
 
+data class BillReminderDto(val name: String, val amount: String, val due_date: String, val days_left: Int, val note: String? = null)
+
 data class ReceivableItemDto(val date: String, val merchant: String? = null, val amount: String)
 
 data class ReceivableTripDto(

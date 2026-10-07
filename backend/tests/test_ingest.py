@@ -555,13 +555,13 @@ def test_manual_tag_and_the_two_views_of_business_spending(client):
     client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
     flight = _sms(client, "【某银行】您账户1234于10月7日11:26向支付宝外部商户-携程旅行网支出748.95元,可用余额9000元。", 11, 26, day=7)["transaction"]
     _sms(client, "【某银行】您账户1234于10月8日12:00向美团外卖-某面馆支出30元,可用余额8970元。", 12, 0, day=8)
-    # a business trip whose date range does NOT cover the flight: the user adds it by hand
-    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-12", "end_date": "2026-10-13", "kind": "business",
+    # a business trip whose date range (even with the booking lead) does NOT cover the flight: the user adds it by hand
+    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-11-05", "end_date": "2026-11-06", "kind": "business",
                                        "daily_allowance": 180, "commute_allowance": 80}).json()
     assert trip["count"] == 0
     after = client.post(f"/trips/{trip['id']}/add/{flight['id']}").json()
     assert float(after["total"]) == 748.95
-    client.put("/trips/%d" % trip["id"], json={"name": "出差", "start_date": "2026-10-12", "end_date": "2026-10-14", "kind": "business",
+    client.put("/trips/%d" % trip["id"], json={"name": "出差", "start_date": "2026-11-05", "end_date": "2026-11-07", "kind": "business",
                                               "daily_allowance": 180, "commute_allowance": 80})        # editing dates keeps the hand-picked one
     assert float(client.get("/trips").json()[0]["total"]) == 748.95
     # view A (default): the advance is not spending
@@ -619,3 +619,27 @@ def test_editing_a_trip_keeps_auto_tag_and_receivable_lists_its_items(client):
     assert len(rec) == 1 and rec[0]["trip_id"] == trip["id"]
     assert float(rec[0]["advanced"]) == 800 and float(rec[0]["allowance"]) == 350 and float(rec[0]["expected"]) == 1150
     assert [i["merchant"] for i in rec[0]["items"]] == ["Demo Air 机票"]
+
+
+def test_bill_reminders_show_five_days_ahead_and_vanish_when_paid(client):
+    from datetime import date
+    from app.fixed import reminders
+    items = [
+        {"name": "Demo rent", "monthly": 4900, "remind": {"months": [3, 6, 9, 12], "before_days": 5, "amount": 14700}},
+        {"name": "Demo node", "monthly": 138, "match_amount": [138], "remind": {"before_days": 5}},
+        {"name": "Demo plain", "monthly": 10},
+    ]
+    never = lambda it: False
+    assert reminders(items, date(2026, 11, 20), never) == []                               # too early
+    got = {r["name"]: r for r in reminders(items, date(2026, 11, 26), never)}
+    assert set(got) == {"Demo node"} and got["Demo node"]["days_left"] == 4                # rent is not due in November
+    got = {r["name"]: r for r in reminders(items, date(2026, 12, 26), never)}
+    assert set(got) == {"Demo rent", "Demo node"} and float(got["Demo rent"]["amount"]) == 14700
+    assert [r["name"] for r in reminders(items, date(2026, 12, 28), lambda it: it["name"] == "Demo node")] == ["Demo rent"]
+    assert client.get("/plan/reminders").status_code == 200
+
+
+def test_business_trip_picks_up_a_ticket_booked_before_departure(client):
+    _sms(client, "【某银行】您账户1234于10月10日20:00向支付宝外部商户-携程旅行网支出900元,可用余额9000元。", 20, 0, day=10)
+    trip = client.post("/trips", json={"name": "Demo biz", "start_date": "2026-10-11", "end_date": "2026-10-12", "kind": "business"}).json()
+    assert float(trip["total"]) == 900            # bought the day before departure

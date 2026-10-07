@@ -9,8 +9,9 @@ Matching payments are filed in the item's category when they arrive, and the sav
 before working out what is left to spend freely, so a lumpy bill (rent every 3 months, parking 2-3 months at once) does
 not wreck the daily allowance.
 """
+import calendar
 import json
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -62,3 +63,26 @@ def item_for(items: list[dict], amount, merchant, text, when) -> Optional[dict]:
         if matches(it, amount, merchant, text, when):
             return it
     return None
+
+
+def reminders(items: list[dict], today: date, paid_this_month) -> list[dict]:
+    """Bills to pay soon. An item opts in with  "remind": {"before_days": 5, "months": [3, 6, 9, 12], "amount": 14700}:
+    it shows from before_days before the END of every listed month (all months when "months" is absent) until it is paid.
+    paid_this_month(item) -> bool tells whether a matching payment already happened this calendar month."""
+    out = []
+    for it in items:
+        r = it.get("remind")
+        if not isinstance(r, dict):
+            continue
+        months = r.get("months")
+        if months and today.month not in months:
+            continue
+        last = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+        left = (last - today).days
+        if left > int(r.get("before_days", 5)):
+            continue
+        if paid_this_month(it):
+            continue
+        amount = r.get("amount") or it.get("monthly") or 0
+        out.append({"name": it["name"], "amount": Decimal(str(amount)), "due_date": last.isoformat(), "days_left": left, "note": it.get("note")})
+    return out

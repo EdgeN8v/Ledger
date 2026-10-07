@@ -123,12 +123,12 @@ fun TripsScreen(
                             Text(money(it.total), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    Row {
-                        if (t.kind == "business") {
-                            if (t.settled) TextButton(onClick = { onUnsettle(t.id) }) { Text("撤销到账") }
-                            else Button(onClick = { settling = t }) { Text("报销已到账") }
-                        }
-                        TextButton(onClick = { editing = t }) { Text("修改") }
+                    if (t.kind == "business") {
+                        if (t.settled) TextButton(onClick = { onUnsettle(t.id) }) { Text("撤销到账") }
+                        else Button(onClick = { settling = t }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("报销已到账") }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { editing = t }, modifier = Modifier.weight(1f)) { Text("✏️ 修改日期/补贴") }
                         TextButton(onClick = { deleting = t }) { Text("取消这次") }
                     }
                 }

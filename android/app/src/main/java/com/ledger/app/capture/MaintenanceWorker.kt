@@ -22,6 +22,7 @@ class MaintenanceWorker(ctx: Context, params: WorkerParameters) : CoroutineWorke
         SmsInboxScanner.scan(applicationContext)
         if (CaptureQueue.size(applicationContext) > 0) UploadWorker.enqueue(applicationContext)
         DailyReminder.maybeNotify(applicationContext)
+        DailyReminder.maybeRemind(applicationContext)
         return Result.success()
     }
 
