@@ -40,7 +40,8 @@ object SmsInboxScanner {
                     val body = cur.getString(2) ?: continue
                     val date = cur.getLong(3)
                     if (id > maxId) maxId = id
-                    if (body.contains("元") && MONEY_WORDS.any { body.contains(it) }) {
+                    val ticket = body.contains("乘机人") && body.contains("航班") && (body.contains("支付成功") || body.contains("成功预定"))
+                    if (ticket || (body.contains("元") && MONEY_WORDS.any { body.contains(it) })) {
                         CaptureQueue.add(c, CaptureQueue.Item("sms", address, body, date))
                         queued++
                     }

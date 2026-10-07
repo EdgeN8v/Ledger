@@ -15,6 +15,7 @@ from app.deps import get_current_user
 from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
+from app.flights import MILEAGE, parse_flights, store_flights, sync_flight_trips
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -177,10 +178,18 @@ def ingest(
         tx = db.get(models.Transaction, existing.transaction_id) if existing.transaction_id else None
         return schemas.IngestResult(status="duplicate", event_id=existing.id, transaction=tx)
 
-    parsed = parse_message(source, title, text, posted)
+    ticket = parse_flights(text, posted)
+    mileage = bool(MILEAGE.search(text))
+    parsed = None if (ticket or mileage) else parse_message(source, title, text, posted)
     status, tx = "ignored", None
 
-    if parsed is None:
+    if ticket:
+        # an airline ticket SMS describes a flight (and so a business trip); it is never money by itself
+        store_flights(db, user.ledger_id, ticket)
+        status = "flight"
+    elif mileage:
+        status = "ignored"
+    elif parsed is None:
         status = "failed" if looks_financial(f"{title} {text}") else "ignored"
     else:
         when = parsed.occurred_at or posted
@@ -251,6 +260,8 @@ def ingest(
     )
     db.add(ev)
     db.commit()
+    if status == "flight":
+        sync_flight_trips(db, user.ledger_id)
     if tx:
         db.refresh(tx)
     return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx)

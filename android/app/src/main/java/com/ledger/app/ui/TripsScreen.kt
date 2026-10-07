@@ -105,6 +105,10 @@ fun TripsScreen(
                         Text(money(t.total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                             color = com.ledger.app.ui.theme.ExpenseColor, maxLines = 1)
                     }
+                    t.flights.forEach {
+                        Text("✈ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp))
+                    }
                     if (t.kind == "business") {
                         Text(
                             if (t.settled) "✅ 已报销到账 ${money(t.received_amount)}; 其中只有补贴 ${money(t.allowance_gain)} 记为收入, 垫付的钱是还给你自己的" +

@@ -402,6 +402,7 @@ class TripOut(BaseModel):
     by_category: list[TripCategory]
     kind: str = "personal"
     days: int = 1
+    flights: list[str] = []
     daily_allowance: Optional[Decimal] = None
     commute_allowance: Optional[Decimal] = None
     allowance_total: Decimal = Decimal(0)

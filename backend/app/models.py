@@ -2,7 +2,7 @@ import enum
 import secrets
 
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, ForeignKey, Enum, Boolean, Text, Index
+    Column, Integer, String, Numeric, DateTime, Date, ForeignKey, Enum, Boolean, Text, Index
 )
 from sqlalchemy.orm import relationship
 
@@ -37,6 +37,7 @@ class Ledger(Base):
     savings_target = Column(Numeric(14, 2), nullable=True)    # how much to keep every pay cycle
     fixed_expenses = Column(Numeric(14, 2), nullable=True)    # rent etc. paid from accounts that send no SMS
     fixed_items = Column(Text, nullable=True)      # JSON list of fixed commitments, see fixed.py
+    home_city = Column(String, nullable=True)      # where business trips start and end (default 上海)
     owner_names = Column(String, nullable=True)    # comma-separated names of the account holders: money from/to them is a transfer
     created_at = Column(DateTime, default=now_local)
 
@@ -190,6 +191,8 @@ class Trip(Base):
     settled_at = Column(DateTime, nullable=True)                  # business: when the employer paid it back
     received_amount = Column(Numeric(14, 2), nullable=True)
     reimbursement_tx_id = Column(Integer, nullable=True)
+    auto_key = Column(String, nullable=True)                      # made from flight SMS: first flight of the journey
+    dates_locked = Column(Boolean, nullable=False, default=False)  # the user edited the dates: flights no longer move them
     created_at = Column(DateTime, default=now_local)
 
 
@@ -201,3 +204,21 @@ class TripDismissal(Base):
     ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
     start_date = Column(String, nullable=False)
     end_date = Column(String, nullable=False)
+
+
+class Flight(Base):
+    """One flight leg of a ticket SMS. Not money: only payments become transactions."""
+    __tablename__ = "flights"
+
+    id = Column(Integer, primary_key=True)
+    ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
+    trip_id = Column(Integer, nullable=True)
+    passenger = Column(String, nullable=True)
+    flight_no = Column(String, nullable=False)
+    origin = Column(String, nullable=False)       # city
+    dest = Column(String, nullable=False)
+    depart_at = Column(DateTime, nullable=False)
+    arrive_at = Column(DateTime, nullable=False)
+    ordered_on = Column(Date, nullable=False)
+    ticket_no = Column(String, nullable=True)
+    price = Column(Numeric(12, 2), nullable=True)  # whole order, when the SMS says so

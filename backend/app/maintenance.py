@@ -6,6 +6,29 @@ from app.default_categories import DEFAULT_CATEGORIES
 from app.parsers import parse_message
 
 
+def ensure_columns(db: Session) -> None:
+    """create_all adds tables but never columns: add the ones introduced later (additive only)."""
+    from sqlalchemy import inspect, text
+    wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL")],
+              "ledgers": [("home_city", "VARCHAR")]}
+    insp = inspect(db.get_bind())
+    for table, cols in wanted.items():
+        have = {c["name"] for c in insp.get_columns(table)}
+        for name, ddl in cols:
+            if name not in have:
+                db.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+    db.commit()
+
+
+def ignore_mileage_notes(db: Session) -> None:
+    """After-flight mileage notes were stored as 'failed' payments: they are not payments."""
+    from app.flights import MILEAGE
+    for ev in db.query(models.RawEvent).filter(models.RawEvent.status == "failed"):
+        if MILEAGE.search(ev.text or ""):
+            ev.status = "ignored"
+    db.commit()
+
+
 def sync_default_categories(db: Session) -> None:
     """Existing ledgers got their category list at registration. Add categories that were introduced
     later and merge new default keywords into existing ones (a user's own extra keywords are kept)."""

@@ -643,3 +643,70 @@ def test_business_trip_picks_up_a_ticket_booked_before_departure(client):
     _sms(client, "【某银行】您账户1234于10月10日20:00向支付宝外部商户-携程旅行网支出900元,可用余额9000元。", 20, 0, day=10)
     trip = client.post("/trips", json={"name": "Demo biz", "start_date": "2026-10-11", "end_date": "2026-10-12", "kind": "business"}).json()
     assert float(trip["total"]) == 900            # bought the day before departure
+
+
+CSAIR = ("【南航】您的机票已于2026-10-07支付成功。乘机人张三，票号7840000000001， 10月08日 CZ1234航班经济舱，上海(上海虹桥国际机场) 航站楼T2 08:35-"
+         "北京(北京大兴国际机场)  10:45。为保障您的出行，请于航班起飞前30分钟前完成乘机登记手续。")
+AGENT_OUT = ("【某航旅】尊敬的客户：您已成功预定10月12日北京首都到上海虹桥T2，东航MU1000，21:00起飞-23:10到达，经济舱，乘机人张三(证件号码:110000000000000000)，"
+             "票价：(票价1000 机建税100 燃油费100元)/人 8元服务费/人, 票号：7810000000002,建议您国内航班不少于90分钟到达机场。")
+AGENT_TWO = ("【某航旅】尊敬的客户：您已成功预定11月02日上海虹桥T2到兰州T3，东航MU2000，07:40起飞-11:00到达，经济舱;11月02日兰州T3到嘉峪关，东航MU2001，14:30起飞-16:05到达，经济舱，"
+             "乘机人张三(证件号码:110000000000000000)，票价：(票价900 机建税100 燃油费100元)/人 8元服务费/人, 票号：7810000000003,建议您。")
+
+
+def _flight_sms(client, text, day=7, h=10):
+    return client.post("/ingest", json={"source": "sms", "title": "x", "text": text, "posted_at_ms": ms(2026, 10, day, h, 0)}).json()
+
+
+def test_flight_sms_build_a_business_trip_without_any_payment(client):
+    from app.flights import parse_flights
+    f = parse_flights(CSAIR, datetime(2026, 10, 7, 10, 0))
+    assert [(x["flight_no"], x["origin"], x["dest"], x["depart_at"].strftime("%m-%d %H:%M")) for x in f] == [("CZ1234", "上海", "北京", "10-08 08:35")]
+    two = parse_flights(AGENT_TWO, datetime(2026, 10, 20, 10, 0))
+    assert [(x["flight_no"], x["origin"], x["dest"]) for x in two] == [("MU2000", "上海", "兰州"), ("MU2001", "兰州", "嘉峪关")]
+    assert two[0]["depart_at"].year == 2026 and float(two[0]["price"]) == 1108
+
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    r = _flight_sms(client, CSAIR)
+    assert r["status"] == "flight" and r["transaction"] is None            # a ticket is not money
+    trips = client.get("/trips").json()
+    assert len(trips) == 1 and trips[0]["kind"] == "business" and trips[0]["start_date"] == "2026-10-08" and trips[0]["name"] == "出差·北京"
+    assert trips[0]["flights"] == ["10-08 08:35 CZ1234 上海→北京"]
+    assert float(trips[0]["total"]) == 0                                    # nothing was paid: nothing in the books
+    # the return ticket closes the trip on the day it lands
+    _flight_sms(client, AGENT_OUT, day=8)
+    trips = client.get("/trips").json()
+    assert len(trips) == 1 and trips[0]["end_date"] == "2026-10-12" and trips[0]["days"] == 5
+    # sending the same message again changes nothing
+    assert _flight_sms(client, CSAIR)["status"] == "duplicate"
+    assert len(client.get("/trips").json()) == 1
+
+
+def test_someone_elses_ticket_and_a_paid_ticket(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "李四"})
+    assert _flight_sms(client, CSAIR)["status"] == "flight"                  # parsed...
+    assert client.get("/trips").json() == []                                  # ...but it is not the holder's ticket
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    # a payment of exactly the ticket price near the order day is filed under the trip
+    client.post("/transactions", json={"amount": "1208", "tx_type": "expense", "note": "x", "occurred_at": "2026-10-07T09:00:00"})
+    _flight_sms(client, AGENT_OUT, day=8)
+    _flight_sms(client, CSAIR, day=9)
+    trip = client.get("/trips").json()[0]
+    assert float(trip["total"]) == 1208
+    # deleting the trip is remembered: the tickets do not bring it back
+    assert client.delete(f"/trips/{trip['id']}").status_code == 204
+    assert client.get("/trips").json() == []
+
+
+def test_editing_the_dates_of_a_flight_trip_sticks(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    _flight_sms(client, CSAIR)
+    t = client.get("/trips").json()[0]
+    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-10-20", "kind": "business",
+                                          "daily_allowance": 180, "commute_allowance": 80})
+    _flight_sms(client, AGENT_OUT, day=8)                                    # would end the trip on the 12th
+    assert client.get("/trips").json()[0]["end_date"] == "2026-10-20"
+
+
+def test_mileage_notes_are_not_failed_payments(client):
+    r = _flight_sms(client, "【东方航空】尊敬的张三会员 :感谢您于2026-09-18 乘坐MU6676航班,舱位S ,累积里程积分736点,定级里程1614公里,定级次数1.0次,消费金额920元,详情请关注公众号。")
+    assert r["status"] == "ignored"

@@ -19,6 +19,7 @@ from app.deps import get_current_user
 from app.clock import now_local
 from app.fixed import item_for, load
 from app.stats import refunded_map
+from app.flights import sync_flight_trips
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 ZERO = Decimal(0)
@@ -89,6 +90,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
         by[t.category_id] += eff
     business = trip.kind == "business"
     days = _days(trip)
+    legs = db.query(models.Flight).filter(models.Flight.trip_id == trip.id).order_by(models.Flight.depart_at).all()
     allowance = ((trip.commute_allowance or ZERO) + (trip.daily_allowance or ZERO) * days) if business else ZERO
     settled = trip.settled_at is not None
     return schemas.TripOut(
@@ -97,6 +99,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
             schemas.TripCategory(name=cats[c].name if c in cats else "未分类", icon=cats[c].icon if c in cats else "❓", total=v)
             for c, v in sorted(by.items(), key=lambda kv: kv[1], reverse=True)
         ],
+        flights=[f"{f.depart_at:%m-%d %H:%M} {f.flight_no} {f.origin}→{f.dest}" for f in legs],
         kind=trip.kind or "personal", days=days, daily_allowance=trip.daily_allowance, commute_allowance=trip.commute_allowance,
         allowance_total=allowance, expected_reimbursement=(total + allowance) if business else ZERO, settled=settled,
         received_amount=trip.received_amount if settled else None,
@@ -150,6 +153,7 @@ def retag(db: Session, trip: models.Trip) -> None:
 
 @router.get("", response_model=list[schemas.TripOut])
 def list_trips(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    sync_flight_trips(db, user.ledger_id)          # an open trip grows with every day until the return flight is known
     trips = db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id).order_by(models.Trip.start_date.desc()).all()
     return [_summary(db, t) for t in trips]
 
@@ -176,6 +180,8 @@ def update_trip(trip_id: int, payload: schemas.TripIn, db: Session = Depends(get
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id, models.Trip.ledger_id == user.ledger_id).first()
     if not trip:
         raise HTTPException(404, "trip not found")
+    if (trip.start_date, trip.end_date) != (payload.start_date, payload.end_date):
+        trip.dates_locked = True                   # the user knows better than the tickets (e.g. a changed return)
     trip.name, trip.start_date, trip.end_date = payload.name.strip() or trip.name, payload.start_date, payload.end_date
     trip.kind, trip.daily_allowance, trip.commute_allowance = payload.kind, payload.daily_allowance, payload.commute_allowance
     if payload.auto_tag is not None:
@@ -192,6 +198,9 @@ def delete_trip(trip_id: int, db: Session = Depends(get_db), user: models.User =
     if not trip:
         raise HTTPException(404, "trip not found")
     db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id).update({"trip_id": None, "is_reimbursement": False})
+    if trip.auto_key:                              # made from tickets: do not make it again
+        db.add(models.TripDismissal(ledger_id=trip.ledger_id, start_date=trip.start_date, end_date="auto:" + trip.auto_key))
+    db.query(models.Flight).filter(models.Flight.trip_id == trip.id).update({"trip_id": None})
     db.delete(trip)
     db.commit()
 
