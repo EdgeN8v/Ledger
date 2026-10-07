@@ -108,7 +108,7 @@ def retag(db: Session, trip: models.Trip) -> None:
     ledger = db.get(models.Ledger, trip.ledger_id)
     db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(False),
                                         models.Transaction.trip_manual.is_(False)).update({"trip_id": None})
-    for t in _eligible(db, ledger, _d(trip.start_date), _d(trip.end_date), business=trip.kind == "business"):
+    for t in (_eligible(db, ledger, _d(trip.start_date), _d(trip.end_date), business=trip.kind == "business") if trip.auto_tag else []):
         if t.trip_id is None:
             t.trip_id = trip.id
     db.commit()
@@ -128,7 +128,7 @@ def create_trip(payload: schemas.TripIn, db: Session = Depends(get_db), user: mo
         raise HTTPException(400, "kind must be personal or business")
     trip = models.Trip(ledger_id=user.ledger_id, name=payload.name.strip() or "出行",
                        start_date=payload.start_date, end_date=payload.end_date, kind=payload.kind,
-                       daily_allowance=payload.daily_allowance, commute_allowance=payload.commute_allowance)
+                       daily_allowance=payload.daily_allowance, commute_allowance=payload.commute_allowance, auto_tag=payload.auto_tag)
     db.add(trip)
     db.commit()
     retag(db, trip)
@@ -143,6 +143,7 @@ def update_trip(trip_id: int, payload: schemas.TripIn, db: Session = Depends(get
         raise HTTPException(404, "trip not found")
     trip.name, trip.start_date, trip.end_date = payload.name.strip() or trip.name, payload.start_date, payload.end_date
     trip.kind, trip.daily_allowance, trip.commute_allowance = payload.kind, payload.daily_allowance, payload.commute_allowance
+    trip.auto_tag = payload.auto_tag
     db.commit()
     retag(db, trip)
     return _summary(db, trip)

@@ -356,6 +356,7 @@ class TripIn(BaseModel):
     start_date: str
     end_date: str
     kind: str = "personal"                 # personal / business
+    auto_tag: bool = True
     daily_allowance: Optional[Decimal] = None
     commute_allowance: Optional[Decimal] = None
 

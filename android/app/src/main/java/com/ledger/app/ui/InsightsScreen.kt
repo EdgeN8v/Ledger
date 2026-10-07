@@ -152,7 +152,7 @@ private fun CycleBody(
     SectionCard("花在哪些类别") {
         c.categories.forEach { cat ->
             CategoryBar(cat) {
-                onOpenDetail(com.ledger.app.viewmodel.DetailRequest(cat.name, cat.category_id, null, c.period_start, c.period_end))
+                onOpenDetail(com.ledger.app.viewmodel.DetailRequest(cat.name, cat.category_id?.takeIf { it > 0 }, null, c.period_start, c.period_end, businessOnly = cat.category_id == -2))
             }
         }
         Text("点一个类别, 看这期间这一类的每一笔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
@@ -220,7 +220,7 @@ private fun CycleBody(
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { changing = bgt },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(shape = CircleShape, color = CategoryBadgeColors[(bgt.category_id ?: 0) % CategoryBadgeColors.size], modifier = Modifier.size(36.dp)) {
+                    Surface(shape = CircleShape, color = CategoryBadgeColors[Math.floorMod(bgt.category_id ?: 0, CategoryBadgeColors.size)], modifier = Modifier.size(36.dp)) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) { Text(cat?.icon ?: "❓") }
                     }
                     Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp)) {

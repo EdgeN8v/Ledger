@@ -243,6 +243,7 @@ fun LedgerApp() {
                                 onFilterChange = { transactionViewModel.setFilter(it) },
                                 onSetCategory = { id, cat -> transactionViewModel.setCategory(id, cat) },
                                 onSetTrip = { tx, tripId -> transactionViewModel.setBusinessTrip(tx, tripId) },
+                                onNewBusinessTrip = { tx, name, start, end, daily, commute, autoTag -> transactionViewModel.newBusinessTripWith(tx, name, start, end, daily, commute, autoTag) },
                                 onEditTransaction = { tx -> editingTransaction = tx; navController.navigate("add") },
                                 isListening = isListening
                             )

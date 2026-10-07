@@ -129,8 +129,10 @@ fun StatisticsScreen(onOpenDetail: (com.ledger.app.viewmodel.DetailRequest) -> U
                         val to = summary.period_end ?: "%04d-%02d-28".format(state.year, state.month)
                         onOpenDetail(
                             com.ledger.app.viewmodel.DetailRequest(
-                                title = category.category_name, categoryId = category.category_id,
-                                query = null, dateFrom = from, dateTo = to
+                                title = category.category_name,
+                                categoryId = category.category_id?.takeIf { it > 0 },
+                                query = null, dateFrom = from, dateTo = to,
+                                businessOnly = category.category_id == -2
                             )
                         )
                     }
@@ -231,7 +233,7 @@ private fun StatCard(label: String, amount: Double, color: androidx.compose.ui.g
 private fun CategoryBar(category: SummaryByCategoryDto, maxTotal: Double, onClick: () -> Unit) {
     val total = category.total.toDoubleOrNull() ?: 0.0
     val fraction = if (maxTotal > 0) (total / maxTotal).toFloat().coerceIn(0.05f, 1f) else 0.05f
-    val barColor = CategoryBadgeColors[(category.category_id ?: 0) % CategoryBadgeColors.size]
+    val barColor = CategoryBadgeColors[Math.floorMod(category.category_id ?: 0, CategoryBadgeColors.size)]
 
     Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(12.dp)) {

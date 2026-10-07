@@ -579,9 +579,12 @@ def test_manual_tag_and_the_two_views_of_business_spending(client):
     client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]})
     b = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9, "include_business": True}).json()
     assert float(b["total_expense"]) == 30.0 - 620.0           # 30 meal + 748.95 advance - 1368.95 paid back
-    assert any(c["category_name"] == "出差报销冲抵" for c in b["by_category"])
+    biz = [c for c in b["by_category"] if c["category_name"] == "出差垫付"]
+    assert biz and float(biz[0]["total"]) == 748.95 - 1368.95            # its own line, net of the money paid back
+    assert not any(c["category_name"] == "车辆出行" for c in b["by_category"])   # not mixed into the road category
     x = client.get("/analysis/cycle", params={"year": 2026, "month": 9, "include_business": True}).json()
     assert float(x["total_expense"]) == 30.0 - 620.0
+    assert [t["merchant"] for t in client.get("/transactions", params={"business_only": True, "tx_type": "expense"}).json()] == ["支付宝外部商户-携程旅行网"]
     y = client.get("/analysis/year", params={"year": 2026, "include_business": True}).json()
     assert y["months"]
 
@@ -590,3 +593,15 @@ def test_hema_goes_to_food(client):
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     r = _sms(client, "【某银行】您账户1234于10月7日12:00向支付宝-盒马支出29.9元,可用余额900元。", 12, 0, day=7)
     assert cats[r["transaction"]["category_id"]] == "餐饮"
+
+
+def test_a_trip_without_auto_tag_takes_only_what_the_user_adds(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    flight = _sms(client, "【某银行】您账户1234于10月7日11:26向支付宝外部商户-携程旅行网支出748.95元,可用余额9000元。", 11, 26, day=7)["transaction"]
+    _sms(client, "【某银行】您账户1234于10月7日12:30向美团外卖-某面馆支出30元,可用余额8000元。", 12, 30, day=7)
+    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-07", "end_date": "2026-10-09", "kind": "business",
+                                       "auto_tag": False}).json()
+    assert trip["count"] == 0                                    # the meal inside the date range is NOT swallowed
+    assert client.post(f"/trips/{trip['id']}/add/{flight['id']}").json()["count"] == 1
+    on = client.post("/trips", json={"name": "自动", "start_date": "2026-10-07", "end_date": "2026-10-07", "kind": "personal"}).json()
+    assert on["count"] >= 1                                      # default behaviour unchanged for ordinary trips

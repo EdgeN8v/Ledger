@@ -105,6 +105,7 @@ interface ApiService {
         @Query("needs_review") needsReview: Boolean? = null,
         @Query("trip_id") tripId: Int? = null,
         @Query("exclude_business") excludeBusiness: Boolean = false,
+        @Query("business_only") businessOnly: Boolean = false,
         @Query("sort") sort: String? = null,
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0

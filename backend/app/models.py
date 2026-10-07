@@ -184,6 +184,7 @@ class Trip(Base):
     start_date = Column(String, nullable=False)    # YYYY-MM-DD
     end_date = Column(String, nullable=False)
     kind = Column(String, nullable=False, default="personal")      # personal / business
+    auto_tag = Column(Boolean, nullable=False, default=True)      # pull in everything bought inside the date range
     daily_allowance = Column(Numeric(12, 2), nullable=True)       # business: per-day allowance owed by the employer
     commute_allowance = Column(Numeric(12, 2), nullable=True)     # business: one-off commuting allowance
     settled_at = Column(DateTime, nullable=True)                  # business: when the employer paid it back

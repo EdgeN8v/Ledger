@@ -75,6 +75,7 @@ def list_transactions(
     q: Optional[str] = None,               # substring of merchant / note / message text
     needs_review: Optional[bool] = None,
     trip_id: Optional[int] = None,
+    business_only: bool = False,           # only purchases that belong to business trips
     exclude_business: bool = False,       # hide purchases that belong to business trips (they are not your spending)
     sort: str = "time_desc",              # time_desc / time_asc / amount_desc / amount_asc
     limit: int = 50,
@@ -108,6 +109,9 @@ def list_transactions(
         query = query.filter(T.needs_review == needs_review)
     if trip_id:
         query = query.filter(T.trip_id == trip_id)
+    if business_only:
+        biz_ids = [x.id for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business")]
+        query = query.filter(T.trip_id.in_(biz_ids or [-1]))
     if exclude_business:
         biz = [x.id for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business")]
         if biz:
@@ -202,16 +206,16 @@ def monthly_summary(
     p_start, p_end = cycle_bounds(start_day, year, month)
     data = period_data(db, user.ledger_id, p_start, p_end, include_business=include_business)
     cats = {c.id: c.name for c in db.query(models.Category).filter(models.Category.ledger_id == user.ledger_id)}
-    cats[-1] = "出差报销冲抵"
+    cats[-2] = "出差垫付"
     buckets: dict[tuple, Decimal] = {}
     for t, eff in data.expenses:
-        k = (t.category_id, models.TxType.expense)
+        k = (-2 if t.trip_id in data.business_ids else t.category_id, models.TxType.expense)   # business advances: their own line
         buckets[k] = buckets.get(k, Decimal(0)) + eff
     for r in data.standalone_refunds:
         k = (r.category_id, models.TxType.expense)
         buckets[k] = buckets.get(k, Decimal(0)) - r.amount
     for _t, amount in data.reimbursements:
-        k = (-1, models.TxType.expense)
+        k = (-2, models.TxType.expense)
         buckets[k] = buckets.get(k, Decimal(0)) - amount
     for t in data.incomes:
         k = (t.category_id, models.TxType.income)

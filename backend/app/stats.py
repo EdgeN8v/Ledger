@@ -54,6 +54,7 @@ class PeriodData:
     expenses: list = field(default_factory=list)
     incomes: list = field(default_factory=list)
     standalone_refunds: list = field(default_factory=list)
+    business_ids: set = field(default_factory=set)       # ids of business trips (their purchases form their own line in the include view)
     reimbursements: list = field(default_factory=list)   # (transaction, amount) paid back by the employer (include_business view)
 
 
@@ -70,6 +71,7 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime, inc
     # paid back only the allowances (commute + daily x days) count, as income; the rest is the user's own money coming home.
     business = {tr.id: tr for tr in db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business")}
     advanced = {}
+    out.business_ids = set(business)
     if business:
         for bt in db.query(T).filter(T.trip_id.in_(list(business)), T.tx_type == models.TxType.expense, T.is_transfer.is_(False)).all():
             advanced[bt.trip_id] = advanced.get(bt.trip_id, Decimal(0)) + (bt.amount - refunds.get(bt.id, Decimal(0)))

@@ -226,3 +226,52 @@ fun TripsScreen(
         )
     }
 }
+
+
+/** Small "new business trip" form, shared by the long-press menu: name, dates, allowances. */
+@Composable
+fun NewBusinessTripDialog(
+    startDate: String,
+    onDismiss: () -> Unit,
+    onCreate: (name: String, start: String, end: String, daily: String?, commute: String?, autoTag: Boolean) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var start by remember { mutableStateOf(startDate) }
+    var end by remember { mutableStateOf(LocalDate.parse(startDate).plusDays(2).toString()) }
+    var daily by remember { mutableStateOf("180") }
+    var commute by remember { mutableStateOf("80") }
+    var autoTag by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    fun pick(current: String, onPick: (String) -> Unit) {
+        val d = LocalDate.parse(current)
+        DatePickerDialog(context, { _, y, m, day -> onPick(LocalDate.of(y, m + 1, day).toString()) }, d.year, d.monthValue - 1, d.dayOfMonth).show()
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新建出差") },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("名字, 如 北京出差") }, modifier = Modifier.fillMaxWidth())
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { pick(start) { start = it; if (end < it) end = it } }, modifier = Modifier.weight(1f)) { Text("从 ${md(start)}") }
+                    OutlinedButton(onClick = { pick(end) { end = if (it < start) start else it } }, modifier = Modifier.weight(1f)) { Text("到 ${md(end)}") }
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(daily, { daily = it }, singleLine = true, label = { Text("每天补贴") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴(一次)") }, modifier = Modifier.weight(1f))
+                }
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("这段日期里的其他消费(吃饭、打车…)也自动归入", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Switch(autoTag, { autoTag = it })
+                }
+                Text("关着的话只归入你长按的这一笔, 其他的你再一笔笔长按添加; 日期用来按天数算补贴。",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onCreate(name.ifBlank { "出差" }, start, end, daily.trim().ifEmpty { null }, commute.trim().ifEmpty { null }, autoTag) }) { Text("创建并归入") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}

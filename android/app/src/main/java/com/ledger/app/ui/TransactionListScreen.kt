@@ -99,10 +99,12 @@ fun TransactionListScreen(
     onFilterChange: (TxFilter) -> Unit,
     onSetCategory: (txId: Int, categoryId: Int) -> Unit,
     onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
+    onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
     isListening: Boolean
 ) {
     var pickFor by remember { mutableStateOf<TransactionDto?>(null) }
+    var newTripFor by remember { mutableStateOf<TransactionDto?>(null) }
     val listState = rememberLazyListState()
     val refreshing = state.loading || state.syncing
     val pullState = rememberPullRefreshState(refreshing = refreshing, onRefresh = onRefresh)
@@ -226,6 +228,13 @@ fun TransactionListScreen(
         }
     }
 
+    newTripFor?.let { tx ->
+        NewBusinessTripDialog(
+            startDate = tx.occurred_at.take(10),
+            onDismiss = { newTripFor = null },
+            onCreate = { name, start, end, daily, commute, autoTag -> newTripFor = null; onNewBusinessTrip(tx, name, start, end, daily, commute, autoTag) }
+        )
+    }
     pickFor?.let { tx ->
         CategoryPickerDialog(
             tx = tx,
@@ -233,7 +242,8 @@ fun TransactionListScreen(
             onDismiss = { pickFor = null },
             onPick = { catId -> pickFor = null; onSetCategory(tx.id, catId) },
             trips = state.businessTrips,
-            onTrip = { tripId -> pickFor = null; onSetTrip(tx, tripId) }
+            onTrip = { tripId -> pickFor = null; onSetTrip(tx, tripId) },
+            onNewTrip = { pickFor = null; newTripFor = tx }
         )
     }
 }
@@ -457,11 +467,13 @@ internal fun CategoryPickerDialog(
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
     trips: List<com.ledger.app.data.TripDto> = emptyList(),
-    onTrip: (Int?) -> Unit = {}
+    onTrip: (Int?) -> Unit = {},
+    onNewTrip: (() -> Unit)? = null
 ) {
+    val canBusiness = tx.tx_type == "expense" && !tx.is_reimbursement && (onNewTrip != null || trips.isNotEmpty() || tx.trip_id != null)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("改类别", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = { Text("这笔怎么记", maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
@@ -471,33 +483,33 @@ internal fun CategoryPickerDialog(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (canBusiness) {
+                    Text(
+                        "🧾 出差垫付: 之后公司会报销, 不算你的开销",
+                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        trips.forEach { t ->
+                            FilterChip(selected = tx.trip_id == t.id, onClick = { onTrip(t.id) }, label = { Text("归入「${t.name}」") })
+                        }
+                        if (onNewTrip != null) FilterChip(selected = false, onClick = onNewTrip, label = { Text("＋ 新建一次出差") })
+                        if (tx.trip_id != null) FilterChip(selected = false, onClick = { onTrip(null) }, label = { Text("移出出差") })
+                    }
+                }
                 Text(
-                    "选一个类别,这家商户以后自动归到这一类",
+                    if (canBusiness) "或者: 选一个类别,这家商户以后自动归到这一类" else "选一个类别,这家商户以后自动归到这一类",
                     style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     categories.filter { it.tx_type == tx.tx_type }.forEach { c ->
                         FilterChip(
-                            selected = c.id == tx.category_id,
+                            selected = c.id == tx.category_id && tx.trip_id == null,
                             onClick = { onPick(c.id) },
                             label = { Text((c.icon ?: "") + " " + c.name) }
                         )
                     }
-                }
-                if (tx.tx_type == "expense" && !tx.is_reimbursement && (trips.isNotEmpty() || tx.trip_id != null)) {
-                    Text("或者: 这是出差垫的钱 (之后公司报销, 不算你的开销)", style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        trips.forEach { t ->
-                            FilterChip(selected = tx.trip_id == t.id, onClick = { onTrip(t.id) }, label = { Text("🧾 归入「${t.name}」") })
-                        }
-                        if (tx.trip_id != null) FilterChip(selected = false, onClick = { onTrip(null) }, label = { Text("移出出差") })
-                    }
-                }
-                if (tx.tx_type == "expense" && trips.isEmpty() && tx.trip_id == null) {
-                    Text("想标记成出差: 先到「统计 → 出行」新建一次出差。", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
                 }
             }
         },
@@ -514,7 +526,7 @@ internal fun TransactionRow(
     onLongClick: () -> Unit,
     showDate: Boolean = false
 ) {
-    val badgeColor = CategoryBadgeColors[(category?.id ?: 0) % CategoryBadgeColors.size]
+    val badgeColor = CategoryBadgeColors[Math.floorMod(category?.id ?: 0, CategoryBadgeColors.size)]
     val biz = tx.trip_kind == "business" && !tx.is_reimbursement
     val title = tx.merchant?.takeIf { it.isNotBlank() } ?: tx.note?.takeIf { it.isNotBlank() } ?: (category?.name ?: "未分类")
     val clock = if (tx.occurred_at.length >= 16) tx.occurred_at.substring(11, 16) else ""

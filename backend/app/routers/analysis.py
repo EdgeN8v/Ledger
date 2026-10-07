@@ -35,10 +35,11 @@ def _prev_cycle(year: int, month: int) -> tuple[int, int]:
 def _by_category(data, cats):
     by = defaultdict(lambda: [ZERO, 0])
     for _t, amount in data.reimbursements:
-        by[-1][0] -= amount
+        by[-2][0] -= amount
     for t, eff in data.expenses:
-        by[t.category_id][0] += eff
-        by[t.category_id][1] += 1
+        cid = -2 if t.trip_id in data.business_ids else t.category_id
+        by[cid][0] += eff
+        by[cid][1] += 1
     for r in data.standalone_refunds:
         by[r.category_id][0] -= r.amount
     return {cid: v for cid, v in by.items() if v[0] != 0}
@@ -74,7 +75,7 @@ def cycle_analysis(db: Session, l: models.Ledger, year: Optional[int] = None, mo
         c = cats.get(cid)
         before = prev_by.get(cid, [ZERO, 0])[0]
         categories.append(schemas.CategoryStat(
-            category_id=cid, name=c.name if c else ("出差报销冲抵" if cid == -1 else "未分类"), icon=c.icon if c else ("💼" if cid == -1 else "❓"),
+            category_id=cid, name=c.name if c else ("出差垫付" if cid == -2 else "未分类"), icon=c.icon if c else ("🧾" if cid == -2 else "❓"),
             total=amt, count=n, share=float(amt / total), previous_total=before,
             change_pct=float((amt - before) / before * 100) if before > 0 else None,
         ))

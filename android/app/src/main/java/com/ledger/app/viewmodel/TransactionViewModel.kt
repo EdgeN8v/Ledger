@@ -181,6 +181,20 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /** First business purchase before any trip exists: make the trip and put the purchase into it, in one step. */
+    fun newBusinessTripWith(tx: TransactionDto, name: String, start: String, end: String, daily: String?, commute: String?, autoTag: Boolean) {
+        viewModelScope.launch {
+            try {
+                val trip = api().createTrip(com.ledger.app.data.TripInRequest(name, start, end, "business", daily, commute, autoTag))
+                api().addToTrip(trip.id, tx.id)
+                refresh()
+                _state.value = _state.value.copy(message = "已建好「${name}」并归入, 待报销")
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "操作失败")
+            }
+        }
+    }
+
     fun createManual(txType: String, amount: String, categoryId: Int?, note: String?) {
         viewModelScope.launch {
             try {

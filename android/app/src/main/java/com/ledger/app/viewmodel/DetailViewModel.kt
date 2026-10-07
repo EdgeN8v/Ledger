@@ -19,7 +19,8 @@ data class DetailRequest(
     val dateFrom: String,
     val dateTo: String,
     val expenseOnly: Boolean = true,
-    val tripId: Int? = null
+    val tripId: Int? = null,
+    val businessOnly: Boolean = false
 )
 
 data class DetailUiState(
@@ -63,7 +64,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         val r = s.request ?: return emptyList()
         return api().listTransactions(
             dateFrom = r.dateFrom, dateTo = r.dateTo, categoryId = r.categoryId,
-            txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId,
+            txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId, businessOnly = r.businessOnly,
             excludeBusiness = r.tripId == null && !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()),
             sort = s.sort, limit = limit, offset = offset
         )
