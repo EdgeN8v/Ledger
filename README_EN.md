@@ -54,6 +54,11 @@ It was written entirely in pair-programming with [Claude Code](https://claude.co
 - **Learns your categories**: change a record's category once and that shop is filed the same way from then on, whether you pay by WeChat or Alipay.
 - **Filters, search, infinite scroll**: spreadsheet-style header drop-downs (time / type / category / transfers / needs review).
 - **One-tap sync** without opening the app: a launcher shortcut and a Quick Settings tile.
+- **Flight-ticket SMS become business trips**: China Southern / China Eastern ticket messages (including the booking platform used for Eastern) are read for departure date, flight and route. A trip runs from leaving your home city to landing back; until the return ticket is booked no allowance is counted, and it fills in by itself when that message arrives. **A trip is only created when you paid for the flight or hotel yourself**: a ticket someone else bought costs you nothing and is not recorded. A trip over 20 days is a long posting whose allowances the employer pays on its own schedule, so they are not counted. Deleting the SMS later changes nothing, the records live on the server.
+- **Fixed-bill reminders**: rent, parking, subscriptions... reset to "not paid" every pay cycle (the 20th to the 19th of the next month), show on the plan tab and push a notification 5 days before month end, and disappear once paid. Bills that leave no SMS can be marked "paid" or "paid ahead until a date" by hand.
+- **Categories ordered by what you spend, drag to rearrange**: an even grid, biggest spenders first; press and hold a tile and drag it where you want it. Correcting one shop re-files all of that shop's old transactions.
+- **No spinner every time you open it**: the last data shows at once and refreshes silently; the cache has a size limit that deletes the oldest first.
+- Dark mode (system / light / dark), direct LAN access at home, live SMS capture and automatic restart after reboot.
 - Voice entry, manual entry and a ledger shared by two people also work.
 
 ## How it works
@@ -132,7 +137,7 @@ Bank SMS wording differs between banks. CCB and Bank of Communications are verif
 cd backend
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt pytest httpx      # Windows: .venv/Scripts/pip
-.venv/bin/python -m pytest tests                             # 43 tests
+.venv/bin/python -m pytest tests                             # 65 tests
 ```
 
 **Android**: open `android/` in Android Studio, or `./gradlew assembleDebug`. The default server address is a placeholder; to bake in your own, put this in `android/local.properties` (never committed):
