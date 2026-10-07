@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,6 +59,7 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
             .padding(16.dp)
     ) {
         Text("我的", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -159,53 +161,31 @@ private fun CaptureCard() {
         tick++
     }
 
+    var info by remember { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("自动记账", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                if (enabled) "✅ 已开启: 微信/支付宝支付通知和银行短信会自动记账"
-                else "⚠️ 未开启: 需要允许本应用读取通知,才能自动记账",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            if (enabled) {
-                val last = if (lastOk > 0) SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(lastOk)) else "还没有"
-                Text(
-                    "待上传 $pending 条 · 上次上传成功: $last" + (lastErr?.let { " · 最近错误: $it" } ?: ""),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("自动记账", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                InfoDot { info = true }
             }
+            val last = if (lastOk > 0) SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(lastOk)) else "还没有"
+            Text(
+                (if (enabled) "✅ 已开启" else "⚠️ 未开启") + " · 待上传 $pending 条 · 上次 $last" + (lastErr?.let { " · 错误: $it" } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
             Button(
                 onClick = { SyncNow.run(context); tick++ },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             ) { Text("立即同步") }
-            Text(
-                "不开 App 也行: 长按桌面图标选「立即同步」,或把「记账同步」磁贴加到下拉快捷开关",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
             Button(
                 onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) { Text(if (enabled) "管理通知权限" else "去开启") }
-            Text(
-                if (smsOk) "✅ 短信补漏已开启: 通知漏掉的银行短信会从短信箱补上"
-                else "⚠️ 建议允许读取短信: 通知被清掉或漏掉时,能从短信箱补记",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 12.dp)
-            )
-            Text(
-                if (noticeOk) "✅ 每日分析提醒已开启: 每天早上8点后推送一条"
-                else "每天早上推送一条分析(昨天花了多少、预算还剩多少)",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 12.dp)
-            )
             if (!noticeOk) {
                 Button(
                     onClick = { noticeLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) },
@@ -220,8 +200,37 @@ private fun CaptureCard() {
             }
         }
     }
+    if (info) {
+        AlertDialog(
+            onDismissRequest = { info = false },
+            confirmButton = { TextButton(onClick = { info = false }) { Text("知道了") } },
+            title = { Text("自动记账是怎么工作的") },
+            text = {
+                Text(
+                    "· 微信/支付宝的支付通知和银行短信会自动变成账目。\n" +
+                        "· 通知使用权:必须开启,否则收不到支付通知。\n" +
+                        "· 短信补漏:" + (if (smsOk) "已开启" else "未开启") + ",通知被清掉或漏掉时,会从短信箱补记。\n" +
+                        "· 每日分析提醒:" + (if (noticeOk) "已开启" else "未开启") + ",每天早上推送昨天花了多少、预算还剩多少。\n" +
+                        "· 不开 App 也能同步:长按桌面图标选「立即同步」,或把「记账同步」磁贴加到下拉快捷开关。"
+                )
+            }
+        )
+    }
 }
 
+/** The small round "i" that opens an explanation instead of printing it on the page. */
+@Composable
+private fun InfoDot(onClick: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.size(22.dp).clickable { onClick() }
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text("i", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+    }
+}
 
 @Composable
 private fun CacheCard() {
@@ -229,15 +238,18 @@ private fun CacheCard() {
     var limit by remember { mutableStateOf(com.ledger.app.data.Prefs.getCacheLimitMb(context)) }
     var used by remember { mutableStateOf(com.ledger.app.data.DiskCache.size(context)) }
     val options = listOf(5, 20, 50, 200)
+    var cacheInfo by remember { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("缓存", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("缓存", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                InfoDot { cacheInfo = true }
+            }
             Text(
-                "已用 " + (if (used < 1024 * 1024) "${used / 1024} KB" else "%.1f MB".format(used / 1048576.0)) +
-                    " / 上限 $limit MB。超出上限时自动删除最早的缓存。",
+                "已用 " + (if (used < 1024 * 1024) "${used / 1024} KB" else "%.1f MB".format(used / 1048576.0)) + " / 上限 $limit MB",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp)
@@ -260,5 +272,13 @@ private fun CacheCard() {
                 used = 0
             }) { Text("清除缓存") }
         }
+    }
+    if (cacheInfo) {
+        AlertDialog(
+            onDismissRequest = { cacheInfo = false },
+            confirmButton = { TextButton(onClick = { cacheInfo = false }) { Text("知道了") } },
+            title = { Text("缓存是什么") },
+            text = { Text("上次看过的账目和统计会存在手机里,下次进来先显示它们,再在后台悄悄更新,所以不用每次转圈。超出上限时自动删除最早的缓存;退出登录会全部清掉。") }
+        )
     }
 }
