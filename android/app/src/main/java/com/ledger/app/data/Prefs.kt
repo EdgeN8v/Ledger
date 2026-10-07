@@ -38,5 +38,5 @@ object Prefs {
 
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
-    fun logout(context: Context) = setToken(context, null)
+    fun logout(context: Context) { setToken(context, null); DiskCache.clear(context) }
 }

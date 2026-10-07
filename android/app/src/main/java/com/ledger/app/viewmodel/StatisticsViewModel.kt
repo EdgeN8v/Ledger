@@ -31,7 +31,7 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            _state.value = _state.value.copy(loading = _state.value.summary == null, error = null)
             try {
                 if (!_state.value.initialised) {
                     // budget months start on payday: before that day we are still in last month's cycle
@@ -41,8 +41,12 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
                     if (now.get(Calendar.DAY_OF_MONTH) < startDay) { m -= 1; if (m < 1) { m = 12; y -= 1 } }
                     _state.value = _state.value.copy(year = y, month = m, initialised = true)
                 }
-                val summary = api().monthlySummary(_state.value.year, _state.value.month, com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()))
+                val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
+                val key = "stat_" + _state.value.year + "_" + _state.value.month + "_" + inc
+                com.ledger.app.data.DiskCache.get<MonthSummaryDto>(getApplication<Application>(), key)?.let { _state.value = _state.value.copy(loading = false, summary = it) }
+                val summary = api().monthlySummary(_state.value.year, _state.value.month, inc)
                 _state.value = _state.value.copy(loading = false, summary = summary)
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), key, summary)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }

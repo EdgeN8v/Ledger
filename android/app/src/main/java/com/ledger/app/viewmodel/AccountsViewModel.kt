@@ -24,9 +24,15 @@ class AccountsViewModel(application: Application) : AndroidViewModel(application
 
     fun refresh() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            if (_state.value.overview == null) {
+                val cached = com.ledger.app.data.DiskCache.get<com.ledger.app.data.AccountsOverviewDto>(getApplication<Application>(), "accounts")
+                if (cached != null) _state.value = AccountsUiState(overview = cached)
+            }
+            _state.value = _state.value.copy(loading = _state.value.overview == null, error = null)
             try {
-                _state.value = AccountsUiState(overview = api().listAccounts())
+                val ov = api().listAccounts()
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "accounts", ov)
+                _state.value = AccountsUiState(overview = ov)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }

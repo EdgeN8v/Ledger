@@ -115,9 +115,12 @@ class ReportViewModel(application: Application) : AndroidViewModel(application) 
     val state: StateFlow<ReportUiState> = _state
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            if (_state.value.report == null) com.ledger.app.data.DiskCache.get<ReportDto>(getApplication<Application>(), "report")?.let { _state.value = ReportUiState(report = it) }
+            _state.value = _state.value.copy(loading = _state.value.report == null, error = null)
             try {
-                _state.value = ReportUiState(report = ApiClient.create(getApplication()).latestReport())
+                val r = ApiClient.create(getApplication()).latestReport()
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "report", r)
+                _state.value = ReportUiState(report = r)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }
@@ -139,9 +142,13 @@ class TripsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            if (_state.value.trips.isEmpty()) com.ledger.app.data.DiskCache.get<List<com.ledger.app.data.TripDto>>(getApplication<Application>(), "trips")?.let { _state.value = TripsUiState(trips = it) }
+            _state.value = _state.value.copy(loading = _state.value.trips.isEmpty(), error = null)
             try {
-                _state.value = TripsUiState(trips = api().listTrips(), suggestions = api().tripSuggestions())
+                val tr = api().listTrips()
+                val sg = api().tripSuggestions()
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "trips", tr)
+                _state.value = TripsUiState(trips = tr, suggestions = sg)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }

@@ -28,9 +28,18 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            if (_state.value.plan == null) {
+                val p = com.ledger.app.data.DiskCache.get<PlanDto>(getApplication<Application>(), "plan")
+                val st = com.ledger.app.data.DiskCache.get<PlanStatusDto>(getApplication<Application>(), "plan_status")
+                if (p != null) _state.value = PlanUiState(plan = p, status = st)
+            }
+            _state.value = _state.value.copy(loading = _state.value.plan == null, error = null)
             try {
-                _state.value = PlanUiState(plan = api().getPlan(), status = api().planStatus())
+                val p = api().getPlan()
+                val st = api().planStatus()
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "plan", p)
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "plan_status", st)
+                _state.value = PlanUiState(plan = p, status = st)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }
@@ -65,11 +74,15 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
 
     fun loadCycle() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            val s0 = _state.value
+            val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
+            val ckey = "cycle_" + s0.selYear + "_" + s0.selMonth + "_" + inc
+            val cc = if (s0.cycle == null) com.ledger.app.data.DiskCache.get<CycleAnalysisDto>(getApplication<Application>(), ckey) else null
+            _state.value = s0.copy(loading = s0.cycle == null && cc == null, error = null, cycle = s0.cycle ?: cc)
             try {
                 val s = _state.value
-                val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
                 val c = if (s.selMonth == 0) api().analysisCycle(null, null, inc) else api().analysisCycle(s.selYear, s.selMonth, inc)
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), ckey, c)
                 _state.value = _state.value.copy(loading = false, cycle = c, selYear = c.year, selMonth = c.month)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
@@ -101,9 +114,14 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
 
     fun loadYear(year: Int = _state.value.selYear) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
+            val ykey = "year_" + year + "_" + inc
+            val cy = com.ledger.app.data.DiskCache.get<YearAnalysisDto>(getApplication<Application>(), ykey)
+            _state.value = _state.value.copy(loading = _state.value.year == null && cy == null, error = null, year = cy ?: _state.value.year, selYear = year)
             try {
-                _state.value = _state.value.copy(loading = false, year = api().analysisYear(year, com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())), selYear = year)
+                val ya = api().analysisYear(year, inc)
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), ykey, ya)
+                _state.value = _state.value.copy(loading = false, year = ya, selYear = year)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }

@@ -50,6 +50,23 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
 
     private val pageSize = 50
 
+    init {
+        // show the last known list at once; the silent refresh replaces it
+        val app = getApplication<Application>()
+        val page = com.ledger.app.data.DiskCache.get<List<TransactionDto>>(app, "tx_page")
+        if (page != null) {
+            _state.value = _state.value.copy(
+                transactions = page,
+                endReached = page.size < pageSize,
+                categories = com.ledger.app.data.DiskCache.get<List<CategoryDto>>(app, "categories") ?: emptyList(),
+                inviteCode = com.ledger.app.data.DiskCache.get<String>(app, "invite"),
+                cycleStartDay = com.ledger.app.data.DiskCache.get<Int>(app, "cycle_start") ?: 1,
+                cycleSummary = com.ledger.app.data.DiskCache.get<MonthSummaryDto>(app, "cycle_summary_" + com.ledger.app.data.Prefs.getIncludeBusiness(app)),
+                businessTrips = com.ledger.app.data.DiskCache.get<List<com.ledger.app.data.TripDto>>(app, "business_trips") ?: emptyList()
+            )
+        }
+    }
+
     private fun api() = ApiClient.create(getApplication())
 
     /** Date window for the chosen range, as (from, to) in yyyy-MM-dd; null = unbounded. */
@@ -81,7 +98,8 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     /** First page again (pull-to-refresh, app resume, filter change). */
     fun refresh() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
+            val hasData = _state.value.transactions.isNotEmpty() || _state.value.cycleSummary != null
+            _state.value = _state.value.copy(loading = !hasData, error = null)
             try {
                 val me = api().me()
                 val categories = api().listCategories()
@@ -93,6 +111,12 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 _state.value = _state.value.copy(
                     loading = false, transactions = page, endReached = page.size < pageSize
                 )
+                val app = getApplication<Application>()
+                com.ledger.app.data.DiskCache.put(app, "categories", categories)
+                com.ledger.app.data.DiskCache.put(app, "invite", me.invite_code)
+                com.ledger.app.data.DiskCache.put(app, "cycle_start", me.cycle_start_day)
+                com.ledger.app.data.DiskCache.put(app, "business_trips", trips)
+                if (!_state.value.filter.isActive) com.ledger.app.data.DiskCache.put(app, "tx_page", page)
                 loadCycleSummary(me.cycle_start_day)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
@@ -107,7 +131,10 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             var y = today.year
             var m = today.monthValue
             if (today.dayOfMonth < startDay) { m -= 1; if (m < 1) { m = 12; y -= 1 } }
-            _state.value = _state.value.copy(cycleSummary = api().monthlySummary(y, m, com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())))
+            val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
+            val sum = api().monthlySummary(y, m, inc)
+            _state.value = _state.value.copy(cycleSummary = sum)
+            com.ledger.app.data.DiskCache.put(getApplication<Application>(), "cycle_summary_" + inc, sum)
         } catch (_: Exception) {
         }
     }
