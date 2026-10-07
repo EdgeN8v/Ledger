@@ -602,3 +602,20 @@ def test_a_trip_without_auto_tag_takes_only_what_the_user_adds(client):
     assert client.post(f"/trips/{trip['id']}/add/{flight['id']}").json()["count"] == 1
     on = client.post("/trips", json={"name": "自动", "start_date": "2026-10-07", "end_date": "2026-10-07", "kind": "personal"}).json()
     assert on["count"] >= 1                                      # default behaviour unchanged for ordinary trips
+
+
+def test_editing_a_trip_keeps_auto_tag_and_receivable_lists_its_items(client):
+    trip = client.post("/trips", json={"name": "Demo business", "start_date": "2026-03-10", "end_date": "2026-03-11",
+                                       "kind": "business", "daily_allowance": "100", "commute_allowance": "50",
+                                       "auto_tag": False}).json()
+    tx = client.post("/transactions", json={"amount": "800", "tx_type": "expense", "note": "Demo Air 机票",
+                                            "occurred_at": "2026-03-10T08:00:00"}).json()
+    assert client.post(f"/trips/{trip['id']}/add/{tx['id']}").status_code == 200
+    # the user comes back a day later: dates change, the trip must not start auto-tagging
+    r = client.put(f"/trips/{trip['id']}", json={"name": "Demo business", "start_date": "2026-03-10", "end_date": "2026-03-12",
+                                                 "kind": "business", "daily_allowance": "100", "commute_allowance": "50"})
+    assert r.status_code == 200 and r.json()["days"] == 3
+    rec = client.get("/trips/receivable").json()
+    assert len(rec) == 1 and rec[0]["trip_id"] == trip["id"]
+    assert float(rec[0]["advanced"]) == 800 and float(rec[0]["allowance"]) == 350 and float(rec[0]["expected"]) == 1150
+    assert [i["merchant"] for i in rec[0]["items"]] == ["Demo Air 机票"]

@@ -286,7 +286,7 @@ fun LedgerApp() {
                                             )
                                         }
                                         2 -> TripsScreen(
-                                            tripsState, tripsViewModel::load, tripsViewModel::create, tripsViewModel::settle, tripsViewModel::unsettle,
+                                            tripsState, tripsViewModel::load, tripsViewModel::create, tripsViewModel::update, tripsViewModel::settle, tripsViewModel::unsettle,
                                             tripsViewModel::recentIncomes, tripsViewModel::delete, tripsViewModel::dismiss,
                                             onOpenDetail = { detailViewModel.open(it) }
                                         )
@@ -298,6 +298,7 @@ fun LedgerApp() {
                             3 -> AccountsScreen(
                                 state = accountsState,
                                 onRefresh = accountsViewModel::refresh,
+                                loadReceivable = accountsViewModel::receivable,
                                 onAdd = accountsViewModel::add,
                                 onUpdate = accountsViewModel::update
                             )

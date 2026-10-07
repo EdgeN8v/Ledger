@@ -52,6 +52,12 @@ interface ApiService {
     @POST("trips")
     suspend fun createTrip(@Body body: TripInRequest): TripDto
 
+    @PUT("trips/{id}")
+    suspend fun updateTrip(@Path("id") id: Int, @Body body: TripInRequest): TripDto
+
+    @GET("trips/receivable")
+    suspend fun receivable(): List<ReceivableTripDto>
+
     @POST("trips/{id}/add/{tx}")
     suspend fun addToTrip(@Path("id") id: Int, @Path("tx") tx: Int): TripDto
 

@@ -110,6 +110,28 @@ def business_receivable(db: Session, ledger_id: int):
     return total, names
 
 
+@router.get("/receivable", response_model=list[schemas.ReceivableTrip])
+def receivable_breakdown(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """What the 'to be reimbursed' figure on the assets tab is made of: per unsettled business trip, the purchases and the allowances."""
+    refunds = refunded_map(db, user.ledger_id)
+    out = []
+    for t in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business",
+                                          models.Trip.settled_at.is_(None)).order_by(models.Trip.start_date.desc()).all():
+        s = _summary(db, t)
+        rows = (db.query(models.Transaction)
+                .filter(models.Transaction.trip_id == t.id, models.Transaction.is_reimbursement.is_(False),
+                        models.Transaction.tx_type == models.TxType.expense, models.Transaction.refund_of_id.is_(None))
+                .order_by(models.Transaction.occurred_at).all())
+        items = []
+        for x in rows:
+            eff = x.amount - refunds.get(x.id, ZERO)
+            if eff > 0:
+                items.append(schemas.ReceivableItem(date=x.occurred_at.strftime("%Y-%m-%d"), merchant=x.merchant or x.note, amount=eff))
+        out.append(schemas.ReceivableTrip(trip_id=t.id, name=t.name, start_date=t.start_date, end_date=t.end_date,
+                                          advanced=s.total, allowance=s.allowance_total, expected=s.expected_reimbursement, items=items))
+    return out
+
+
 def retag(db: Session, trip: models.Trip) -> None:
     ledger = db.get(models.Ledger, trip.ledger_id)
     db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(False),
@@ -134,7 +156,8 @@ def create_trip(payload: schemas.TripIn, db: Session = Depends(get_db), user: mo
         raise HTTPException(400, "kind must be personal or business")
     trip = models.Trip(ledger_id=user.ledger_id, name=payload.name.strip() or "出行",
                        start_date=payload.start_date, end_date=payload.end_date, kind=payload.kind,
-                       daily_allowance=payload.daily_allowance, commute_allowance=payload.commute_allowance, auto_tag=payload.auto_tag)
+                       daily_allowance=payload.daily_allowance, commute_allowance=payload.commute_allowance,
+                       auto_tag=True if payload.auto_tag is None else payload.auto_tag)
     db.add(trip)
     db.commit()
     retag(db, trip)
@@ -149,7 +172,8 @@ def update_trip(trip_id: int, payload: schemas.TripIn, db: Session = Depends(get
         raise HTTPException(404, "trip not found")
     trip.name, trip.start_date, trip.end_date = payload.name.strip() or trip.name, payload.start_date, payload.end_date
     trip.kind, trip.daily_allowance, trip.commute_allowance = payload.kind, payload.daily_allowance, payload.commute_allowance
-    trip.auto_tag = payload.auto_tag
+    if payload.auto_tag is not None:
+        trip.auto_tag = payload.auto_tag
     db.commit()
     retag(db, trip)
     return _summary(db, trip)

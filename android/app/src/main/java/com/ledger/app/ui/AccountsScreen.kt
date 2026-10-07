@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -36,11 +37,13 @@ private val KINDS = listOf("bank" to "银行卡", "wallet" to "电子钱包", "c
 fun AccountsScreen(
     state: AccountsUiState,
     onRefresh: () -> Unit,
+    loadReceivable: suspend () -> List<com.ledger.app.data.ReceivableTripDto>,
     onAdd: (name: String, kind: String, balance: String?) -> Unit,
     onUpdate: (id: Int, balance: String?, includeInTotal: Boolean?) -> Unit
 ) {
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountDto?>(null) }
+    var showReceivable by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { onRefresh() }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -69,6 +72,7 @@ fun AccountsScreen(
         if (owed > 0) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                onClick = { showReceivable = true },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -120,6 +124,41 @@ fun AccountsScreen(
         Button(onClick = { adding = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Text("添加账户 (现金 / 钱包 / 不发短信的卡)")
         }
+    }
+
+    if (showReceivable) {
+        var trips by remember { mutableStateOf<List<com.ledger.app.data.ReceivableTripDto>?>(null) }
+        LaunchedEffect(Unit) { trips = loadReceivable() }
+        AlertDialog(
+            onDismissRequest = { showReceivable = false },
+            confirmButton = { TextButton(onClick = { showReceivable = false }) { Text("知道了") } },
+            title = { Text("待报销怎么算的") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    val list = trips
+                    if (list == null) Text("加载中…")
+                    else if (list.isEmpty()) Text("没有待报销的出差")
+                    else list.forEach { t ->
+                        Text("${t.name}  ${t.start_date.drop(5)} – ${t.end_date.drop(5)}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        t.items.forEach {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(it.date.drop(5) + "  " + (it.merchant ?: ""), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
+                                Text(money(it.amount), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("垫付小计", style = MaterialTheme.typography.bodySmall); Text(money(t.advanced), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("补贴(每天×天数+通勤)", style = MaterialTheme.typography.bodySmall); Text(money(t.allowance), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("应收", fontWeight = FontWeight.Bold); Text(money(t.expected), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        )
     }
 
     if (adding) {

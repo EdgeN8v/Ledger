@@ -184,6 +184,23 @@ class AccountOut(BaseModel):
         from_attributes = True
 
 
+class ReceivableItem(BaseModel):
+    date: str
+    merchant: Optional[str] = None
+    amount: Decimal
+
+
+class ReceivableTrip(BaseModel):
+    trip_id: int
+    name: str
+    start_date: str
+    end_date: str
+    advanced: Decimal                      # what you paid out (after refunds)
+    allowance: Decimal                     # commute + daily x days
+    expected: Decimal
+    items: list[ReceivableItem]
+
+
 class AccountsOverview(BaseModel):
     receivable: Decimal = Decimal(0)   # business trips waiting to be paid back (not part of the total)
     receivable_trips: list[str] = []
@@ -356,7 +373,7 @@ class TripIn(BaseModel):
     start_date: str
     end_date: str
     kind: str = "personal"                 # personal / business
-    auto_tag: bool = True
+    auto_tag: Optional[bool] = None        # None = keep as is on update, on for a new trip
     daily_allowance: Optional[Decimal] = None
     commute_allowance: Optional[Decimal] = None
 

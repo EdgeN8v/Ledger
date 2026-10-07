@@ -180,6 +180,17 @@ class TripsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun update(t: com.ledger.app.data.TripDto, name: String, start: String, end: String, daily: String?, commute: String?) {
+        viewModelScope.launch {
+            try {
+                api().updateTrip(t.id, com.ledger.app.data.TripInRequest(name, start, end, t.kind, daily, commute))
+                load()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "修改失败")
+            }
+        }
+    }
+
     /** Recent incoming money, for picking "this deposit was the employer paying the trip back". */
     suspend fun recentIncomes(): List<com.ledger.app.data.TransactionDto> = try {
         api().listTransactions(txType = "income", limit = 30)

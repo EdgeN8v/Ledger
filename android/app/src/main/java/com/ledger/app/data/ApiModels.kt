@@ -196,7 +196,14 @@ data class TripRefRequest(val start_date: String, val end_date: String)
 data class TripInRequest(
     val name: String, val start_date: String, val end_date: String,
     val kind: String = "personal", val daily_allowance: String? = null, val commute_allowance: String? = null,
-    val auto_tag: Boolean = true
+    val auto_tag: Boolean? = null           // null: keep as it is (edit) / on (new)
+)
+
+data class ReceivableItemDto(val date: String, val merchant: String? = null, val amount: String)
+
+data class ReceivableTripDto(
+    val trip_id: Int, val name: String, val start_date: String, val end_date: String,
+    val advanced: String, val allowance: String, val expected: String, val items: List<ReceivableItemDto>
 )
 
 data class SettleRequest(val transaction_id: Int)

@@ -41,6 +41,7 @@ fun TripsScreen(
     state: TripsUiState,
     onLoad: () -> Unit,
     onCreate: (name: String, start: String, end: String, kind: String, daily: String?, commute: String?) -> Unit,
+    onEdit: (TripDto, name: String, start: String, end: String, daily: String?, commute: String?) -> Unit,
     onSettle: (tripId: Int, txId: Int) -> Unit,
     onUnsettle: (Int) -> Unit,
     loadIncomes: suspend () -> List<com.ledger.app.data.TransactionDto>,
@@ -52,6 +53,7 @@ fun TripsScreen(
     var creating by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var deleting by remember { mutableStateOf<TripDto?>(null) }
     var settling by remember { mutableStateOf<TripDto?>(null) }
+    var editing by remember { mutableStateOf<TripDto?>(null) }
 
     Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
@@ -126,6 +128,7 @@ fun TripsScreen(
                             if (t.settled) TextButton(onClick = { onUnsettle(t.id) }) { Text("撤销到账") }
                             else Button(onClick = { settling = t }) { Text("报销已到账") }
                         }
+                        TextButton(onClick = { editing = t }) { Text("修改") }
                         TextButton(onClick = { deleting = t }) { Text("取消这次") }
                     }
                 }
@@ -188,6 +191,45 @@ fun TripsScreen(
                     if (business) daily.trim().ifEmpty { null } else null, if (business) commute.trim().ifEmpty { null } else null)
             }) { Text("创建") } },
             dismissButton = { TextButton(onClick = { creating = null }) { Text("取消") } }
+        )
+    }
+    editing?.let { t ->
+        var name by remember(t.id) { mutableStateOf(t.name) }
+        var start by remember(t.id) { mutableStateOf(t.start_date) }
+        var end by remember(t.id) { mutableStateOf(t.end_date) }
+        var daily by remember(t.id) { mutableStateOf(t.daily_allowance?.removeSuffix(".00") ?: "") }
+        var commute by remember(t.id) { mutableStateOf(t.commute_allowance?.removeSuffix(".00") ?: "") }
+        val context = LocalContext.current
+        fun pick(current: String, onPick: (String) -> Unit) {
+            val d = LocalDate.parse(current)
+            DatePickerDialog(context, { _, y, m, day -> onPick(LocalDate.of(y, m + 1, day).toString()) }, d.year, d.monthValue - 1, d.dayOfMonth).show()
+        }
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("修改「${t.name}」") },
+            text = {
+                Column {
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("名字") }, modifier = Modifier.fillMaxWidth())
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { pick(start) { start = it; if (end < it) end = it } }, modifier = Modifier.weight(1f)) { Text("从 ${md(start)}") }
+                        OutlinedButton(onClick = { pick(end) { end = if (it < start) start else it } }, modifier = Modifier.weight(1f)) { Text("到 ${md(end)}") }
+                    }
+                    if (t.kind == "business") {
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(daily, { daily = it }, singleLine = true, label = { Text("每天补贴") }, modifier = Modifier.weight(1f))
+                            OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴") }, modifier = Modifier.weight(1f))
+                        }
+                        Text("回来的日期变了就改「到」那一天, 补贴会按新的天数重新算。",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                editing = null
+                onEdit(t, name.ifBlank { t.name }, start, end, daily.trim().ifEmpty { null }, commute.trim().ifEmpty { null })
+            }) { Text("保存") } },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("取消") } }
         )
     }
     settling?.let { t ->
