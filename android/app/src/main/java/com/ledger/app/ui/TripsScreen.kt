@@ -79,7 +79,15 @@ fun TripsScreen(
             }
         }
 
-        state.trips.forEach { t ->
+        if (state.trips.any { it.kind == "business" }) {
+            Text("✈️ 出差 (垫付的钱早晚要还回来)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 20.dp))
+        }
+        (state.trips.filter { it.kind == "business" } + state.trips.filter { it.kind != "business" }).forEachIndexed { index, t ->
+            if (t.kind != "business" && index == state.trips.count { it.kind == "business" }) {
+                Text("🚗 自己出行", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 20.dp))
+            }
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
@@ -97,7 +105,8 @@ fun TripsScreen(
                     }
                     if (t.kind == "business") {
                         Text(
-                            if (t.settled) "✅ 已报销到账 ${money(t.received_amount)}, 其中补贴等多出来的 ${money(t.allowance_gain)} 记为收入"
+                            if (t.settled) "✅ 已报销到账 ${money(t.received_amount)}; 其中只有补贴 ${money(t.allowance_gain)} 记为收入, 垫付的钱是还给你自己的" +
+                                (if ((t.difference?.toDoubleOrNull() ?: 0.0) < -0.5) ", 还差 ${money(t.difference?.removePrefix("-"))} 没收到" else "")
                             else "🧾 出差垫付 ${money(t.total)} + 补贴 ${money(t.allowance_total)} = 待报销 ${money(t.expected_reimbursement)}",
                             style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
                             color = if (t.settled) com.ledger.app.ui.theme.IncomeColor else MaterialTheme.colorScheme.primary,

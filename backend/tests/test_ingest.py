@@ -526,7 +526,7 @@ def test_business_trip_is_receivable_not_spending_until_paid_back(client):
     inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 25, 9, 0),
         "text": "【某银行】您账户1234于10月25日09:00存入3145元,可用余额12000元。附言：报销。"}).json()["transaction"]
     done = client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]}).json()
-    assert done["settled"] is True and float(done["allowance_gain"]) == 1160.0
+    assert done["settled"] is True and float(done["allowance_gain"]) == 1160.0 and float(done["difference"]) == 0.0
     assert float(client.get("/accounts").json()["receivable"]) == 0.0
     sep = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()     # 20 Sep - 19 Oct
     octo = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()    # 20 Oct - 19 Nov
@@ -535,3 +535,20 @@ def test_business_trip_is_receivable_not_spending_until_paid_back(client):
     # undo works and brings everything back
     client.post(f"/trips/{trip['id']}/unsettle")
     assert float(client.get("/accounts").json()["receivable"]) == 3145.0
+
+
+def test_business_income_is_exactly_the_allowances_even_if_the_payout_differs(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 1})
+    _sms(client, "【某银行】您账户1234于10月3日10:00向支付宝外部商户-携程旅行网支出1000元,可用余额9000元。", 10, 0, day=3)
+    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-03", "end_date": "2026-10-04", "kind": "business",
+                                       "daily_allowance": 180, "commute_allowance": 80}).json()
+    # the company pays 2000: 1000 of it is the user's own money, income is the allowances 80 + 180 x 2 = 440, regardless
+    inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 20, 9, 0),
+        "text": "【某银行】您账户1234于10月20日09:00存入2000元,可用余额11000元。"}).json()["transaction"]
+    done = client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]}).json()
+    assert float(done["allowance_gain"]) == 440.0 and float(done["difference"]) == 2000.0 - (1000.0 + 440.0)
+    s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
+    assert float(s["total_income"]) == 440.0 and float(s["total_expense"]) == 0.0
+    listed = client.get("/transactions", params={"limit": 10}).json()
+    flight = [t for t in listed if t["merchant"] and "携程" in t["merchant"]][0]
+    assert flight["trip_kind"] == "business" and flight["trip_name"] == "出差"

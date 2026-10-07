@@ -90,6 +90,9 @@ data class TransactionDto(
     val sources: String? = null,
     val refund_of_id: Int? = null,
     val refunded_amount: String? = null,
+    val is_reimbursement: Boolean = false,
+    val trip_kind: String? = null,
+    val trip_name: String? = null,
     val is_transfer: Boolean = false,
     val source: String,
     val raw_text: String?,
@@ -182,7 +185,7 @@ data class TripDto(
     val kind: String = "personal", val days: Int = 1, val daily_allowance: String? = null,
     val commute_allowance: String? = null, val allowance_total: String = "0",
     val expected_reimbursement: String = "0", val settled: Boolean = false,
-    val received_amount: String? = null, val allowance_gain: String? = null
+    val received_amount: String? = null, val allowance_gain: String? = null, val difference: String? = null
 )
 
 data class TripSuggestionDto(val start_date: String, val end_date: String, val reason: String, val estimate: String)

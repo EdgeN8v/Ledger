@@ -113,8 +113,10 @@ def list_transactions(
         "amount_asc": (T.amount.asc(), T.occurred_at.desc()),
     }.get(sort, (T.occurred_at.desc(), T.id.desc()))
     rows = query.order_by(*order).offset(max(offset, 0)).limit(min(max(limit, 1), 500)).all()
+    trip_info = {x.id: (x.kind, x.name) for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id)}
     for t in rows:
         t.refunded_amount = refunded_amount(db, t.id) if t.tx_type == models.TxType.expense else Decimal(0)
+        t.trip_kind, t.trip_name = trip_info.get(t.trip_id, (None, None))
     return rows
 
 

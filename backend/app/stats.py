@@ -66,7 +66,7 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime) -> 
     )
     out = PeriodData(start=start, end=end)
     # Business trips: the money is the employer's. What was advanced is neither spending nor income; when it is
-    # paid back only the part above what was advanced (the allowances) counts, as income.
+    # paid back only the allowances (commute + daily x days) count, as income; the rest is the user's own money coming home.
     business = {tr.id: tr for tr in db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business")}
     advanced = {}
     if business:
@@ -78,7 +78,9 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime) -> 
         if t.trip_id in business and t.tx_type == models.TxType.expense:
             continue
         if t.is_reimbursement and t.trip_id in business:
-            gain = t.amount - advanced.get(t.trip_id, Decimal(0))
+            trip = business[t.trip_id]
+            days = (datetime.strptime(trip.end_date, "%Y-%m-%d") - datetime.strptime(trip.start_date, "%Y-%m-%d")).days + 1
+            gain = (trip.commute_allowance or Decimal(0)) + (trip.daily_allowance or Decimal(0)) * days   # 80 + 180 x days
             if gain > 0:
                 out.incomes.append(t)
                 out.income += gain

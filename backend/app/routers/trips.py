@@ -88,7 +88,8 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
         kind=trip.kind or "personal", days=days, daily_allowance=trip.daily_allowance, commute_allowance=trip.commute_allowance,
         allowance_total=allowance, expected_reimbursement=(total + allowance) if business else ZERO, settled=settled,
         received_amount=trip.received_amount if settled else None,
-        allowance_gain=(trip.received_amount - total) if (settled and trip.received_amount is not None) else None,
+        allowance_gain=allowance if settled else None,
+        difference=(trip.received_amount - (total + allowance)) if (settled and trip.received_amount is not None) else None,
     )
 
 

@@ -90,6 +90,8 @@ class TransactionOut(BaseModel):
     is_refund: bool = False
     is_reimbursement: bool = False
     trip_id: Optional[int] = None
+    trip_kind: Optional[str] = None
+    trip_name: Optional[str] = None
     is_transfer: bool = False
     source: TxSource
     raw_text: Optional[str]
@@ -380,7 +382,8 @@ class TripOut(BaseModel):
     expected_reimbursement: Decimal = Decimal(0)   # advanced money + allowances
     settled: bool = False
     received_amount: Optional[Decimal] = None
-    allowance_gain: Optional[Decimal] = None
+    allowance_gain: Optional[Decimal] = None   # what counts as income: the allowances
+    difference: Optional[Decimal] = None      # paid back minus (advanced + allowances): negative = still owed
 
 
 class TripSuggestion(BaseModel):
