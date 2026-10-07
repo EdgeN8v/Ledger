@@ -36,8 +36,12 @@ data class CategoryDto(
     val name: String,
     val icon: String?,
     val tx_type: String,
-    val keywords: String?
+    val keywords: String?,
+    val sort_order: Int? = null,
+    val recent_total: String? = null
 )
+
+data class CategoryOrderRequest(val tx_type: String, val ids: List<Int>)
 
 data class ParseRequestBody(
     val text: String,

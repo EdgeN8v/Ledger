@@ -79,6 +79,9 @@ interface ApiService {
     @PUT("plan")
     suspend fun setPlan(@Body body: PlanInRequest): PlanDto
 
+    @PUT("categories/order")
+    suspend fun setCategoryOrder(@Body body: CategoryOrderRequest)
+
     @POST("plan/fixed-mark")
     suspend fun markFixed(@Body body: FixedMarkRequest): PlanDto
 

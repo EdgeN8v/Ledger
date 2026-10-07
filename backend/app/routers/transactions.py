@@ -164,7 +164,7 @@ def update_transaction(
         for other in (
             db.query(models.Transaction)
             .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.merchant.contains(core),
-                    models.Transaction.needs_review.is_(True), models.Transaction.id != tx.id,
+                    models.Transaction.id != tx.id, models.Transaction.trip_id.is_(None),
                     models.Transaction.tx_type == tx.tx_type, models.Transaction.refund_of_id.is_(None))
             .all()
         ):

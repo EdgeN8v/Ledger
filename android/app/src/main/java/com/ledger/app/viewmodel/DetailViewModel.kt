@@ -60,6 +60,15 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
 
     fun close() { _state.value = DetailUiState() }
 
+    fun reloadCategories() {
+        viewModelScope.launch {
+            try {
+                _state.value = _state.value.copy(categories = api().listCategories())
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun cacheKey(r: DetailRequest, sort: String) =
         "detail_" + (listOf(r.categoryId, r.query, r.dateFrom, r.dateTo, r.expenseOnly, r.tripId, r.businessOnly, sort,
             com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())).joinToString("|")).hashCode()

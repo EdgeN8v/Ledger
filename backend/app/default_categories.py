@@ -48,5 +48,6 @@ DEFAULT_CATEGORIES = [
     ("订阅服务", "🔁", TxType.expense, "EVOXT,Evoxt,千杯,干杯,CLOUD,VPS,服务器,节点,会员代充,代充,ChatGPT,Claude,Anthropic,OpenAI"),
     ("其他支出", "📦", TxType.expense, ""),
     ("工资", "💰", TxType.income, "工资,发薪,代发工资,薪资,奖金,绩效,补贴"),
+    ("公积金", "🏠", TxType.income, "公积金,住房公积金,提取"),
     ("其他收入", "➕", TxType.income, "退款,红包,利息,理财,收益,报销,转入"),
 ]

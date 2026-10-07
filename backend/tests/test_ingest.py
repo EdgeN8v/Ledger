@@ -784,3 +784,21 @@ def test_fixed_items_can_be_marked_paid_for_the_cycle_or_ahead(client):
     assert reminders([it], date(2026, 10, 26), never) == []
     assert [r["name"] for r in reminders([it], date(2026, 11, 16), never)] == ["P"]
     assert reminders([dict(it, paid_cycles=["2026-10"])], date(2026, 11, 16), never, "2026-10") == []
+
+
+def test_correcting_a_shop_fixes_all_its_old_transactions_and_categories_follow_the_users_order(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    _sms(client, "【某银行】您账户1234于10月5日12:00向支付宝外部商户-某某炸鸡腿支出12元,可用余额900元。", 12, 0, day=5)
+    _sms(client, "【某银行】您账户1234于10月6日12:00向京东支付-京东商城-某某炸鸡腿支出13元,可用余额890元。", 12, 0, day=6)
+    first = client.get("/transactions").json()
+    for t in first:
+        client.put(f"/transactions/{t['id']}", json={"category_id": cats["购物"], "needs_review": False})   # old, confidently wrong
+    one = first[0]
+    client.put(f"/transactions/{one['id']}", json={"category_id": cats["餐饮"]})
+    assert {t["category_id"] for t in client.get("/transactions").json()} == {cats["餐饮"]}
+    # categories: biggest spenders first, until the user drags them
+    order = [c["name"] for c in client.get("/categories", params={}).json() if c["tx_type"] == "expense"]
+    assert order[0] == "餐饮"
+    ids = [c["id"] for c in client.get("/categories").json() if c["tx_type"] == "expense"]
+    client.put("/categories/order", json={"tx_type": "expense", "ids": list(reversed(ids))})
+    assert [c["id"] for c in client.get("/categories").json() if c["tx_type"] == "expense"] == list(reversed(ids))

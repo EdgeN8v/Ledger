@@ -448,11 +448,7 @@ internal fun CategoryChoiceDialog(
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(heading, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text("选一个类别,这家商户以后自动归到这一类", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    categories.filter { it.tx_type == txType }.forEach { c ->
-                        FilterChip(selected = c.id == selectedId, onClick = { onPick(c.id) }, label = { Text((c.icon ?: "") + " " + c.name) })
-                    }
-                }
+                CategoryGrid(categories.filter { it.tx_type == txType }, selectedId, txType, onPick)
             }
         },
         confirmButton = {},
@@ -502,15 +498,7 @@ internal fun CategoryPickerDialog(
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    categories.filter { it.tx_type == tx.tx_type }.forEach { c ->
-                        FilterChip(
-                            selected = c.id == tx.category_id && tx.trip_id == null,
-                            onClick = { onPick(c.id) },
-                            label = { Text((c.icon ?: "") + " " + c.name) }
-                        )
-                    }
-                }
+                CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, if (tx.trip_id == null) tx.category_id else null, tx.tx_type, onPick)
             }
         },
         confirmButton = {},

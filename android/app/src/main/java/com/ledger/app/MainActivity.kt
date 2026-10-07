@@ -155,6 +155,10 @@ fun LedgerApp() {
         if (authState.loggedIn) transactionViewModel.refresh()
     }
 
+    LaunchedEffect(Unit) {
+        com.ledger.app.ui.CategoryHub.onChanged = { transactionViewModel.reloadCategories(); detailViewModel.reloadCategories() }
+    }
+
     // reading texts was granted earlier; receiving them live is the same permission group, so the system just grants it
     val receiveSms = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(authState.loggedIn) {

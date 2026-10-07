@@ -45,12 +45,19 @@ class CategoryCreate(BaseModel):
     keywords: Optional[str] = None
 
 
+class CategoryOrder(BaseModel):
+    tx_type: TxType
+    ids: list[int]
+
+
 class CategoryOut(BaseModel):
     id: int
     name: str
     icon: Optional[str]
     tx_type: TxType
     keywords: Optional[str]
+    sort_order: Optional[int] = None
+    recent_total: Decimal = Decimal(0)     # spent (or earned) in the last 90 days: the default order
 
     class Config:
         from_attributes = True

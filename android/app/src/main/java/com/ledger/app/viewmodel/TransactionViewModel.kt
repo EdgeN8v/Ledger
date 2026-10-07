@@ -95,6 +95,17 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         )
     }
 
+    fun reloadCategories() {
+        viewModelScope.launch {
+            try {
+                val cats = api().listCategories()
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), "categories", cats)
+                _state.value = _state.value.copy(categories = cats)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     /** First page again (pull-to-refresh, app resume, filter change). */
     fun refresh() {
         viewModelScope.launch {

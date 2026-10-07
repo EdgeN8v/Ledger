@@ -76,6 +76,7 @@ class Category(Base):
     icon = Column(String, nullable=True)
     tx_type = Column(Enum(TxType), nullable=False, default=TxType.expense)
     keywords = Column(String, nullable=True)  # comma-separated hints for the rule-based parser
+    sort_order = Column(Integer, nullable=True)   # the user's own order (drag to move); None = by recent spending
 
     ledger = relationship("Ledger", back_populates="categories")
 
