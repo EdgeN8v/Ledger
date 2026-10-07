@@ -146,13 +146,42 @@ class TripsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun create(name: String, start: String, end: String) {
+    fun create(name: String, start: String, end: String, kind: String = "personal", daily: String? = null, commute: String? = null) {
         viewModelScope.launch {
             try {
-                api().createTrip(com.ledger.app.data.TripInRequest(name, start, end))
+                api().createTrip(com.ledger.app.data.TripInRequest(name, start, end, kind, daily, commute))
                 load()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "创建失败")
+            }
+        }
+    }
+
+    /** Recent incoming money, for picking "this deposit was the employer paying the trip back". */
+    suspend fun recentIncomes(): List<com.ledger.app.data.TransactionDto> = try {
+        api().listTransactions(txType = "income", limit = 30)
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    fun settle(tripId: Int, txId: Int) {
+        viewModelScope.launch {
+            try {
+                api().settleTrip(tripId, com.ledger.app.data.SettleRequest(txId))
+                load()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "操作失败")
+            }
+        }
+    }
+
+    fun unsettle(tripId: Int) {
+        viewModelScope.launch {
+            try {
+                api().unsettleTrip(tripId)
+                load()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "操作失败")
             }
         }
     }

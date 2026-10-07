@@ -65,9 +65,24 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime) -> 
         .all()
     )
     out = PeriodData(start=start, end=end)
+    # Business trips: the money is the employer's. What was advanced is neither spending nor income; when it is
+    # paid back only the part above what was advanced (the allowances) counts, as income.
+    business = {tr.id: tr for tr in db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business")}
+    advanced = {}
+    if business:
+        for bt in db.query(T).filter(T.trip_id.in_(list(business)), T.tx_type == models.TxType.expense, T.is_transfer.is_(False)).all():
+            advanced[bt.trip_id] = advanced.get(bt.trip_id, Decimal(0)) + (bt.amount - refunds.get(bt.id, Decimal(0)))
     for t in rows:
         if t.refund_of_id:
             continue                      # accounted for inside its purchase
+        if t.trip_id in business and t.tx_type == models.TxType.expense:
+            continue
+        if t.is_reimbursement and t.trip_id in business:
+            gain = t.amount - advanced.get(t.trip_id, Decimal(0))
+            if gain > 0:
+                out.incomes.append(t)
+                out.income += gain
+            continue
         if t.tx_type == models.TxType.expense:
             eff = t.amount - refunds.get(t.id, Decimal(0))
             if eff > 0:

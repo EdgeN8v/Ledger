@@ -153,3 +153,13 @@ def normalise_merchant_rules(db: Session) -> None:
             r.pattern = core
             seen[key] = r
     db.commit()
+
+
+def fix_keyword_conflicts(db: Session) -> None:
+    """Keywords that were moved between categories must also move in ledgers that already have the old list:
+    a travel agency ("携程") is travel, not entertainment."""
+    for ledger in db.query(models.Ledger).all():
+        ent = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "娱乐").first()
+        if ent and ent.keywords:
+            ent.keywords = ",".join(k for k in ent.keywords.split(",") if k.strip() and k.strip() != "携程")
+    db.commit()

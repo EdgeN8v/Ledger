@@ -52,6 +52,12 @@ interface ApiService {
     @POST("trips")
     suspend fun createTrip(@Body body: TripInRequest): TripDto
 
+    @POST("trips/{id}/settle")
+    suspend fun settleTrip(@Path("id") id: Int, @Body body: SettleRequest): TripDto
+
+    @POST("trips/{id}/unsettle")
+    suspend fun unsettleTrip(@Path("id") id: Int): TripDto
+
     @DELETE("trips/{id}")
     suspend fun deleteTrip(@Path("id") id: Int)
 

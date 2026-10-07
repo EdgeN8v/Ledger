@@ -65,6 +65,19 @@ fun AccountsScreen(
             }
         }
 
+        val owed = state.overview?.receivable?.toDoubleOrNull() ?: 0.0
+        if (owed > 0) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("🧾 待报销 ${money(state.overview?.receivable)} (不计入总资产, 但这是你的钱)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    state.overview?.receivable_trips?.forEach { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
+                }
+            }
+        }
+
         if (state.error != null) {
             Text(state.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
         }

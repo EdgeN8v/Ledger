@@ -40,7 +40,10 @@ private fun md(d: String) = d.substring(5).replace('-', '月') + "日"
 fun TripsScreen(
     state: TripsUiState,
     onLoad: () -> Unit,
-    onCreate: (name: String, start: String, end: String) -> Unit,
+    onCreate: (name: String, start: String, end: String, kind: String, daily: String?, commute: String?) -> Unit,
+    onSettle: (tripId: Int, txId: Int) -> Unit,
+    onUnsettle: (Int) -> Unit,
+    loadIncomes: suspend () -> List<com.ledger.app.data.TransactionDto>,
     onDelete: (Int) -> Unit,
     onDismiss: (String, String) -> Unit,
     onOpenDetail: (DetailRequest) -> Unit
@@ -48,10 +51,11 @@ fun TripsScreen(
     LaunchedEffect(Unit) { onLoad() }
     var creating by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var deleting by remember { mutableStateOf<TripDto?>(null) }
+    var settling by remember { mutableStateOf<TripDto?>(null) }
 
     Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
-            "出行和旅游单独算: 钱照样计入这个账期的支出, 但不会被当成你日常的花法去推算月底。",
+            "出行和旅游单独算: 自己的旅行钱照样计入账期支出, 但不会被当成日常的花法去推算月底。出差垫的钱不算你的开销, 记成\"待报销\"。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -91,13 +95,30 @@ fun TripsScreen(
                         Text(money(t.total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                             color = com.ledger.app.ui.theme.ExpenseColor, maxLines = 1)
                     }
+                    if (t.kind == "business") {
+                        Text(
+                            if (t.settled) "✅ 已报销到账 ${money(t.received_amount)}, 其中补贴等多出来的 ${money(t.allowance_gain)} 记为收入"
+                            else "🧾 出差垫付 ${money(t.total)} + 补贴 ${money(t.allowance_total)} = 待报销 ${money(t.expected_reimbursement)}",
+                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+                            color = if (t.settled) com.ledger.app.ui.theme.IncomeColor else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        if (!t.settled) Text("补贴: 每天 ${money(t.daily_allowance)} × ${t.days} 天 + 通勤 ${money(t.commute_allowance)}",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     t.by_category.forEach {
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("${it.icon ?: ""} ${it.name}", style = MaterialTheme.typography.bodyMedium)
                             Text(money(it.total), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    TextButton(onClick = { deleting = t }) { Text("取消这次出行") }
+                    Row {
+                        if (t.kind == "business") {
+                            if (t.settled) TextButton(onClick = { onUnsettle(t.id) }) { Text("撤销到账") }
+                            else Button(onClick = { settling = t }) { Text("报销已到账") }
+                        }
+                        TextButton(onClick = { deleting = t }) { Text("取消这次") }
+                    }
                 }
             }
         }
@@ -117,6 +138,9 @@ fun TripsScreen(
         var name by remember { mutableStateOf(n0) }
         var start by remember { mutableStateOf(s0) }
         var end by remember { mutableStateOf(e0) }
+        var business by remember { mutableStateOf(false) }
+        var daily by remember { mutableStateOf("180") }
+        var commute by remember { mutableStateOf("80") }
         val context = LocalContext.current
         fun pick(current: String, onPick: (String) -> Unit) {
             val d = LocalDate.parse(current)
@@ -127,18 +151,60 @@ fun TripsScreen(
             title = { Text("新建出行") },
             text = {
                 Column {
-                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("名字, 如 中秋去黄山") }, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.FilterChip(selected = !business, onClick = { business = false }, label = { Text("自己出行") })
+                        androidx.compose.material3.FilterChip(selected = business, onClick = { business = true }, label = { Text("出差") })
+                    }
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(if (business) "名字, 如 北京出差" else "名字, 如 中秋去黄山") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { pick(start) { start = it; if (end < it) end = it } }, modifier = Modifier.weight(1f)) { Text("从 ${md(start)}") }
                         OutlinedButton(onClick = { pick(end) { end = if (it < start) start else it } }, modifier = Modifier.weight(1f)) { Text("到 ${md(end)}") }
                     }
-                    Text("这段日子里的油费、过路费、停车、吃饭、门票会自动归进来; 房租等固定支出不会。",
+                    if (business) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(daily, { daily = it }, singleLine = true, label = { Text("每天补贴") }, modifier = Modifier.weight(1f))
+                            OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴") }, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Text(if (business) "这段日子里**所有**消费(机票、酒店、打车、吃饭)都算出差垫付, 不计入你的月开销, 记成待报销; 日期请从出发前订机票那天算起, 到回家那天。"
+                        else "这段日子里的油费、过路费、停车、吃饭、门票会自动归进来; 房租等固定支出不会。",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp))
                 }
             },
-            confirmButton = { TextButton(onClick = { creating = null; onCreate(name.ifBlank { "出行" }, start, end) }) { Text("创建") } },
+            confirmButton = { TextButton(onClick = {
+                creating = null
+                onCreate(name.ifBlank { if (business) "出差" else "出行" }, start, end, if (business) "business" else "personal",
+                    if (business) daily.trim().ifEmpty { null } else null, if (business) commute.trim().ifEmpty { null } else null)
+            }) { Text("创建") } },
             dismissButton = { TextButton(onClick = { creating = null }) { Text("取消") } }
+        )
+    }
+    settling?.let { t ->
+        var incomes by remember(t.id) { mutableStateOf<List<com.ledger.app.data.TransactionDto>?>(null) }
+        LaunchedEffect(t.id) { incomes = loadIncomes() }
+        AlertDialog(
+            onDismissRequest = { settling = null },
+            title = { Text("哪一笔是报销到账?") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("应收 ${money(t.expected_reimbursement)}。选公司打给你的那笔进账:", style = MaterialTheme.typography.bodySmall)
+                    val list = incomes
+                    if (list == null) Text("加载中…", modifier = Modifier.padding(top = 8.dp))
+                    else if (list.isEmpty()) Text("最近没有进账记录", modifier = Modifier.padding(top = 8.dp))
+                    else list.forEach { tx ->
+                        TextButton(onClick = { settling = null; onSettle(t.id, tx.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(tx.occurred_at.take(10) + "  " + (tx.merchant ?: tx.note ?: ""), maxLines = 1, modifier = Modifier.weight(1f))
+                                Text("+¥" + tx.amount)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { settling = null }) { Text("取消") } }
         )
     }
     deleting?.let { t ->

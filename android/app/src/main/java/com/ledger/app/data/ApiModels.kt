@@ -120,6 +120,8 @@ data class AccountDto(
 )
 
 data class AccountsOverviewDto(
+    val receivable: String = "0",
+    val receivable_trips: List<String> = emptyList(),
     val total: String,
     val accounts: List<AccountDto>
 )
@@ -176,14 +178,23 @@ data class TripCategoryDto(val name: String, val icon: String?, val total: Strin
 
 data class TripDto(
     val id: Int, val name: String, val start_date: String, val end_date: String,
-    val total: String, val count: Int, val by_category: List<TripCategoryDto>
+    val total: String, val count: Int, val by_category: List<TripCategoryDto>,
+    val kind: String = "personal", val days: Int = 1, val daily_allowance: String? = null,
+    val commute_allowance: String? = null, val allowance_total: String = "0",
+    val expected_reimbursement: String = "0", val settled: Boolean = false,
+    val received_amount: String? = null, val allowance_gain: String? = null
 )
 
 data class TripSuggestionDto(val start_date: String, val end_date: String, val reason: String, val estimate: String)
 
 data class TripRefRequest(val start_date: String, val end_date: String)
 
-data class TripInRequest(val name: String, val start_date: String, val end_date: String)
+data class TripInRequest(
+    val name: String, val start_date: String, val end_date: String,
+    val kind: String = "personal", val daily_allowance: String? = null, val commute_allowance: String? = null
+)
+
+data class SettleRequest(val transaction_id: Int)
 
 data class FixedItemDto(
     val name: String,

@@ -88,6 +88,7 @@ class TransactionOut(BaseModel):
     refund_of_id: Optional[int] = None
     refunded_amount: Decimal = Decimal(0)
     is_refund: bool = False
+    is_reimbursement: bool = False
     trip_id: Optional[int] = None
     is_transfer: bool = False
     source: TxSource
@@ -182,6 +183,8 @@ class AccountOut(BaseModel):
 
 
 class AccountsOverview(BaseModel):
+    receivable: Decimal = Decimal(0)   # business trips waiting to be paid back (not part of the total)
+    receivable_trips: list[str] = []
     total: Decimal                # sum of balances of accounts counted in the total
     accounts: list[AccountOut]
 
@@ -350,6 +353,9 @@ class TripIn(BaseModel):
     name: str
     start_date: str
     end_date: str
+    kind: str = "personal"                 # personal / business
+    daily_allowance: Optional[Decimal] = None
+    commute_allowance: Optional[Decimal] = None
 
 
 class TripCategory(BaseModel):
@@ -366,6 +372,15 @@ class TripOut(BaseModel):
     total: Decimal
     count: int
     by_category: list[TripCategory]
+    kind: str = "personal"
+    days: int = 1
+    daily_allowance: Optional[Decimal] = None
+    commute_allowance: Optional[Decimal] = None
+    allowance_total: Decimal = Decimal(0)
+    expected_reimbursement: Decimal = Decimal(0)   # advanced money + allowances
+    settled: bool = False
+    received_amount: Optional[Decimal] = None
+    allowance_gain: Optional[Decimal] = None
 
 
 class TripSuggestion(BaseModel):
@@ -378,3 +393,7 @@ class TripSuggestion(BaseModel):
 class TripSuggestionRef(BaseModel):
     start_date: str
     end_date: str
+
+
+class SettleIn(BaseModel):
+    transaction_id: int

@@ -268,7 +268,8 @@ fun LedgerApp() {
                                             )
                                         }
                                         2 -> TripsScreen(
-                                            tripsState, tripsViewModel::load, tripsViewModel::create, tripsViewModel::delete, tripsViewModel::dismiss,
+                                            tripsState, tripsViewModel::load, tripsViewModel::create, tripsViewModel::settle, tripsViewModel::unsettle,
+                                            tripsViewModel::recentIncomes, tripsViewModel::delete, tripsViewModel::dismiss,
                                             onOpenDetail = { detailViewModel.open(it) }
                                         )
                                         else -> YearInsights(insightsState, insightsViewModel::loadYear)

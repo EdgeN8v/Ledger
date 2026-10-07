@@ -7,6 +7,7 @@ from app import models, schemas
 from app.clock import now_local
 from app.database import get_db
 from app.deps import get_current_user
+from app.routers.trips import business_receivable
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -14,7 +15,8 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 def _overview(db: Session, ledger_id: int) -> schemas.AccountsOverview:
     accts = db.query(models.Account).filter(models.Account.ledger_id == ledger_id).order_by(models.Account.id).all()
     total = sum((a.balance or Decimal(0) for a in accts if a.include_in_total), Decimal(0))
-    return schemas.AccountsOverview(total=total, accounts=accts)
+    owed, names = business_receivable(db, ledger_id)
+    return schemas.AccountsOverview(total=total, accounts=accts, receivable=owed, receivable_trips=names)
 
 
 @router.get("", response_model=schemas.AccountsOverview)

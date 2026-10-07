@@ -494,3 +494,44 @@ def test_a_learned_shop_is_recognised_through_any_payment_channel(client):
     assert later["category_id"] == cats["车辆出行"] and later["needs_review"] is False
     again = _sms(client, "【建设银行】您账户1234于10月6日15:20向支付宝-某贸易有限公司支出5元,可用余额880元。", 15, 20, day=6)["transaction"]
     assert again["category_id"] == cats["车辆出行"]
+
+
+def test_travel_agency_and_airline_purchases_are_travel_not_entertainment(client):
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    for shop in ("支付宝外部商户-携程旅行网", "支付宝-中国东方航空股份有限公司", "支付宝-中国南方航空", "支付宝-春秋航空"):
+        r = _sms(client, f"【某银行】您账户1234于10月7日11:26向{shop}支出748.95元,可用余额900元。", 11, 26, day=7)
+        assert cats[r["transaction"]["category_id"]] == "车辆出行", shop
+
+
+def test_business_trip_is_receivable_not_spending_until_paid_back(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    pay = lambda d, h, shop, amt: _sms(client, f"【某银行】您账户1234于10月{d}日{h}:00向{shop}支出{amt}元,可用余额9000元。", h, 0, day=d)
+    pay(7, 11, "支付宝外部商户-携程旅行网", 1200)        # flights, booked before departure
+    pay(9, 7, "微信支付-滴滴出行", 45)                    # taxi to the airport
+    pay(10, 12, "微信支付-某酒店", 680)                   # hotel
+    pay(12, 21, "微信支付-出租车", 60)                    # taxi home
+    pay(15, 12, "微信支付-某面馆", 30)                    # ordinary life after the trip
+    trip = client.post("/trips", json={"name": "北京出差", "start_date": "2026-10-07", "end_date": "2026-10-12", "kind": "business",
+                                       "daily_allowance": 180, "commute_allowance": 80}).json()
+    assert trip["count"] == 4 and float(trip["total"]) == 1985.0
+    assert trip["days"] == 6 and float(trip["allowance_total"]) == 80 + 180 * 6
+    assert float(trip["expected_reimbursement"]) == 1985.0 + 1160.0
+    # not the user's spending: only the ordinary meal counts
+    s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
+    assert float(s["total_expense"]) == 30.0
+    # ...but remembered as money owed to him
+    acc = client.get("/accounts").json()
+    assert float(acc["receivable"]) == 3145.0 and "北京出差" in acc["receivable_trips"][0]
+    # the employer pays 3145 back: the advanced part is not income, the allowances are
+    inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 25, 9, 0),
+        "text": "【某银行】您账户1234于10月25日09:00存入3145元,可用余额12000元。附言：报销。"}).json()["transaction"]
+    done = client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]}).json()
+    assert done["settled"] is True and float(done["allowance_gain"]) == 1160.0
+    assert float(client.get("/accounts").json()["receivable"]) == 0.0
+    sep = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()     # 20 Sep - 19 Oct
+    octo = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()    # 20 Oct - 19 Nov
+    assert float(sep["total_expense"]) == 30.0 and float(sep["total_income"]) == 0.0
+    assert float(octo["total_income"]) == 1160.0 and float(octo["total_expense"]) == 0.0              # only the allowances are income
+    # undo works and brings everything back
+    client.post(f"/trips/{trip['id']}/unsettle")
+    assert float(client.get("/accounts").json()["receivable"]) == 3145.0
