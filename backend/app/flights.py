@@ -22,6 +22,7 @@ from app import models
 from app.clock import now_local
 
 DEFAULT_HOME = "上海"
+HISTORY_DAYS = 14                                    # older finished journeys are not turned into trips
 AIRLINES = ("CZ", "MU", "FM", "9C")                 # the carriers business travel is booked with
 MILEAGE = re.compile(r"感谢您于\d{4}-\d{2}-\d{2}\s*乘坐.{2,12}航班.*累积里程")      # after-flight mileage note: not a payment
 
@@ -130,6 +131,9 @@ def _journeys(flights: list, home: str) -> list[dict]:
     began before the data does) are not made into a trip: their start date is unknown."""
     out, cur = [], None
     for f in flights:
+        if cur is not None and f.origin != cur[-1].dest:
+            out.append({"flights": cur, "closed": True})             # a leg is missing between these two: stop at the last known landing
+            cur = None
         if cur is None:
             if f.origin == home:
                 cur = [f]
@@ -162,7 +166,8 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
     for j in _journeys(flights, home):
         fl = j["flights"]
         start = fl[0].depart_at.date()
-        end = fl[-1].arrive_at.date() if j["closed"] else max(start, today)
+        last = fl[-1].arrive_at.date()
+        end = last if j["closed"] else max(start, today)
         key = f"{fl[0].flight_no}@{start:%Y%m%d}"
         if key in dismissed:
             continue
@@ -171,6 +176,8 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
             trip = next((t for t in trips if not t.auto_key and abs((datetime.strptime(t.start_date, "%Y-%m-%d").date() - start).days) <= 3), None)
             if trip:
                 trip.auto_key = key
+        if trip is None and ((j["closed"] and last < today - timedelta(days=HISTORY_DAYS)) or (not j["closed"] and last < today - timedelta(days=30))):
+            continue                                           # history: it was reimbursed long ago, do not bring it back as "to be reimbursed"
         if trip is None:
             away = [f.dest for f in fl if f.dest != home]
             trip = models.Trip(ledger_id=ledger_id, name="出差·" + (away[-1] if away else "外地"), start_date=start.isoformat(), end_date=end.isoformat(),

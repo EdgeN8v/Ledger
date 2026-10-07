@@ -710,3 +710,11 @@ def test_editing_the_dates_of_a_flight_trip_sticks(client):
 def test_mileage_notes_are_not_failed_payments(client):
     r = _flight_sms(client, "【东方航空】尊敬的张三会员 :感谢您于2026-09-18 乘坐MU6676航班,舱位S ,累积里程积分736点,定级里程1614公里,定级次数1.0次,消费金额920元,详情请关注公众号。")
     assert r["status"] == "ignored"
+
+
+def test_old_or_broken_flight_chains_do_not_become_trips(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    # a July flight out with no known way back, then (in October) a flight that does not start where it landed
+    jul = AGENT_OUT.replace("10月12日北京首都到上海虹桥T2，东航MU1000", "07月18日上海虹桥T2到银川T3，上航FM9225")
+    client.post("/ingest", json={"source": "sms", "title": "x", "text": jul, "posted_at_ms": ms(2026, 7, 14, 6, 10)})
+    assert client.get("/trips").json() == []
