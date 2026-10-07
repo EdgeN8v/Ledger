@@ -22,6 +22,9 @@ from app import models
 from app.clock import now_local
 
 DEFAULT_HOME = "上海"
+# Long postings to the employer's sites: the tickets are booked and paid by others, nothing is spent by the user, so
+# there is nothing to record. (Anything the user pays himself is an ordinary transaction and is recorded as such.)
+SITE_CITIES = ("嘉峪关", "兰州", "银川", "宁夏", "中卫", "吴忠", "石嘴山", "固原", "酒泉")
 HISTORY_DAYS = 14                                    # older finished journeys are not turned into trips
 AIRLINES = ("CZ", "MU", "FM", "9C")                 # the carriers business travel is booked with
 MILEAGE = re.compile(r"感谢您于\d{4}-\d{2}-\d{2}\s*乘坐.{2,12}航班.*累积里程")      # after-flight mileage note: not a payment
@@ -176,10 +179,12 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
             trip = next((t for t in trips if not t.auto_key and abs((datetime.strptime(t.start_date, "%Y-%m-%d").date() - start).days) <= 3), None)
             if trip:
                 trip.auto_key = key
+        away = [f.dest for f in fl if f.dest != home]
+        if trip is None and away and all(c in SITE_CITIES for c in away):
+            continue
         if trip is None and ((j["closed"] and last < today - timedelta(days=HISTORY_DAYS)) or (not j["closed"] and last < today - timedelta(days=30))):
             continue                                           # history: it was reimbursed long ago, do not bring it back as "to be reimbursed"
         if trip is None:
-            away = [f.dest for f in fl if f.dest != home]
             trip = models.Trip(ledger_id=ledger_id, name="出差·" + (away[-1] if away else "外地"), start_date=start.isoformat(), end_date=end.isoformat(),
                                kind="business", auto_tag=True, auto_key=key,
                                daily_allowance=last_biz.daily_allowance if last_biz else Decimal(180),

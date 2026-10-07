@@ -733,3 +733,10 @@ def test_open_and_long_trips_count_no_allowance(client):
                                           "daily_allowance": 180, "commute_allowance": 80})
     t = client.get("/trips").json()[0]
     assert t["long_trip"] is True and float(t["allowance_total"]) == 0
+
+
+def test_tickets_to_the_employers_sites_make_no_trip(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    out = AGENT_TWO.replace("11月02日", "10月09日")        # Shanghai -> Lanzhou -> Jiayuguan: booked by others
+    _flight_sms(client, out, day=7)
+    assert client.get("/trips").json() == []
