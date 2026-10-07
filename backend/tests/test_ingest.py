@@ -802,3 +802,8 @@ def test_correcting_a_shop_fixes_all_its_old_transactions_and_categories_follow_
     ids = [c["id"] for c in client.get("/categories").json() if c["tx_type"] == "expense"]
     client.put("/categories/order", json={"tx_type": "expense", "ids": list(reversed(ids))})
     assert [c["id"] for c in client.get("/categories").json() if c["tx_type"] == "expense"] == list(reversed(ids))
+
+
+def test_a_balance_in_the_title_is_not_the_amount():
+    p = parse_message("alipay", "你的亲情卡剩余9203.06元", "某某使用你赠送的亲情卡消费8.90元", datetime(2026, 10, 7, 18, 41))
+    assert p is not None and str(p.amount) == "8.90" and p.tx_type == "expense"

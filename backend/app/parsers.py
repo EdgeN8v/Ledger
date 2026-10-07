@@ -132,7 +132,13 @@ def _wallet(text: str, title: str, channel: str) -> Optional[Parsed]:
     direction = _direction(blob)
     if not direction:
         return None
-    m = re.search(rf"[¥￥]\s*{AMT}|{AMT}\s*元", blob)
+    # the body states what was paid; the title may state a balance ("你的亲情卡剩余9203.06元"): never mistake that for the amount
+    balance_words = re.compile(rf"(?:剩余|余额|可用额度|可用)\s*[¥￥]?\s*{AMT}\s*元?")
+    m = None
+    for part in (balance_words.sub("", text), balance_words.sub("", title)):
+        m = re.search(rf"[¥￥]\s*{AMT}|{AMT}\s*元", part)
+        if m:
+            break
     if not m:
         return None
     amount = _money(m.group(1) or m.group(2))
