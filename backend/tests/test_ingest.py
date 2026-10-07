@@ -739,3 +739,23 @@ def test_a_posting_booked_by_others_leaves_no_trace(client):
     _pay(client, "某超市", 25)                                                # ordinary spending is not evidence of anything
     assert client.get("/trips").json() == []
     assert client.get("/transactions").json()[0]["amount"] == "25.00" or float(client.get("/transactions").json()[0]["amount"]) == 25
+
+
+def test_an_unpaid_auto_trip_from_an_older_version_is_cleaned_up(client):
+    from app.database import SessionLocal
+    from app import models
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    _flight_sms(client, CSAIR)
+    _pay(client, "南方航空", 748.95)
+    t = client.get("/trips").json()[0]
+    # the payment disappears (e.g. it was deleted): no payment, no trip
+    tx = client.get("/transactions").json()[0]
+    client.delete(f"/transactions/{tx['id']}")
+    assert client.get("/trips").json() == []
+
+
+def test_a_random_travel_site_payment_is_no_evidence_for_a_ticket_booked_by_others(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    _flight_sms(client, AGENT_SITE, day=7)
+    _pay(client, "携程旅行网", 146, day=7)                                    # the user paid something small at a travel site that day
+    assert client.get("/trips").json() == []

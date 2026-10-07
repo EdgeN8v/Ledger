@@ -22,6 +22,7 @@ from app import models
 from app.clock import now_local
 
 DEFAULT_HOME = "上海"
+AIRLINE_PAY = re.compile(r"南方航空|南航|东方航空|东航|东美航旅|春秋|航空|机票")      # a payment to an airline / ticket seller (not any travel site)
 HISTORY_DAYS = 14                                    # older finished journeys are not turned into trips
 AIRLINES = ("CZ", "MU", "FM", "9C")                 # the carriers business travel is booked with
 MILEAGE = re.compile(r"感谢您于\d{4}-\d{2}-\d{2}\s*乘坐.{2,12}航班.*累积里程")      # after-flight mileage note: not a payment
@@ -147,7 +148,7 @@ def _journeys(flights: list, home: str) -> list[dict]:
     return out
 
 
-def _paid_by_user(db: Session, ledger, fl: list, start: date, end: date) -> bool:
+def _paid_by_user(db: Session, ledger, fl: list, start: date, end: date, trip_id: Optional[int] = None) -> bool:
     """A trip exists because the user PAID for tickets or a hotel. Tickets booked and paid by someone else cost nothing
     and leave nothing to record. Evidence: a payment of exactly the ticket price around the order day, a flight / hotel
     booking payment around the order day, or one during the trip itself."""
@@ -157,12 +158,12 @@ def _paid_by_user(db: Session, ledger, fl: list, start: date, end: date) -> bool
     for f in fl:
         lo, hi = datetime.combine(f.ordered_on - timedelta(days=1), day), datetime.combine(f.ordered_on + timedelta(days=2), day)
         rows = (db.query(T).filter(T.ledger_id == ledger.id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
-                                   T.refund_of_id.is_(None), T.trip_id.is_(None), T.occurred_at >= lo, T.occurred_at < hi).all())
+                                   T.refund_of_id.is_(None), (T.trip_id.is_(None) | (T.trip_id == trip_id)), T.occurred_at >= lo, T.occurred_at < hi).all())
         for t in rows:
-            if (f.price and t.amount == f.price) or BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}"):
+            if (f.price and t.amount == f.price) or AIRLINE_PAY.search(f"{t.merchant or ''} {t.raw_text or ''}"):
                 return True
     rows = (db.query(T).filter(T.ledger_id == ledger.id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
-                               T.refund_of_id.is_(None), T.trip_id.is_(None),
+                               T.refund_of_id.is_(None), (T.trip_id.is_(None) | (T.trip_id == trip_id)),
                                T.occurred_at >= datetime.combine(start, day), T.occurred_at < datetime.combine(end + timedelta(days=1), day)).all())
     return any(BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}") for t in rows)
 
@@ -197,6 +198,16 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
             if trip:
                 trip.auto_key = key
         away = [f.dest for f in fl if f.dest != home]
+        if (trip is not None and trip.name.startswith("出差·") and not trip.dates_locked and trip.settled_at is None
+                and not db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id,
+                                                            (models.Transaction.trip_manual.is_(True)) | (models.Transaction.is_reimbursement.is_(True))).first()
+                and not _paid_by_user(db, ledger, fl, start, end, trip.id)):
+            # made by an earlier version before "only what the user paid for": nothing was spent, so nothing to record
+            db.query(models.Flight).filter(models.Flight.trip_id == trip.id).update({"trip_id": None})
+            db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id).update({"trip_id": None})
+            db.delete(trip)
+            db.flush()
+            continue
         if trip is None and ((j["closed"] and last < today - timedelta(days=HISTORY_DAYS)) or (not j["closed"] and last < today - timedelta(days=30))):
             continue                                           # history: it was reimbursed long ago, do not bring it back as "to be reimbursed"
         if trip is None and not _paid_by_user(db, ledger, fl, start, end):

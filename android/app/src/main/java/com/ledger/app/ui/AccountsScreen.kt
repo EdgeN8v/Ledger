@@ -139,7 +139,7 @@ fun AccountsScreen(
                     if (list == null) Text("加载中…")
                     else if (list.isEmpty()) Text("没有待报销的出差")
                     else list.forEach { t ->
-                        Text("${t.name}  ${t.start_date.drop(5)} – ${t.end_date.drop(5)}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text(if (t.open_end) "${t.name}  ${t.start_date.drop(5)} 出发 · 回程未订" else "${t.name}  ${t.start_date.drop(5)} – ${t.end_date.drop(5)}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                         t.items.forEach {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(it.date.drop(5) + "  " + (it.merchant ?: ""), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
@@ -150,7 +150,7 @@ fun AccountsScreen(
                             Text("垫付小计", style = MaterialTheme.typography.bodySmall); Text(money(t.advanced), style = MaterialTheme.typography.bodySmall)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("补贴(每天×天数+通勤)", style = MaterialTheme.typography.bodySmall); Text(money(t.allowance), style = MaterialTheme.typography.bodySmall)
+                            Text(if (t.open_end) "补贴(回程定了再算)" else "补贴(每天×天数+通勤)", style = MaterialTheme.typography.bodySmall); Text(if (t.open_end) "-" else money(t.allowance), style = MaterialTheme.typography.bodySmall)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("应收", fontWeight = FontWeight.Bold); Text(money(t.expected), fontWeight = FontWeight.Bold)

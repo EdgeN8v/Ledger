@@ -195,6 +195,7 @@ class ReceivableTrip(BaseModel):
     name: str
     start_date: str
     end_date: str
+    open_end: bool = False
     advanced: Decimal                      # what you paid out (after refunds)
     allowance: Decimal                     # commute + daily x days
     expected: Decimal

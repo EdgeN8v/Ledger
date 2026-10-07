@@ -204,7 +204,7 @@ data class BillReminderDto(val name: String, val amount: String, val due_date: S
 data class ReceivableItemDto(val date: String, val merchant: String? = null, val amount: String)
 
 data class ReceivableTripDto(
-    val trip_id: Int, val name: String, val start_date: String, val end_date: String,
+    val trip_id: Int, val name: String, val start_date: String, val end_date: String, val open_end: Boolean = false,
     val advanced: String, val allowance: String, val expected: String, val items: List<ReceivableItemDto>
 )
 

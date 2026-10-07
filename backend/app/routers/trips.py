@@ -111,6 +111,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
 
 def business_receivable(db: Session, ledger_id: int):
     """Money the employer still owes: for every unsettled business trip, what was advanced plus the allowances."""
+    sync_flight_trips(db, ledger_id)
     names, total = [], ZERO
     for t in db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business",
                                           models.Trip.settled_at.is_(None)).all():
@@ -123,6 +124,7 @@ def business_receivable(db: Session, ledger_id: int):
 @router.get("/receivable", response_model=list[schemas.ReceivableTrip])
 def receivable_breakdown(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """What the 'to be reimbursed' figure on the assets tab is made of: per unsettled business trip, the purchases and the allowances."""
+    sync_flight_trips(db, user.ledger_id)
     refunds = refunded_map(db, user.ledger_id)
     out = []
     for t in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business",
@@ -138,7 +140,7 @@ def receivable_breakdown(db: Session = Depends(get_db), user: models.User = Depe
             if eff > 0:
                 items.append(schemas.ReceivableItem(date=x.occurred_at.strftime("%Y-%m-%d"), merchant=x.merchant or x.note, amount=eff))
         out.append(schemas.ReceivableTrip(trip_id=t.id, name=t.name, start_date=t.start_date, end_date=t.end_date,
-                                          advanced=s.total, allowance=s.allowance_total, expected=s.expected_reimbursement, items=items))
+                                          open_end=s.open_end, advanced=s.total, allowance=s.allowance_total, expected=s.expected_reimbursement, items=items))
     return out
 
 
