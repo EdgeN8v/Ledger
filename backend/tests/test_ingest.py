@@ -507,35 +507,32 @@ def test_business_trip_is_receivable_not_spending_until_paid_back(client):
     client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
     pay = lambda d, h, shop, amt: _sms(client, f"【某银行】您账户1234于10月{d}日{h}:00向{shop}支出{amt}元,可用余额9000元。", h, 0, day=d)
     pay(7, 11, "支付宝外部商户-携程旅行网", 1200)        # flights, booked before departure
-    pay(9, 7, "微信支付-滴滴出行", 45)                    # taxi to the airport
+    pay(9, 7, "微信支付-滴滴出行", 45)                    # taxi to the airport: the user's own money (the commute allowance covers it)
     pay(10, 12, "微信支付-某酒店", 680)                   # hotel
+    pay(10, 20, "微信支付-某面馆", 60)                    # meals on the trip: also the user's own (daily allowance)
     pay(12, 21, "微信支付-出租车", 60)                    # taxi home
     pay(15, 12, "微信支付-某面馆", 30)                    # ordinary life after the trip
     trip = client.post("/trips", json={"name": "北京出差", "start_date": "2026-10-07", "end_date": "2026-10-12", "kind": "business",
                                        "daily_allowance": 180, "commute_allowance": 80}).json()
-    assert trip["count"] == 4 and float(trip["total"]) == 1985.0
+    assert trip["count"] == 2 and float(trip["total"]) == 1880.0             # only the flight and the hotel
     assert trip["days"] == 6 and float(trip["allowance_total"]) == 80 + 180 * 6
-    assert float(trip["expected_reimbursement"]) == 1985.0 + 1160.0
-    # not the user's spending: only the ordinary meal counts
+    assert float(trip["expected_reimbursement"]) == 1880.0 + 1160.0
+    # spending = taxis + meals only (45 + 60 + 60 + 30); the advance is not spending
     s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
-    assert float(s["total_expense"]) == 30.0
-    # ...but remembered as money owed to him
+    assert float(s["total_expense"]) == 195.0
     acc = client.get("/accounts").json()
-    assert float(acc["receivable"]) == 3145.0 and "北京出差" in acc["receivable_trips"][0]
-    # the employer pays 3145 back: the advanced part is not income, the allowances are
+    assert float(acc["receivable"]) == 3040.0 and "北京出差" in acc["receivable_trips"][0]
     inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 25, 9, 0),
-        "text": "【某银行】您账户1234于10月25日09:00存入3145元,可用余额12000元。附言：报销。"}).json()["transaction"]
+        "text": "【某银行】您账户1234于10月25日09:00存入3040元,可用余额12000元。附言：报销。"}).json()["transaction"]
     done = client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]}).json()
     assert done["settled"] is True and float(done["allowance_gain"]) == 1160.0 and float(done["difference"]) == 0.0
     assert float(client.get("/accounts").json()["receivable"]) == 0.0
-    sep = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()     # 20 Sep - 19 Oct
-    octo = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()    # 20 Oct - 19 Nov
-    assert float(sep["total_expense"]) == 30.0 and float(sep["total_income"]) == 0.0
-    assert float(octo["total_income"]) == 1160.0 and float(octo["total_expense"]) == 0.0              # only the allowances are income
-    # undo works and brings everything back
+    sep = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
+    octo = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
+    assert float(sep["total_expense"]) == 195.0 and float(sep["total_income"]) == 0.0
+    assert float(octo["total_income"]) == 1160.0 and float(octo["total_expense"]) == 0.0              # the allowances are the income
     client.post(f"/trips/{trip['id']}/unsettle")
-    assert float(client.get("/accounts").json()["receivable"]) == 3145.0
-
+    assert float(client.get("/accounts").json()["receivable"]) == 3040.0
 
 def test_business_income_is_exactly_the_allowances_even_if_the_payout_differs(client):
     client.put("/auth/ledger-settings", json={"cycle_start_day": 1})

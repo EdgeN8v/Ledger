@@ -23,6 +23,9 @@ from app.stats import refunded_map
 router = APIRouter(prefix="/trips", tags=["trips"])
 ZERO = Decimal(0)
 TRIP_CATEGORIES = ("车辆出行", "餐饮", "娱乐", "其他支出")        # what a trip pulls in by default
+# What an employer actually pays back on a business trip: bookings and lodging. Taxis and meals are covered by the
+# allowances (which come back as income), so they stay the user's own spending.
+BOOKING = re.compile(r"机票|航空|南航|东航|春秋|海航|国航|吉祥|携程|飞猪|同程|去哪儿|途牛|12306|铁路|高铁|火车|酒店|宾馆|民宿|客栈|住宿|如家|汉庭|全季|亚朵")
 STRONG = re.compile(r"ETC|高速|景区|景点|门票|酒店|民宿|旅行社|旅游|携程|飞猪|宾馆|客栈|度假")
 FUEL = re.compile(r"加油|海油|石化|石油|充电|服务区")
 
@@ -48,8 +51,11 @@ def _eligible(db: Session, ledger: models.Ledger, start: date, end: date, busine
     )
     out = []
     for t in rows:
-        if not business and cats.get(t.category_id) not in TRIP_CATEGORIES:
-            continue                                   # business trips take everything bought in the range
+        if business:
+            if not BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}"):
+                continue                               # taxis and meals are the user's own spending
+        elif cats.get(t.category_id) not in TRIP_CATEGORIES:
+            continue
         if item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at):
             continue                                   # rent, parking subscription... are fixed items
         out.append(t)

@@ -176,7 +176,7 @@ fun TripsScreen(
                             OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴") }, modifier = Modifier.weight(1f))
                         }
                     }
-                    Text(if (business) "这段日子里**所有**消费(机票、酒店、打车、吃饭)都算出差垫付, 不计入你的月开销, 记成待报销; 日期请从出发前订机票那天算起, 到回家那天。"
+                    Text(if (business) "出差垫付只算机票和酒店(公司会报销), 不计入你的月开销, 记成待报销; 打车、吃饭是你自己的钱, 靠补贴(每天+通勤)来抵, 补贴到账后算你的收入。日期从出发那天到回家那天。"
                         else "这段日子里的油费、过路费、停车、吃饭、门票会自动归进来; 房租等固定支出不会。",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp))
@@ -261,10 +261,10 @@ fun NewBusinessTripDialog(
                     OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴(一次)") }, modifier = Modifier.weight(1f))
                 }
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("这段日期里的其他消费(吃饭、打车…)也自动归入", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Text("这段日期里别的机票、酒店也自动归入", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     androidx.compose.material3.Switch(autoTag, { autoTag = it })
                 }
-                Text("关着的话只归入你长按的这一笔, 其他的你再一笔笔长按添加; 日期用来按天数算补贴。",
+                Text("关着的话只归入你长按的这一笔; 日期用来按天数算补贴。打车、吃饭不用管, 算你自己的。",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp))
             }
