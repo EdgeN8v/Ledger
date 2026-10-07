@@ -46,6 +46,13 @@ object Prefs {
         DiskCache.trim(context, mb * 1024L * 1024L)
     }
 
+    /** Appearance: "system" / "light" / "dark". */
+    fun getThemeMode(context: Context): String = prefs(context).getString("theme_mode", "system") ?: "system"
+
+    fun setThemeMode(context: Context, mode: String) {
+        prefs(context).edit().putString("theme_mode", mode).apply()
+    }
+
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun logout(context: Context) { setToken(context, null); DiskCache.clear(context) }

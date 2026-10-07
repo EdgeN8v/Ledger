@@ -15,6 +15,12 @@ object SmsInboxScanner {
     private const val FIRST_RUN_DAYS = 30L
     private val MONEY_WORDS = listOf("支出", "收入", "消费", "转入", "转出", "扣款", "取现", "存入", "入账", "支付", "退款")
 
+    /** Money movements and airline ticket messages; everything else (codes, ads) stays on the phone. */
+    fun isRelevant(body: String): Boolean {
+        val ticket = body.contains("乘机人") && body.contains("航班") && (body.contains("支付成功") || body.contains("成功预定"))
+        return ticket || (body.contains("元") && MONEY_WORDS.any { body.contains(it) })
+    }
+
     fun hasPermission(c: Context) =
         ContextCompat.checkSelfPermission(c, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
 
@@ -40,8 +46,7 @@ object SmsInboxScanner {
                     val body = cur.getString(2) ?: continue
                     val date = cur.getLong(3)
                     if (id > maxId) maxId = id
-                    val ticket = body.contains("乘机人") && body.contains("航班") && (body.contains("支付成功") || body.contains("成功预定"))
-                    if (ticket || (body.contains("元") && MONEY_WORDS.any { body.contains(it) })) {
+                    if (isRelevant(body)) {
                         CaptureQueue.add(c, CaptureQueue.Item("sms", address, body, date))
                         queued++
                     }

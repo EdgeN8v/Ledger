@@ -69,6 +69,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.ledger.app.ui.theme.ThemeState.mode = com.ledger.app.data.Prefs.getThemeMode(this)
         com.ledger.app.capture.MaintenanceWorker.schedule(this)
         com.ledger.app.capture.MaintenanceWorker.runNow(this)
         setContent {
@@ -152,6 +153,15 @@ fun LedgerApp() {
 
     LaunchedEffect(authState.loggedIn) {
         if (authState.loggedIn) transactionViewModel.refresh()
+    }
+
+    // reading texts was granted earlier; receiving them live is the same permission group, so the system just grants it
+    val receiveSms = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(authState.loggedIn) {
+        if (authState.loggedIn && com.ledger.app.capture.SmsInboxScanner.hasPermission(context) &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECEIVE_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            receiveSms.launch(android.Manifest.permission.RECEIVE_SMS)
+        }
     }
 
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current

@@ -105,6 +105,8 @@ fun SettingsScreen(
 
         CaptureCard()
 
+        AppearanceCard()
+
         CacheCard()
 
         Button(
@@ -186,6 +188,10 @@ private fun CaptureCard() {
                 onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) { Text(if (enabled) "管理通知权限" else "去开启") }
+            Button(
+                onClick = { com.ledger.app.capture.Background.openSettings(context) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) { Text("后台运行 / 自启动设置") }
             if (!noticeOk) {
                 Button(
                     onClick = { noticeLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) },
@@ -211,6 +217,7 @@ private fun CaptureCard() {
                         "· 通知使用权:必须开启,否则收不到支付通知。\n" +
                         "· 短信补漏:" + (if (smsOk) "已开启" else "未开启") + ",通知被清掉或漏掉时,会从短信箱补记。\n" +
                         "· 每日分析提醒:" + (if (noticeOk) "已开启" else "未开启") + ",每天早上推送昨天花了多少、预算还剩多少。\n" +
+                        "· 后台运行:点「后台运行 / 自启动设置」,允许自启动、省电策略选「无限制」,锁屏后也能收到短信。\n" +
                         "· 不开 App 也能同步:长按桌面图标选「立即同步」,或把「记账同步」磁贴加到下拉快捷开关。"
                 )
             }
@@ -281,5 +288,34 @@ private fun CacheCard() {
             title = { Text("缓存是什么") },
             text = { Text("上次看过的账目和统计会存在手机里,下次进来先显示它们,再在后台悄悄更新,所以不用每次转圈。超出上限时自动删除最早的缓存;退出登录会全部清掉。") }
         )
+    }
+}
+
+
+@Composable
+private fun AppearanceCard() {
+    val context = LocalContext.current
+    val mode = com.ledger.app.ui.theme.ThemeState.mode
+    val options = listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色")
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("外观", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                options.forEach { (key, label) ->
+                    androidx.compose.material3.FilterChip(
+                        modifier = Modifier.weight(1f),
+                        selected = mode == key,
+                        onClick = {
+                            com.ledger.app.ui.theme.ThemeState.mode = key
+                            com.ledger.app.data.Prefs.setThemeMode(context, key)
+                        },
+                        label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                    )
+                }
+            }
+        }
     }
 }
