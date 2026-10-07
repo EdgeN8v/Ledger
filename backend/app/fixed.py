@@ -65,7 +65,23 @@ def item_for(items: list[dict], amount, merchant, text, when) -> Optional[dict]:
     return None
 
 
-def reminders(items: list[dict], today: date, paid_this_month) -> list[dict]:
+def cycle_key(year: int, month: int) -> str:
+    """A pay cycle is named after the month it starts in (the 20th): cycle '2026-09' runs 20 Sep - 19 Oct."""
+    return f"{year}-{month:02d}"
+
+
+def marked_paid(item: dict, key: str, today: Optional[date] = None) -> Optional[str]:
+    """Why this item counts as paid for the cycle without a matching payment on record: the user marked it, or it was
+    paid in advance up to a date. Returns a short label, or None."""
+    until = item.get("paid_until")
+    if until and today is not None and today.isoformat() <= until:
+        return "已付到" + f"{int(until[5:7])}月{int(until[8:10])}日"
+    if key in (item.get("paid_cycles") or []):
+        return "本期已付(手动标记)"
+    return None
+
+
+def reminders(items: list[dict], today: date, paid_this_month, key: Optional[str] = None) -> list[dict]:
     """Bills to pay soon. An item opts in with  "remind": {"before_days": 5, "months": [3, 6, 9, 12], "amount": 14700}:
     it shows from before_days before the END of every listed month (all months when "months" is absent) until it is paid.
     paid_this_month(item) -> bool tells whether a matching payment already happened this calendar month."""
@@ -74,15 +90,25 @@ def reminders(items: list[dict], today: date, paid_this_month) -> list[dict]:
         r = it.get("remind")
         if not isinstance(r, dict):
             continue
-        months = r.get("months")
-        if months and today.month not in months:
+        before = int(r.get("before_days", 5))
+        if key and key in (it.get("paid_cycles") or []):
             continue
-        last = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
-        left = (last - today).days
-        if left > int(r.get("before_days", 5)):
-            continue
-        if paid_this_month(it):
-            continue
+        until = it.get("paid_until")
+        if until:                                  # paid in advance: it falls due on that date, not at the month end
+            last = date.fromisoformat(until)
+            left = (last - today).days
+            if left < 0 or left > before:
+                continue
+        else:
+            months = r.get("months")
+            if months and today.month not in months:
+                continue
+            last = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+            left = (last - today).days
+            if left > before:
+                continue
+            if paid_this_month(it):
+                continue
         amount = r.get("amount") or it.get("monthly") or 0
         out.append({"name": it["name"], "amount": Decimal(str(amount)), "due_date": last.isoformat(), "days_left": left, "note": it.get("note")})
     return out

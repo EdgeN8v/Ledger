@@ -237,6 +237,12 @@ class BillReminder(BaseModel):
     note: Optional[str] = None
 
 
+class FixedMark(BaseModel):
+    name: str
+    paid: Optional[bool] = None            # mark / unmark the CURRENT cycle as paid
+    paid_until: Optional[str] = None       # YYYY-MM-DD paid in advance up to; "" clears it
+
+
 class FixedItemStatus(BaseModel):
     name: str
     reserve: Decimal            # set aside every cycle
@@ -244,6 +250,7 @@ class FixedItemStatus(BaseModel):
     tracked: bool
     due_day: Optional[int] = None
     note: Optional[str] = None
+    paid_note: Optional[str] = None
     state: str                  # paid / waiting / reserved
 
 

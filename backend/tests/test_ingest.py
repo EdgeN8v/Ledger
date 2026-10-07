@@ -759,3 +759,28 @@ def test_a_random_travel_site_payment_is_no_evidence_for_a_ticket_booked_by_othe
     _flight_sms(client, AGENT_SITE, day=7)
     _pay(client, "携程旅行网", 146, day=7)                                    # the user paid something small at a travel site that day
     assert client.get("/trips").json() == []
+
+
+def test_fixed_items_can_be_marked_paid_for_the_cycle_or_ahead(client):
+    from app.fixed import marked_paid, reminders
+    from datetime import date
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": "100", "fixed_items": [
+        {"name": "Demo node", "monthly": 138, "tracked": True, "remind": {"before_days": 5}},
+        {"name": "Demo parking", "monthly": 300, "tracked": True, "remind": {"before_days": 5}}]})
+    st = client.get("/plan/status").json()
+    assert {f["name"]: f["state"] for f in st["fixed_items"]} == {"Demo node": "waiting", "Demo parking": "waiting"}
+    client.post("/plan/fixed-mark", json={"name": "Demo node", "paid": True})
+    far = date.today().replace(year=date.today().year + 1).isoformat()
+    client.post("/plan/fixed-mark", json={"name": "Demo parking", "paid_until": far})
+    got = {f["name"]: f for f in client.get("/plan/status").json()["fixed_items"]}
+    assert got["Demo node"]["state"] == "paid" and "手动" in got["Demo node"]["paid_note"]
+    assert got["Demo parking"]["state"] == "paid" and got["Demo parking"]["paid_note"].startswith("已付到")
+    client.post("/plan/fixed-mark", json={"name": "Demo node", "paid": False})
+    assert {f["name"]: f["state"] for f in client.get("/plan/status").json()["fixed_items"]}["Demo node"] == "waiting"
+    # paid in advance: the reminder is for the date it runs out, not for the month end
+    it = {"name": "P", "monthly": 300, "remind": {"before_days": 5}, "paid_until": "2026-11-20"}
+    never = lambda i: False
+    assert reminders([it], date(2026, 10, 26), never) == []
+    assert [r["name"] for r in reminders([it], date(2026, 11, 16), never)] == ["P"]
+    assert reminders([dict(it, paid_cycles=["2026-10"])], date(2026, 11, 16), never, "2026-10") == []

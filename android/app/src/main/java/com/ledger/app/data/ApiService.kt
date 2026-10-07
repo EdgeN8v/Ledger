@@ -79,6 +79,9 @@ interface ApiService {
     @PUT("plan")
     suspend fun setPlan(@Body body: PlanInRequest): PlanDto
 
+    @POST("plan/fixed-mark")
+    suspend fun markFixed(@Body body: FixedMarkRequest): PlanDto
+
     @GET("plan/reminders")
     suspend fun billReminders(): List<BillReminderDto>
 

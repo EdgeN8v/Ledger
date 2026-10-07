@@ -217,8 +217,11 @@ data class FixedItemDto(
     val tracked: Boolean,
     val due_day: Int? = null,
     val note: String? = null,
+    val paid_note: String? = null,
     val state: String
 )
+
+data class FixedMarkRequest(val name: String, val paid: Boolean? = null, val paid_until: String? = null)
 
 data class WeekStatDto(val start: String, val end: String, val total: String)
 

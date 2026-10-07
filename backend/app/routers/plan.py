@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -11,7 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 import json
 
-from app.fixed import item_for, load, matches, reminders
+from app.fixed import cycle_key, item_for, load, marked_paid, matches, reminders
 from app.clock import now_local
 from app.stats import current_cycle, cycle_bounds, period_data
 
@@ -62,7 +62,8 @@ def bill_reminders(db: Session = Depends(get_db), user: models.User = Depends(ge
     def paid(item) -> bool:
         return any(matches(item, t.amount, t.merchant, t.raw_text or "", None) for t in rows)
 
-    return reminders(load(l), today, paid)
+    y, m = current_cycle(l.cycle_start_day or 1, today)
+    return reminders(load(l), today, paid, cycle_key(y, m))
 
 
 @router.put("", response_model=schemas.PlanOut)
@@ -74,6 +75,31 @@ def set_plan(
     l = user.ledger
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(l, field, json.dumps(value, ensure_ascii=False) if field == "fixed_items" else value)
+    db.commit()
+    return get_plan(db, user)
+
+
+@router.post("/fixed-mark", response_model=schemas.PlanOut)
+def mark_fixed(payload: schemas.FixedMark, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """The user says: this commitment is paid for the current cycle (it left no trace in the SMS), or paid ahead up to a date."""
+    l = user.ledger
+    items = load(l)
+    it = next((i for i in items if i["name"] == payload.name), None)
+    if it is None:
+        raise HTTPException(404, "no such fixed item")
+    y, m = current_cycle(l.cycle_start_day or 1)
+    key = cycle_key(y, m)
+    cycles = [c for c in (it.get("paid_cycles") or []) if c != key]
+    if payload.paid:
+        cycles.append(key)
+    it["paid_cycles"] = sorted(cycles)[-6:]
+    if payload.paid_until is not None:
+        if payload.paid_until:
+            date.fromisoformat(payload.paid_until)
+            it["paid_until"] = payload.paid_until
+        else:
+            it.pop("paid_until", None)
+    l.fixed_items = json.dumps(items, ensure_ascii=False)
     db.commit()
     return get_plan(db, user)
 
@@ -132,9 +158,11 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         fixed_total += r
         tracked = bool(it.get("tracked", True))
         matched_total += paid[it["name"]]
+        why = None if paid[it["name"]] > 0 else marked_paid(it, cycle_key(year, month), today if in_cycle else None)
         fixed_rows.append(schemas.FixedItemStatus(
             name=it["name"], reserve=r, paid=paid[it["name"]], tracked=tracked, due_day=it.get("due_day"), note=it.get("note"),
-            state="paid" if paid[it["name"]] > 0 else ("waiting" if tracked else "reserved"),
+            paid_note=why,
+            state="paid" if (paid[it["name"]] > 0 or why) else ("waiting" if tracked else "reserved"),
         ))
     if not items:                                    # no itemised commitments: the old single "fixed expenses" figure
         fixed_total = l.fixed_expenses or ZERO

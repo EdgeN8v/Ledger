@@ -42,8 +42,13 @@ internal fun money(v: String?, signed: Boolean = false): String {
 }
 
 @Composable
-fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?, String?) -> Unit) {
+fun PlanScreen(
+    state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?, String?) -> Unit,
+    onMark: (name: String, paid: Boolean?, paidUntil: String?) -> Unit
+) {
     var editing by remember { mutableStateOf(false) }
+    var marking by remember { mutableStateOf<com.ledger.app.data.FixedItemDto?>(null) }
+    var breakdown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { onLoad() }
     val st = state.status
     val plan = state.plan
@@ -126,7 +131,9 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
                     }
 
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Metric("还能花", money(st.remaining), if ((st.remaining.toDoubleOrNull() ?: 0.0) < 0) ExpenseColor else MaterialTheme.colorScheme.onSurface)
+                        Column(modifier = Modifier.clickable { breakdown = true }) {
+                            Metric("还能花 ⓘ", money(st.remaining), if ((st.remaining.toDoubleOrNull() ?: 0.0) < 0) ExpenseColor else MaterialTheme.colorScheme.onSurface)
+                        }
                         Metric("剩 ${st.days_left} 天, 每天可花", money(st.daily_allowance), MaterialTheme.colorScheme.onSurface)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -151,13 +158,13 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("固定支出 (每月先预留 ${money(st.fixed_total)})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     st.fixed_items.forEach { f ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { marking = f }, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(f.name + (f.due_day?.let { "  (每月${it}号)" } ?: ""), style = MaterialTheme.typography.bodyMedium)
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(money(f.reserve), fontWeight = FontWeight.Medium, maxLines = 1)
-                                Text(when (f.state) { "paid" -> "✅ 本期已付 ${money(f.paid)}"; "waiting" -> "⏳ 本期还没付"; else -> "🔒 已预留" },
+                                Text(when (f.state) { "paid" -> if (f.paid_note != null) "✅ ${f.paid_note}" else "✅ 本期已付 ${money(f.paid)}"; "waiting" -> "⏳ 本期还没付"; else -> "🔒 已预留" },
                                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -180,6 +187,49 @@ fun PlanScreen(state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?
             }
         }
         if (state.error != null) Text(state.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+    }
+
+    if (breakdown && st != null) {
+        AlertDialog(
+            onDismissRequest = { breakdown = false },
+            confirmButton = { TextButton(onClick = { breakdown = false }) { Text("知道了") } },
+            title = { Text("「还能花」是怎么算的") },
+            text = {
+                Column {
+                    Text("本账期收入 ${money(st.income_basis)}\n− 固定支出 ${money(st.fixed_total)}\n− 要存 ${money(st.savings_target)}\n= 自由预算 ${money(st.budget)}")
+                    Text("\n− 日常花销 ${money(st.spent)}\n− 出行 ${money(st.trip_total)}\n= 还能花 ${money(st.remaining)}", fontWeight = FontWeight.Bold)
+                    Text("\n账期从发工资那天(20号)算到下个月19号。发工资当天起,固定支出先扣掉,剩下的才是自由预算; 大额的一次性花销(比如车品)会一下子把它用光。哪些钱花在哪,在「统计 → 花在哪里」里看。",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        )
+    }
+    marking?.let { f ->
+        val context = androidx.compose.ui.platform.LocalContext.current
+        AlertDialog(
+            onDismissRequest = { marking = null },
+            title = { Text(f.name) },
+            text = {
+                Column {
+                    Text("每个账期从工资到账那天(20号)开始,到下个月19号。这一期的账单没付/付过了,可以在这里标一下。", style = MaterialTheme.typography.bodySmall)
+                    if (f.state == "paid" && f.paid_note != null) Text("现在: ${f.paid_note}", modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { marking = null; onMark(f.name, true, null) }) { Text("✅ 本期已付") }
+                    TextButton(onClick = {
+                        val d = java.time.LocalDate.now().plusMonths(1)
+                        android.app.DatePickerDialog(context, { _, y, m, day ->
+                            marking = null
+                            onMark(f.name, true, java.time.LocalDate.of(y, m + 1, day).toString())
+                        }, d.year, d.monthValue - 1, d.dayOfMonth).show()
+                    }) { Text("📅 已提前付到某一天…") }
+                    TextButton(onClick = { marking = null; onMark(f.name, false, "") }) { Text("⏳ 本期还没付(清除标记)") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { marking = null }) { Text("关闭") } }
+        )
     }
 
     if (editing) {

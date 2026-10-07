@@ -294,7 +294,7 @@ fun LedgerApp() {
                                     }
                                 }
                             }
-                            4 -> PlanScreen(planState, planViewModel::load, planViewModel::save)
+                            4 -> PlanScreen(planState, planViewModel::load, planViewModel::save, planViewModel::markFixed)
                             3 -> AccountsScreen(
                                 state = accountsState,
                                 onRefresh = accountsViewModel::refresh,

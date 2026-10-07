@@ -49,6 +49,18 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** The user says a fixed bill is paid for this cycle (or paid ahead until a date). */
+    fun markFixed(name: String, paid: Boolean?, paidUntil: String?) {
+        viewModelScope.launch {
+            try {
+                api().markFixed(com.ledger.app.data.FixedMarkRequest(name, paid, paidUntil))
+                load()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "操作失败")
+            }
+        }
+    }
+
     fun save(expectedIncome: String?, savingsTarget: String?, fixedExpenses: String?) {
         viewModelScope.launch {
             try {
