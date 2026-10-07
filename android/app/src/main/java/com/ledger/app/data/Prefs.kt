@@ -36,6 +36,16 @@ object Prefs {
         prefs(context).edit().putBoolean("include_business", value).apply()
     }
 
+    /** Upper bound for the offline cache (MB). The oldest cached answers are deleted when it is exceeded. */
+    fun getCacheLimitMb(context: Context): Int = prefs(context).getInt("cache_limit_mb", 20)
+
+    fun getCacheLimitBytes(context: Context): Long = getCacheLimitMb(context) * 1024L * 1024L
+
+    fun setCacheLimitMb(context: Context, mb: Int) {
+        prefs(context).edit().putInt("cache_limit_mb", mb).apply()
+        DiskCache.trim(context, mb * 1024L * 1024L)
+    }
+
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun logout(context: Context) { setToken(context, null); DiskCache.clear(context) }

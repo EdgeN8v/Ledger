@@ -15,7 +15,23 @@ object DiskCache {
     fun put(ctx: Context, key: String, value: Any?) {
         try {
             if (value == null) file(ctx, key).delete() else file(ctx, key).writeText(gson.toJson(value))
+            trim(ctx)
         } catch (_: Exception) {
+        }
+    }
+
+    /** Bytes the cache takes on disk. */
+    fun size(ctx: Context): Long = dir(ctx).listFiles()?.sumOf { it.length() } ?: 0L
+
+    /** Over the limit: delete the least recently written files first until it fits. */
+    fun trim(ctx: Context, limit: Long = Prefs.getCacheLimitBytes(ctx)) {
+        val files = dir(ctx).listFiles() ?: return
+        var total = files.sumOf { it.length() }
+        if (total <= limit) return
+        for (f in files.sortedBy { it.lastModified() }) {
+            if (total <= limit) break
+            total -= f.length()
+            f.delete()
         }
     }
 

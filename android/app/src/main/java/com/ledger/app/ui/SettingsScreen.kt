@@ -103,6 +103,8 @@ fun SettingsScreen(
 
         CaptureCard()
 
+        CacheCard()
+
         Button(
             onClick = onLogout,
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -216,6 +218,47 @@ private fun CaptureCard() {
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) { Text("允许读取短信") }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun CacheCard() {
+    val context = LocalContext.current
+    var limit by remember { mutableStateOf(com.ledger.app.data.Prefs.getCacheLimitMb(context)) }
+    var used by remember { mutableStateOf(com.ledger.app.data.DiskCache.size(context)) }
+    val options = listOf(5, 20, 50, 200)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("缓存", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "已用 " + (if (used < 1024 * 1024) "${used / 1024} KB" else "%.1f MB".format(used / 1048576.0)) +
+                    " / 上限 $limit MB。超出上限时自动删除最早的缓存。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                options.forEach { mb ->
+                    androidx.compose.material3.FilterChip(
+                        selected = limit == mb,
+                        onClick = {
+                            limit = mb
+                            com.ledger.app.data.Prefs.setCacheLimitMb(context, mb)
+                            used = com.ledger.app.data.DiskCache.size(context)
+                        },
+                        label = { Text("$mb MB") }
+                    )
+                }
+            }
+            androidx.compose.material3.TextButton(onClick = {
+                com.ledger.app.data.DiskCache.clear(context)
+                used = 0
+            }) { Text("清除缓存") }
         }
     }
 }

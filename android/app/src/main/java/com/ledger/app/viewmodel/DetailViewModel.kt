@@ -41,10 +41,17 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
     private fun api() = ApiClient.create(getApplication())
 
     fun open(req: DetailRequest) {
-        _state.value = DetailUiState(request = req, loading = true)
+        val app = getApplication<Application>()
+        val cached = com.ledger.app.data.DiskCache.get<List<TransactionDto>>(app, cacheKey(req, "time_desc"))
+        _state.value = DetailUiState(
+            request = req, loading = cached == null, items = cached ?: emptyList(), endReached = cached != null && cached.size < pageSize,
+            categories = com.ledger.app.data.DiskCache.get<List<CategoryDto>>(app, "categories") ?: emptyList()
+        )
         viewModelScope.launch {
             try {
-                _state.value = _state.value.copy(categories = api().listCategories())
+                val cats = api().listCategories()
+                com.ledger.app.data.DiskCache.put(app, "categories", cats)
+                _state.value = _state.value.copy(categories = cats)
             } catch (_: Exception) {
             }
         }
@@ -53,9 +60,15 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
 
     fun close() { _state.value = DetailUiState() }
 
+    private fun cacheKey(r: DetailRequest, sort: String) =
+        "detail_" + (listOf(r.categoryId, r.query, r.dateFrom, r.dateTo, r.expenseOnly, r.tripId, r.businessOnly, sort,
+            com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())).joinToString("|")).hashCode()
+
     fun setSort(sort: String) {
         if (sort == _state.value.sort) return
-        _state.value = _state.value.copy(sort = sort, items = emptyList(), endReached = false, loading = true)
+        val r = _state.value.request
+        val cached = if (r != null) com.ledger.app.data.DiskCache.get<List<TransactionDto>>(getApplication<Application>(), cacheKey(r, sort)) else null
+        _state.value = _state.value.copy(sort = sort, items = cached ?: emptyList(), endReached = false, loading = cached == null)
         reload()
     }
 
@@ -75,6 +88,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val page = fetch(0, maxOf(pageSize, _state.value.items.size).coerceAtMost(500))
                 _state.value = _state.value.copy(loading = false, items = page, endReached = page.size < pageSize)
+                _state.value.request?.let { com.ledger.app.data.DiskCache.put(getApplication<Application>(), cacheKey(it, _state.value.sort), page) }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
             }
