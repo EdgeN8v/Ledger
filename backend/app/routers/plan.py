@@ -1,0 +1,156 @@
+"""The savings plan: how much to keep each pay cycle, and where the cycle stands against it."""
+from datetime import date, timedelta
+from decimal import Decimal
+from typing import Optional
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app import models, schemas
+from app.database import get_db
+from app.deps import get_current_user
+import json
+
+from app.fixed import item_for, load
+from app.stats import current_cycle, cycle_bounds, period_data
+
+router = APIRouter(prefix="/plan", tags=["plan"])
+
+ZERO = Decimal(0)
+
+
+def _salary_estimate(db: Session, ledger: models.Ledger) -> Decimal:
+    """Planning figure for a variable salary: the LOWEST of the last three real salaries - a cautious baseline, so a
+    good month never inflates the budget and a bad one never breaks it."""
+    cats = {c.id for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "工资")}
+    rows = (
+        db.query(models.Transaction)
+        .filter(models.Transaction.ledger_id == ledger.id, models.Transaction.category_id.in_(cats or {-1}),
+                models.Transaction.tx_type == models.TxType.income, models.Transaction.is_transfer.is_(False),
+                models.Transaction.raw_text.contains("工资"))
+        .order_by(models.Transaction.occurred_at.desc())
+        .limit(3)
+        .all()
+    )
+    return min((r.amount for r in rows), default=ZERO).quantize(Decimal("0.01"))
+
+
+@router.get("", response_model=schemas.PlanOut)
+def get_plan(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    l = user.ledger
+    est = _salary_estimate(db, l)
+    return schemas.PlanOut(
+        expected_income=l.expected_income, savings_target=l.savings_target, fixed_expenses=l.fixed_expenses,
+        estimated_income=est, fixed_items=load(l),
+    )
+
+
+@router.put("", response_model=schemas.PlanOut)
+def set_plan(
+    payload: schemas.PlanIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    l = user.ledger
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(l, field, json.dumps(value, ensure_ascii=False) if field == "fixed_items" else value)
+    db.commit()
+    return get_plan(db, user)
+
+
+@router.get("/status", response_model=schemas.PlanStatus)
+def plan_status(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    return status_for(db, user.ledger, year, month)
+
+
+def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month: Optional[int] = None) -> schemas.PlanStatus:
+    start_day = l.cycle_start_day or 1
+    if not year or not month:
+        year, month = current_cycle(start_day)
+    start, end = cycle_bounds(start_day, year, month)
+    data = period_data(db, l.id, start, end)
+
+    today = date.today()
+    in_cycle = start.date() <= today < end.date()
+    total_days = (end - start).days
+    elapsed = min(max((today - start.date()).days + 1, 1), total_days) if in_cycle else (total_days if today >= end.date() else 0)
+    left = max(total_days - elapsed, 0)
+
+    expected = l.expected_income if l.expected_income else _salary_estimate(db, l)
+    target = l.savings_target or ZERO
+    items = load(l)
+
+    paid = {it["name"]: ZERO for it in items}
+    for t, eff in data.expenses:
+        it = item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at)
+        if it is not None:
+            paid[it["name"]] += eff                 # whatever matches is a fixed payment, seen or not
+
+    def reserve(it) -> Decimal:
+        if it.get("monthly"):
+            return Decimal(str(it["monthly"]))
+        # amount unknown (utilities): the average of the last three cycles
+        py, pm = year, month
+        total, n = ZERO, 0
+        for _ in range(3):
+            py, pm = (py - 1, 12) if pm == 1 else (py, pm - 1)
+            ps, pe = cycle_bounds(start_day, py, pm)
+            d = period_data(db, l.id, ps, pe)
+            got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at) or {}).get("name") == it["name"]), ZERO)
+            if got:
+                total, n = total + got, n + 1
+        return (total / n).quantize(Decimal("0.01")) if n else ZERO
+
+    fixed_rows, fixed_total, matched_total = [], ZERO, ZERO
+    for it in items:
+        r = reserve(it)
+        fixed_total += r
+        tracked = bool(it.get("tracked", True))
+        matched_total += paid[it["name"]]
+        fixed_rows.append(schemas.FixedItemStatus(
+            name=it["name"], reserve=r, paid=paid[it["name"]], tracked=tracked, due_day=it.get("due_day"), note=it.get("note"),
+            state="paid" if paid[it["name"]] > 0 else ("waiting" if tracked else "reserved"),
+        ))
+    if not items:                                    # no itemised commitments: the old single "fixed expenses" figure
+        fixed_total = l.fixed_expenses or ZERO
+
+    # until payday the real income is not in yet: plan with the expected one, afterwards with whichever is larger
+    # salary varies: once this cycle's pay has landed use what really arrived; before that use the cautious
+    # estimate. A figure typed by the user is only a floor (a raise shows up as soon as it is paid).
+    if l.expected_income:
+        income_basis = max(l.expected_income, data.income)
+    else:
+        income_basis = data.income if data.income > 0 else expected
+    budget = income_basis - fixed_total - target                 # what may be spent freely this cycle
+    trip_total = sum((e for t, e in data.expenses if t.trip_id and not item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at)), ZERO)
+    spent = data.expense - matched_total - trip_total            # everyday spending only (fixed items and trips are separate)
+    remaining = budget - spent - trip_total                      # ...but a trip is real money, so it does come off what is left
+    # forecast: extrapolate the everyday pace only; a trip is a one-off that happened, not a habit
+    pace = ((spent / elapsed * total_days) if elapsed else ZERO) + trip_total
+    projected_save = income_basis - fixed_total - pace
+    saved_so_far = income_basis - fixed_total - spent
+    allowance = (remaining / left) if left > 0 and remaining > 0 else ZERO
+
+    if not l.savings_target:
+        state = "no_plan"
+    elif spent > budget:
+        state = "over"
+    elif pace > budget:
+        state = "at_risk"
+    else:
+        state = "on_track"
+
+    return schemas.PlanStatus(
+        year=year, month=month, period_start=start.strftime("%Y-%m-%d"),
+        period_end=(end - timedelta(days=1)).strftime("%Y-%m-%d"),
+        days_total=total_days, days_elapsed=elapsed, days_left=left,
+        income_actual=data.income, income_basis=income_basis, fixed_expenses=fixed_total, savings_target=target,
+        budget=budget, spent=spent, remaining=remaining, daily_allowance=allowance.quantize(Decimal("0.01")),
+        projected_spend=pace.quantize(Decimal("0.01")), projected_saving=projected_save.quantize(Decimal("0.01")),
+        saved_so_far=saved_so_far, state=state, fixed_total=fixed_total, fixed_items=fixed_rows, spent_total=data.expense, trip_total=trip_total,
+    )

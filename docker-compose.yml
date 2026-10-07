@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ledger
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ledger}
+    volumes:
+      - ledger_db_data:/var/lib/postgresql/data
+    # No ports exposed to the host on purpose: only the api service talks to it.
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://ledger:${POSTGRES_PASSWORD:-ledger}@db:5432/ledger
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env to a long random string}
+      # Closed by default. Set REGISTRATION_OPEN=true in .env only while you create the family accounts.
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-false}
+    ports:
+      - "8000:8000"   # keep this on your LAN / VPN, see docs/deployment.md
+
+  # Optional: a nightly pg_dump kept for 14 days in ./backups (copy that folder somewhere else too).
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://ledger:${POSTGRES_PASSWORD:-ledger}@db:5432/ledger
+    volumes:
+      - ./backups:/bak
+      - ./docs/backup-loop.sh:/backup-loop.sh:ro
+    command: ["sh", "/backup-loop.sh"]
+
+volumes:
+  ledger_db_data:

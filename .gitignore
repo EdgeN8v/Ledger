@@ -1,0 +1,25 @@
+.env
+*.db
+*.log
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Android
+android/.gradle/
+android/local.properties
+android/.idea/
+android/*/build/
+android/build/
+android/.cxx/
+*.iml
+
+# real samples for local development only - never commit or publish
+backend/private/
+
+# built APKs are uploaded to GitHub Releases, not committed
+release/
+*.apk
+
+backups/

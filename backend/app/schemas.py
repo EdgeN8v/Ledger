@@ -1,0 +1,380 @@
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel
+
+from app.models import TxType, TxSource
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    display_name: str
+    ledger_name: Optional[str] = None  # set only when creating a brand-new ledger
+
+
+class UserJoin(BaseModel):
+    username: str
+    password: str
+    display_name: str
+    invite_code: str  # random per-ledger code, shown in the owner's Settings screen
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    ledger_id: int
+    invite_code: Optional[str] = None
+    cycle_start_day: int = 1
+
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class CategoryCreate(BaseModel):
+    name: str
+    icon: Optional[str] = None
+    tx_type: TxType = TxType.expense
+    keywords: Optional[str] = None
+
+
+class CategoryOut(BaseModel):
+    id: int
+    name: str
+    icon: Optional[str]
+    tx_type: TxType
+    keywords: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class TransactionCreate(BaseModel):
+    tx_type: TxType = TxType.expense
+    amount: Decimal
+    category_id: Optional[int] = None
+    note: Optional[str] = None
+    occurred_at: Optional[datetime] = None
+
+
+class TransactionUpdate(BaseModel):
+    tx_type: Optional[TxType] = None
+    amount: Optional[Decimal] = None
+    category_id: Optional[int] = None
+    note: Optional[str] = None
+    merchant: Optional[str] = None
+    occurred_at: Optional[datetime] = None
+    needs_review: Optional[bool] = None
+
+
+class TransactionOut(BaseModel):
+    id: int
+    user_id: int
+    category_id: Optional[int]
+    tx_type: TxType
+    amount: Decimal
+    note: Optional[str]
+    merchant: Optional[str] = None
+    channel: Optional[str] = None
+    account_hint: Optional[str] = None
+    sources: Optional[str] = None
+    refund_of_id: Optional[int] = None
+    refunded_amount: Decimal = Decimal(0)
+    is_refund: bool = False
+    trip_id: Optional[int] = None
+    is_transfer: bool = False
+    source: TxSource
+    raw_text: Optional[str]
+    needs_review: bool
+    occurred_at: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ParseRequest(BaseModel):
+    text: str
+    source: TxSource = TxSource.voice
+
+
+class ParseResult(BaseModel):
+    tx_type: TxType
+    amount: Optional[Decimal]
+    category_id: Optional[int]
+    category_name: Optional[str]
+    note: str
+    needs_review: bool
+
+
+class SummaryByCategory(BaseModel):
+    category_id: Optional[int]
+    category_name: str
+    tx_type: TxType
+    total: Decimal
+
+
+class MonthSummary(BaseModel):
+    year: int
+    month: int
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
+    total_income: Decimal
+    total_expense: Decimal
+    by_category: list[SummaryByCategory]
+
+
+class IngestRequest(BaseModel):
+    source: str                # package name or wechat/alipay/sms
+    title: Optional[str] = None
+    text: Optional[str] = None
+    posted_at_ms: int          # when the phone received it (epoch ms)
+
+
+class IngestResult(BaseModel):
+    status: str                # created / merged / duplicate / ignored / failed
+    event_id: Optional[int] = None
+    transaction: Optional[TransactionOut] = None
+
+
+class RawEventOut(BaseModel):
+    id: int
+    source: str
+    title: Optional[str]
+    text: Optional[str]
+    posted_at: datetime
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class AccountCreate(BaseModel):
+    name: str
+    kind: str = "bank"            # bank / wallet / cash
+    balance: Optional[Decimal] = None
+    include_in_total: bool = True
+
+
+class AccountUpdate(BaseModel):
+    name: Optional[str] = None
+    balance: Optional[Decimal] = None
+    include_in_total: Optional[bool] = None
+
+
+class AccountOut(BaseModel):
+    id: int
+    name: str
+    kind: str
+    balance: Optional[Decimal]
+    balance_at: Optional[datetime]
+    include_in_total: bool
+
+    class Config:
+        from_attributes = True
+
+
+class AccountsOverview(BaseModel):
+    total: Decimal                # sum of balances of accounts counted in the total
+    accounts: list[AccountOut]
+
+
+class LedgerSettings(BaseModel):
+    cycle_start_day: Optional[int] = None
+    owner_names: Optional[str] = None
+
+
+class PlanIn(BaseModel):
+    expected_income: Optional[Decimal] = None
+    savings_target: Optional[Decimal] = None
+    fixed_expenses: Optional[Decimal] = None
+    fixed_items: Optional[list[dict]] = None
+
+
+class PlanOut(BaseModel):
+    expected_income: Optional[Decimal]
+    savings_target: Optional[Decimal]
+    fixed_expenses: Optional[Decimal]
+    estimated_income: Decimal            # average of the last salaries, used when expected_income is blank
+    fixed_items: list[dict] = []
+
+
+class FixedItemStatus(BaseModel):
+    name: str
+    reserve: Decimal            # set aside every cycle
+    paid: Decimal               # matching payments seen this cycle
+    tracked: bool
+    due_day: Optional[int] = None
+    note: Optional[str] = None
+    state: str                  # paid / waiting / reserved
+
+
+class PlanStatus(BaseModel):
+    year: int
+    month: int
+    period_start: str
+    period_end: str
+    days_total: int
+    days_elapsed: int
+    days_left: int
+    income_actual: Decimal
+    income_basis: Decimal
+    fixed_expenses: Decimal
+    savings_target: Decimal
+    budget: Decimal                      # what may be spent freely this cycle
+    spent: Decimal
+    remaining: Decimal
+    daily_allowance: Decimal
+    projected_spend: Decimal
+    projected_saving: Decimal
+    saved_so_far: Decimal
+    state: str                           # no_plan / on_track / at_risk / over
+    fixed_total: Decimal = Decimal(0)
+    fixed_items: list[FixedItemStatus] = []
+    spent_total: Decimal = Decimal(0)    # everything spent, fixed items included
+    trip_total: Decimal = Decimal(0)     # trips: really spent, but not extrapolated into the pace forecast
+
+
+class CategoryStat(BaseModel):
+    category_id: Optional[int]
+    name: str
+    icon: Optional[str]
+    total: Decimal
+    count: int
+    share: float
+    previous_total: Decimal
+    change_pct: Optional[float]
+
+
+class ShopStat(BaseModel):
+    name: str
+    total: Decimal
+    count: int
+
+
+class BigSpend(BaseModel):
+    id: int
+    category_id: Optional[int] = None
+    merchant: str
+    amount: Decimal
+    date: str
+    category: str
+
+
+class DayStat(BaseModel):
+    date: str
+    total: Decimal
+
+
+class WeekStat(BaseModel):
+    start: str
+    end: str
+    total: Decimal
+
+
+class TripBrief(BaseModel):
+    id: int
+    name: str
+    total: Decimal
+
+
+class CycleAnalysis(BaseModel):
+    year: int
+    month: int
+    period_start: str
+    period_end: str
+    total_expense: Decimal
+    total_income: Decimal
+    previous_expense: Decimal
+    avg_daily: Decimal
+    categories: list[CategoryStat]
+    top_shops: list[ShopStat]
+    biggest: list[BigSpend]
+    daily: list[DayStat]
+    weekday_totals: list[Decimal]
+    weekly: list[WeekStat] = []
+    trips: list[TripBrief] = []
+    trip_total: Decimal = Decimal(0)
+    small_count: int
+    small_total: Decimal
+    insights: list[str]
+
+
+class CycleRow(BaseModel):
+    month: int
+    period_start: str
+    period_end: str
+    income: Decimal
+    expense: Decimal
+    saved: Decimal
+
+
+class YearAnalysis(BaseModel):
+    year: int
+    income: Decimal
+    expense: Decimal
+    saved: Decimal
+    saving_rate: float
+    avg_monthly_expense: Decimal
+    months: list[CycleRow]
+    categories: list[CategoryStat]
+    best_month: Optional[int]
+    worst_month: Optional[int]
+
+
+class ReportOut(BaseModel):
+    report_date: str
+    generated_at: datetime
+    headline: str
+    period_start: str
+    period_end: str
+    yesterday_spend: Decimal
+    today_spend: Decimal
+    avg_daily: Decimal
+    plan_state: str
+    remaining: Decimal
+    daily_allowance: Decimal
+    insights: list[str]
+    alerts: list[str]
+    subscriptions: list[str]
+
+
+class TripIn(BaseModel):
+    name: str
+    start_date: str
+    end_date: str
+
+
+class TripCategory(BaseModel):
+    name: str
+    icon: Optional[str]
+    total: Decimal
+
+
+class TripOut(BaseModel):
+    id: int
+    name: str
+    start_date: str
+    end_date: str
+    total: Decimal
+    count: int
+    by_category: list[TripCategory]
+
+
+class TripSuggestion(BaseModel):
+    start_date: str
+    end_date: str
+    reason: str
+    estimate: Decimal
+
+
+class TripSuggestionRef(BaseModel):
+    start_date: str
+    end_date: str

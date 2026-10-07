@@ -1,0 +1,276 @@
+package com.ledger.app.data
+
+// Field names deliberately mirror the backend's snake_case JSON exactly (see
+// backend/app/schemas.py) so Gson can map them with zero annotations.
+
+data class TokenResponse(
+    val access_token: String,
+    val token_type: String
+)
+
+data class RegisterRequest(
+    val username: String,
+    val password: String,
+    val display_name: String,
+    val ledger_name: String? = null
+)
+
+data class JoinRequest(
+    val username: String,
+    val password: String,
+    val display_name: String,
+    val invite_code: String
+)
+
+data class UserDto(
+    val id: Int,
+    val username: String,
+    val display_name: String,
+    val ledger_id: Int,
+    val invite_code: String? = null,
+    val cycle_start_day: Int = 1
+)
+
+data class CategoryDto(
+    val id: Int,
+    val name: String,
+    val icon: String?,
+    val tx_type: String,
+    val keywords: String?
+)
+
+data class ParseRequestBody(
+    val text: String,
+    val source: String = "voice"
+)
+
+data class ParseResultDto(
+    val tx_type: String,
+    val amount: String?,
+    val category_id: Int?,
+    val category_name: String?,
+    val note: String,
+    val needs_review: Boolean
+)
+
+data class TransactionCreateRequest(
+    val tx_type: String,
+    val amount: String,
+    val category_id: Int?,
+    val note: String?
+)
+
+data class SummaryByCategoryDto(
+    val category_id: Int?,
+    val category_name: String,
+    val tx_type: String,
+    val total: String
+)
+
+data class MonthSummaryDto(
+    val year: Int,
+    val month: Int,
+    val period_start: String? = null,
+    val period_end: String? = null,
+    val total_income: String,
+    val total_expense: String,
+    val by_category: List<SummaryByCategoryDto>
+)
+
+data class TransactionDto(
+    val id: Int,
+    val user_id: Int,
+    val category_id: Int?,
+    val tx_type: String,
+    val amount: String,
+    val note: String?,
+    val merchant: String? = null,
+    val channel: String? = null,
+    val account_hint: String? = null,
+    val sources: String? = null,
+    val refund_of_id: Int? = null,
+    val refunded_amount: String? = null,
+    val is_transfer: Boolean = false,
+    val source: String,
+    val raw_text: String?,
+    val needs_review: Boolean,
+    val occurred_at: String,
+    val created_at: String
+)
+
+data class IngestRequest(
+    val source: String,
+    val title: String?,
+    val text: String?,
+    val posted_at_ms: Long
+)
+
+data class IngestResult(
+    val status: String,
+    val event_id: Int? = null
+)
+
+data class AccountDto(
+    val id: Int,
+    val name: String,
+    val kind: String,
+    val balance: String?,
+    val balance_at: String?,
+    val include_in_total: Boolean
+)
+
+data class AccountsOverviewDto(
+    val total: String,
+    val accounts: List<AccountDto>
+)
+
+data class AccountCreateRequest(
+    val name: String,
+    val kind: String = "bank",
+    val balance: String? = null,
+    val include_in_total: Boolean = true
+)
+
+data class PlanDto(
+    val expected_income: String?,
+    val savings_target: String?,
+    val fixed_expenses: String?,
+    val estimated_income: String
+)
+
+data class PlanInRequest(
+    val expected_income: String?,
+    val savings_target: String?,
+    val fixed_expenses: String?
+)
+
+data class PlanStatusDto(
+    val year: Int,
+    val month: Int,
+    val period_start: String,
+    val period_end: String,
+    val days_total: Int,
+    val days_elapsed: Int,
+    val days_left: Int,
+    val income_actual: String,
+    val income_basis: String,
+    val fixed_expenses: String,
+    val savings_target: String,
+    val fixed_total: String = "0",
+    val fixed_items: List<FixedItemDto> = emptyList(),
+    val spent_total: String = "0",
+    val trip_total: String = "0",
+    val budget: String,
+    val spent: String,
+    val remaining: String,
+    val daily_allowance: String,
+    val projected_spend: String,
+    val projected_saving: String,
+    val saved_so_far: String,
+    val state: String
+)
+
+data class TripBriefDto(val id: Int, val name: String, val total: String)
+
+data class TripCategoryDto(val name: String, val icon: String?, val total: String)
+
+data class TripDto(
+    val id: Int, val name: String, val start_date: String, val end_date: String,
+    val total: String, val count: Int, val by_category: List<TripCategoryDto>
+)
+
+data class TripSuggestionDto(val start_date: String, val end_date: String, val reason: String, val estimate: String)
+
+data class TripRefRequest(val start_date: String, val end_date: String)
+
+data class TripInRequest(val name: String, val start_date: String, val end_date: String)
+
+data class FixedItemDto(
+    val name: String,
+    val reserve: String,
+    val paid: String,
+    val tracked: Boolean,
+    val due_day: Int? = null,
+    val note: String? = null,
+    val state: String
+)
+
+data class WeekStatDto(val start: String, val end: String, val total: String)
+
+data class CategoryStatDto(
+    val category_id: Int?,
+    val name: String,
+    val icon: String?,
+    val total: String,
+    val count: Int,
+    val share: Double,
+    val previous_total: String,
+    val change_pct: Double?
+)
+
+data class ShopStatDto(val name: String, val total: String, val count: Int)
+
+data class BigSpendDto(val id: Int, val category_id: Int? = null, val merchant: String, val amount: String, val date: String, val category: String)
+
+data class DayStatDto(val date: String, val total: String)
+
+data class CycleAnalysisDto(
+    val year: Int,
+    val month: Int,
+    val period_start: String,
+    val period_end: String,
+    val total_expense: String,
+    val total_income: String,
+    val previous_expense: String,
+    val avg_daily: String,
+    val categories: List<CategoryStatDto>,
+    val top_shops: List<ShopStatDto>,
+    val biggest: List<BigSpendDto>,
+    val daily: List<DayStatDto>,
+    val weekday_totals: List<String>,
+    val weekly: List<WeekStatDto> = emptyList(),
+    val trips: List<TripBriefDto> = emptyList(),
+    val trip_total: String = "0",
+    val small_count: Int,
+    val small_total: String,
+    val insights: List<String>
+)
+
+data class CycleRowDto(
+    val month: Int,
+    val period_start: String,
+    val period_end: String,
+    val income: String,
+    val expense: String,
+    val saved: String
+)
+
+data class YearAnalysisDto(
+    val year: Int,
+    val income: String,
+    val expense: String,
+    val saved: String,
+    val saving_rate: Double,
+    val avg_monthly_expense: String,
+    val months: List<CycleRowDto>,
+    val categories: List<CategoryStatDto>,
+    val best_month: Int?,
+    val worst_month: Int?
+)
+
+data class ReportDto(
+    val report_date: String,
+    val generated_at: String,
+    val headline: String,
+    val period_start: String,
+    val period_end: String,
+    val yesterday_spend: String,
+    val today_spend: String,
+    val avg_daily: String,
+    val plan_state: String,
+    val remaining: String,
+    val daily_allowance: String,
+    val insights: List<String>,
+    val alerts: List<String>,
+    val subscriptions: List<String>
+)
