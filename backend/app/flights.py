@@ -6,8 +6,8 @@ trip no longer has to be created by hand:
 
   * a trip starts with a flight that leaves the HOME city and ends with the flight that lands back there;
   * until the return flight is known the trip is open and runs up to today;
-  * a ticket someone else paid for is still a flight (the trip and its allowances are real) but it never becomes a
-    transaction: only payments do, so a free ticket cannot show up in the books;
+  * a trip is made only when the user PAID for tickets or a hotel: a ticket someone else paid for costs nothing, so
+    there is nothing to record (it is stored as a flight, but never becomes a trip or a transaction);
   * the flights live in their own table, independent of the SMS inbox on the phone: deleting the message later
     changes nothing here.
 """
@@ -22,9 +22,6 @@ from app import models
 from app.clock import now_local
 
 DEFAULT_HOME = "上海"
-# Long postings to the employer's sites: the tickets are booked and paid by others, nothing is spent by the user, so
-# there is nothing to record. (Anything the user pays himself is an ordinary transaction and is recorded as such.)
-SITE_CITIES = ("嘉峪关", "兰州", "银川", "宁夏", "中卫", "吴忠", "石嘴山", "固原", "酒泉")
 HISTORY_DAYS = 14                                    # older finished journeys are not turned into trips
 AIRLINES = ("CZ", "MU", "FM", "9C")                 # the carriers business travel is booked with
 MILEAGE = re.compile(r"感谢您于\d{4}-\d{2}-\d{2}\s*乘坐.{2,12}航班.*累积里程")      # after-flight mileage note: not a payment
@@ -135,7 +132,7 @@ def _journeys(flights: list, home: str) -> list[dict]:
     out, cur = [], None
     for f in flights:
         if cur is not None and f.origin != cur[-1].dest:
-            out.append({"flights": cur, "closed": True})             # a leg is missing between these two: stop at the last known landing
+            out.append({"flights": cur, "closed": False, "broken": True})   # a leg is missing between these two: stop at the last known landing
             cur = None
         if cur is None:
             if f.origin == home:
@@ -148,6 +145,26 @@ def _journeys(flights: list, home: str) -> list[dict]:
     if cur:
         out.append({"flights": cur, "closed": False})
     return out
+
+
+def _paid_by_user(db: Session, ledger, fl: list, start: date, end: date) -> bool:
+    """A trip exists because the user PAID for tickets or a hotel. Tickets booked and paid by someone else cost nothing
+    and leave nothing to record. Evidence: a payment of exactly the ticket price around the order day, a flight / hotel
+    booking payment around the order day, or one during the trip itself."""
+    from app.routers.trips import BOOKING
+    T = models.Transaction
+    day = datetime.min.time()
+    for f in fl:
+        lo, hi = datetime.combine(f.ordered_on - timedelta(days=1), day), datetime.combine(f.ordered_on + timedelta(days=2), day)
+        rows = (db.query(T).filter(T.ledger_id == ledger.id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
+                                   T.refund_of_id.is_(None), T.trip_id.is_(None), T.occurred_at >= lo, T.occurred_at < hi).all())
+        for t in rows:
+            if (f.price and t.amount == f.price) or BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}"):
+                return True
+    rows = (db.query(T).filter(T.ledger_id == ledger.id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
+                               T.refund_of_id.is_(None), T.trip_id.is_(None),
+                               T.occurred_at >= datetime.combine(start, day), T.occurred_at < datetime.combine(end + timedelta(days=1), day)).all())
+    return any(BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}") for t in rows)
 
 
 def sync_flight_trips(db: Session, ledger_id: int) -> None:
@@ -170,7 +187,7 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
         fl = j["flights"]
         start = fl[0].depart_at.date()
         last = fl[-1].arrive_at.date()
-        end = last if j["closed"] else max(start, today)
+        end = last if (j["closed"] or j.get("broken")) else max(start, today)
         key = f"{fl[0].flight_no}@{start:%Y%m%d}"
         if key in dismissed:
             continue
@@ -180,10 +197,10 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
             if trip:
                 trip.auto_key = key
         away = [f.dest for f in fl if f.dest != home]
-        if trip is None and away and all(c in SITE_CITIES for c in away):
-            continue
         if trip is None and ((j["closed"] and last < today - timedelta(days=HISTORY_DAYS)) or (not j["closed"] and last < today - timedelta(days=30))):
             continue                                           # history: it was reimbursed long ago, do not bring it back as "to be reimbursed"
+        if trip is None and not _paid_by_user(db, ledger, fl, start, end):
+            continue                                           # nothing was spent by the user: nothing to record
         if trip is None:
             trip = models.Trip(ledger_id=ledger_id, name="出差·" + (away[-1] if away else "外地"), start_date=start.isoformat(), end_date=end.isoformat(),
                                kind="business", auto_tag=True, auto_key=key,
@@ -211,7 +228,7 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
                           models.Transaction.amount == f.price, models.Transaction.occurred_at >= lo, models.Transaction.occurred_at < hi,
                           models.Transaction.trip_id.is_(None)).first())
             if tx:
-                tx.trip_id = trip.id
+                tx.trip_id, tx.trip_manual = trip.id, True        # hand-picked class: a later retag must not drop it
     db.commit()
     for t in changed:
         retag(db, t)
