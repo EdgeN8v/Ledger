@@ -249,7 +249,7 @@ private fun CacheCard() {
                 InfoDot { cacheInfo = true }
             }
             Text(
-                "已用 " + (if (used < 1024 * 1024) "${used / 1024} KB" else "%.1f MB".format(used / 1048576.0)) + " / 上限 $limit MB",
+                "已用 " + (if (used < 1024 * 1024) "${used / 1024} KB" else "%.1f MB".format(used / 1048576.0)) + " / 上限 $limit MB(下方选择,单位 MB)",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp)
@@ -257,13 +257,14 @@ private fun CacheCard() {
             Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                 options.forEach { mb ->
                     androidx.compose.material3.FilterChip(
+                        modifier = Modifier.weight(1f),
                         selected = limit == mb,
                         onClick = {
                             limit = mb
                             com.ledger.app.data.Prefs.setCacheLimitMb(context, mb)
                             used = com.ledger.app.data.DiskCache.size(context)
                         },
-                        label = { Text("$mb MB") }
+                        label = { Text("$mb", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
                     )
                 }
             }

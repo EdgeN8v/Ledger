@@ -187,7 +187,7 @@ fun LedgerApp() {
                 }
             }
             composable("home") {
-                var selectedTab by remember { mutableIntStateOf(0) }
+                var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
                 androidx.activity.compose.BackHandler(enabled = detailState.request != null) { detailViewModel.close() }
                 if (detailState.request != null) {
                     DetailScreen(
@@ -248,7 +248,7 @@ fun LedgerApp() {
                                 isListening = isListening
                             )
                             1 -> {
-                                var statMode by remember { mutableIntStateOf(0) }
+                                var statMode by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
                                 var includeBiz by remember { mutableStateOf(com.ledger.app.data.Prefs.getIncludeBusiness(context)) }
                                 var bizVersion by remember { mutableIntStateOf(0) }
                                 androidx.compose.foundation.layout.Column {
