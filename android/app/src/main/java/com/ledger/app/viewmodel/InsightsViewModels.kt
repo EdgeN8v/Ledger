@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ledger.app.data.ApiClient
+import com.ledger.app.data.CarReportDto
 import com.ledger.app.data.CycleAnalysisDto
 import com.ledger.app.data.PlanDto
 import com.ledger.app.data.PlanInRequest
@@ -81,6 +82,29 @@ data class InsightsUiState(
     val selMonth: Int = 0,           // 0 = the current pay cycle, decided by the server
     val error: String? = null
 )
+
+data class CarUiState(val loading: Boolean = false, val range: String = "12m", val report: CarReportDto? = null, val error: String? = null)
+
+class CarViewModel(application: Application) : AndroidViewModel(application) {
+    private val _state = MutableStateFlow(CarUiState())
+    val state: StateFlow<CarUiState> = _state
+    private fun api() = ApiClient.create(getApplication())
+
+    fun load(range: String = _state.value.range) {
+        viewModelScope.launch {
+            val key = "car_" + range
+            val cached = if (_state.value.range != range || _state.value.report == null) com.ledger.app.data.DiskCache.get<CarReportDto>(getApplication<Application>(), key) else null
+            _state.value = _state.value.copy(range = range, loading = _state.value.report == null && cached == null, error = null, report = cached ?: _state.value.report)
+            try {
+                val r = api().carReport(range)
+                com.ledger.app.data.DiskCache.put(getApplication<Application>(), key, r)
+                _state.value = _state.value.copy(loading = false, report = r)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(loading = false, error = e.message ?: "加载失败")
+            }
+        }
+    }
+}
 
 class InsightsViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(InsightsUiState())

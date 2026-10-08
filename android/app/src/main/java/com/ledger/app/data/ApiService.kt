@@ -79,6 +79,9 @@ interface ApiService {
     @PUT("plan")
     suspend fun setPlan(@Body body: PlanInRequest): PlanDto
 
+    @GET("analysis/car")
+    suspend fun carReport(@Query("range") range: String): CarReportDto
+
     @PUT("categories/order")
     suspend fun setCategoryOrder(@Body body: CategoryOrderRequest)
 

@@ -277,6 +277,15 @@ data class CycleRowDto(
     val saved: String
 )
 
+data class CarItemDto(val id: Int, val date: String, val merchant: String, val amount: String)
+data class CarBucketDto(val key: String, val label: String, val core: Boolean, val total: String, val count: Int, val items: List<CarItemDto>)
+data class CarMonthDto(val month: String, val fuel: String, val repair: String, val other: String)
+data class CarFuelDto(val count: Int, val total: String, val avg: String, val max: String)
+data class CarReportDto(
+    val since: String, val first_record: String, val range: String, val core_total: String, val all_total: String,
+    val buckets: List<CarBucketDto>, val monthly: List<CarMonthDto>, val fuel: CarFuelDto
+)
+
 data class YearAnalysisDto(
     val year: Int,
     val income: String,

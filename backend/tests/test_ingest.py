@@ -877,3 +877,26 @@ def test_update_downloads_need_the_secret_link(client, tmp_path, monkeypatch):
     assert client.get("/update/s3cret/..%2Fetc.apk").status_code == 404
     monkeypatch.delenv("LEDGER_UPDATE_TOKEN")
     assert client.get("/update/s3cret/App-1.apk").status_code == 404
+
+
+def test_my_car_category_and_its_report(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    assert "我的车" in cats and "车辆出行" in cats
+    _sms(client, "【某银行】您账户1234于10月5日12:00向微信支付-中国石化某某加油站支出300元,可用余额900元。", 12, 0, day=5)
+    _sms(client, "【某银行】您账户1234于10月6日12:00向微信支付-某某汽修保养支出500元,可用余额400元。", 12, 0, day=6)
+    _sms(client, "【某银行】您账户1234于10月6日13:00向支付宝外部商户-高德打车支出30元,可用余额370元。", 13, 0, day=6)
+    got = {t["merchant"]: t["category_id"] for t in client.get("/transactions", params={"limit": 50}).json()}
+    assert got["微信支付-中国石化某某加油站"] == cats["我的车"] and got["微信支付-某某汽修保养"] == cats["我的车"]
+    assert got["支付宝外部商户-高德打车"] == cats["车辆出行"]
+    rep = client.get("/analysis/car", params={"range": "year"}).json()
+    by = {b["key"]: b for b in rep["buckets"]}
+    assert float(by["fuel"]["total"]) == 300 and float(by["repair"]["total"]) == 500 and float(rep["core_total"]) == 800
+    assert rep["fuel"]["count"] == 1 and float(rep["fuel"]["avg"]) == 300
+
+
+def test_a_parking_fixed_item_counts_as_parking_in_the_car_report(client):
+    client.put("/plan", json={"savings_target": "100", "fixed_items": [{"name": "停车费", "monthly": 300, "category": "我的车", "match_amount": [300], "match_merchants": ["某某物业"]}]})
+    _sms(client, "【某银行】您账户1234于10月5日12:00向微信支付-某某物业服务有限公司支出300元,可用余额900元。", 12, 0, day=5)
+    rep = client.get("/analysis/car", params={"range": "year"}).json()
+    by = {b["key"]: b for b in rep["buckets"]}
+    assert float(by["parking"]["total"]) == 300 and float(by["other"]["total"]) == 0

@@ -1,8 +1,11 @@
 """Startup upkeep that keeps existing ledgers in step with code changes."""
+import re
 from sqlalchemy.orm import Session
 
 from app import models
 from app.default_categories import DEFAULT_CATEGORIES
+
+CAR_KEYWORDS_NOW = next(k for n, _i, _t, k in DEFAULT_CATEGORIES if n == "我的车")
 from app.parsers import parse_message
 
 
@@ -120,6 +123,42 @@ def flag_existing_refunds(db: Session) -> None:
     db.commit()
 
 
+CAR_COST = re.compile("加油|石化|石油|海油|壳牌|保养|机油|修车|汽修|汽车服务|汽配|轮胎|4S|年检|违章|车险|洗车|汽车美容|停车|车位|车场|ETC|高速|路桥|过路|服务区|车品|汽车用品|踏板|充电")
+
+
+def split_car_costs(db: Session) -> None:
+    """Run once, when the ledger gets its 'my car' category: what keeping the car costs (fuel, repairs, parking, tolls,
+    parts, insurance) leaves 'travel' (taxis, trains, planes), which stays as it was. Never touches the user's own choices
+    afterwards: the check is 'does the category exist yet'."""
+    from app.fixed import load
+    import json as _json
+    for ledger in db.query(models.Ledger).all():
+        cats = {c.name: c for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id)}
+        travel = cats.get("车辆出行")
+        if travel is None or "我的车" in cats:
+            continue
+        mine = models.Category(ledger_id=ledger.id, name="我的车", icon="🚘", tx_type=models.TxType.expense, keywords="")
+        for name, icon, tx_type, keywords in DEFAULT_CATEGORIES:
+            if name == "我的车":
+                mine.keywords = keywords
+        db.add(mine)
+        db.flush()
+        for t in db.query(models.Transaction).filter(models.Transaction.ledger_id == ledger.id, models.Transaction.category_id == travel.id,
+                                                    models.Transaction.tx_type == models.TxType.expense).all():
+            if CAR_COST.search(f"{t.merchant or ''} {t.note or ''}") and not t.trip_id:
+                t.category_id = mine.id
+        for r in db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger.id, models.MerchantRule.category_id == travel.id):
+            if CAR_COST.search(r.pattern or ""):
+                r.category_id = mine.id
+        items = load(ledger)
+        for it in items:
+            if it.get("category") == "车辆出行" and CAR_COST.search(it.get("name", "")):
+                it["category"] = "我的车"
+        if items:
+            ledger.fixed_items = _json.dumps(items, ensure_ascii=False)
+    db.commit()
+
+
 def merge_car_and_transport(db: Session) -> None:
     """Everything on the road is one category now (the user drives to work, trains and planes are rare): move
     '交通' into '车辆', rename it, and remove the emptied category."""
@@ -182,6 +221,13 @@ def normalise_merchant_rules(db: Session) -> None:
 def fix_keyword_conflicts(db: Session) -> None:
     """Keywords that were moved between categories must also move in ledgers that already have the old list:
     a travel agency ("携程") is travel, not entertainment."""
+    # the car's own costs moved to their own category: they must not also sit in the travel keyword list
+    car_words = {k.strip() for k in CAR_KEYWORDS_NOW.split(",")} - {"高德打车", "租车", "代驾"}
+    for ledger in db.query(models.Ledger).all():
+        trv = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "车辆出行").first()
+        mine = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "我的车").first()
+        if trv and trv.keywords and mine:
+            trv.keywords = ",".join(k for k in trv.keywords.split(",") if k.strip() and k.strip() not in car_words and k.strip() not in {"充电宝", "电动车", "蔚来", "小鹏", "理想", "特斯拉", "汽车", "车辆"})
     moved_to_stay = {"酒店", "民宿", "美团酒店"}
     for ledger in db.query(models.Ledger).all():
         ent2 = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "娱乐").first()

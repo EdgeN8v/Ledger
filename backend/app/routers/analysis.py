@@ -1,7 +1,7 @@
 """Where did the money go: per-cycle breakdown with comparison to the previous cycle, and the year in review."""
 import re
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -210,3 +210,75 @@ def analyse_year(
         avg_monthly_expense=(spend_total / n).quantize(Decimal("0.01")), months=months, categories=categories,
         best_month=best.month if best else None, worst_month=worst.month if worst else None,
     )
+
+
+# ---- "my car": what keeping it on the road costs
+CAR_BUCKETS = [
+    ("fuel", "加油", True, re.compile("加油|石化|石油|海油|壳牌|协和石油")),
+    ("repair", "保养维修", True, re.compile("保养|机油|修车|汽修|汽车服务|汽配|轮胎|4S|维修|钣金|养护|刹车|蓄电池")),
+    ("insurance", "保险", True, re.compile("车险|保险|人保|太保|平安财")),
+    ("parking", "停车", False, re.compile("停车|车位|车场|P云")),
+    ("wash", "洗车", False, re.compile("洗车|汽车美容")),
+    ("toll", "过路费", False, re.compile("ETC|高速|路桥|过路|服务区")),
+    ("parts", "配件", False, re.compile("车品|汽车用品|踏板|脚踏|配件|车饰|车友")),
+]
+
+
+def car_bucket(merchant: Optional[str], text: Optional[str]):
+    hay = f"{merchant or ''} {text or ''}"
+    for key, label, core, rx in CAR_BUCKETS:
+        if rx.search(hay):
+            return key, label, core
+    return "other", "其他用车", False
+
+
+@router.get("/car")
+def car_costs(range: str = "12m", db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Fuel, upkeep and insurance are the 'core' of what the car costs; parking, washing, tolls, parts and the rest are
+    shown beside it so the user can decide later what counts. range: 'year' (this calendar year) or '12m'."""
+    from app.clock import now_local
+    from app.stats import refunded_map
+    today = now_local().date()
+    start = date(today.year, 1, 1) if range == "year" else today - timedelta(days=365)
+    mine = db.query(models.Category).filter(models.Category.ledger_id == user.ledger_id, models.Category.name == "我的车").first()
+    refunds = refunded_map(db, user.ledger_id)
+    rows = []
+    if mine:
+        rows = (db.query(models.Transaction)
+                .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.category_id == mine.id,
+                        models.Transaction.tx_type == models.TxType.expense, models.Transaction.is_transfer.is_(False),
+                        models.Transaction.refund_of_id.is_(None), models.Transaction.occurred_at >= datetime.combine(start, datetime.min.time()))
+                .order_by(models.Transaction.occurred_at.desc()).all())
+    from app.fixed import item_for, load
+    fixed = load(db.get(models.Ledger, user.ledger_id))
+    buckets = {k: {"key": k, "label": l, "core": c, "total": ZERO, "count": 0, "items": []} for k, l, c, _ in CAR_BUCKETS}
+    buckets["other"] = {"key": "other", "label": "其他用车", "core": False, "total": ZERO, "count": 0, "items": []}
+    monthly = defaultdict(lambda: {"fuel": ZERO, "repair": ZERO, "other": ZERO})
+    for t in rows:
+        eff = t.amount - refunds.get(t.id, ZERO)
+        if eff <= 0:
+            continue
+        key, _label, _core = car_bucket(t.merchant, t.raw_text)
+        if key == "other":                     # the user's own "parking fee" fixed item (paid to a property company, say)
+            fx = item_for(fixed, t.amount, t.merchant, t.raw_text or "", t.occurred_at)
+            if fx and "停车" in fx.get("name", ""):
+                key = "parking"
+        b = buckets[key]
+        b["total"] += eff
+        b["count"] += 1
+        b["items"].append({"id": t.id, "date": t.occurred_at.strftime("%Y-%m-%d"), "merchant": _shop(t.merchant), "amount": eff})
+        m = monthly[t.occurred_at.strftime("%Y-%m")]
+        m["fuel" if key == "fuel" else "repair" if key in ("repair", "insurance") else "other"] += eff
+    core_total = sum((b["total"] for b in buckets.values() if b["core"]), ZERO)
+    all_total = sum((b["total"] for b in buckets.values()), ZERO)
+    fuel = buckets["fuel"]
+    first = min((datetime.strptime(i["date"], "%Y-%m-%d").date() for b in buckets.values() for i in b["items"]), default=today)
+    return {
+        "since": start.isoformat(), "first_record": first.isoformat(), "range": range,
+        "core_total": core_total, "all_total": all_total,
+        "buckets": sorted(buckets.values(), key=lambda b: (-int(b["core"]), -b["total"])),
+        "monthly": [{"month": k, **v} for k, v in sorted(monthly.items())],
+        "fuel": {"count": fuel["count"], "total": fuel["total"],
+                 "avg": (fuel["total"] / fuel["count"]).quantize(Decimal("0.01")) if fuel["count"] else ZERO,
+                 "max": max((i["amount"] for i in fuel["items"]), default=ZERO)},
+    }

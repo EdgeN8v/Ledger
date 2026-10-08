@@ -96,6 +96,8 @@ fun LedgerApp() {
     val reportState by reportViewModel.state.collectAsState()
     val planState by planViewModel.state.collectAsState()
     val insightsViewModel: InsightsViewModel = viewModel()
+    val carViewModel: com.ledger.app.viewmodel.CarViewModel = viewModel()
+    val carState by carViewModel.state.collectAsState()
     val insightsState by insightsViewModel.state.collectAsState()
     val accountsState by accountsViewModel.state.collectAsState()
 
@@ -271,7 +273,7 @@ fun LedgerApp() {
                                             .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                                     ) {
-                                        listOf("总览", "花在哪里", "出行", "全年").forEachIndexed { i, label ->
+                                        listOf("总览", "花在哪里", "出行", "用车", "全年").forEachIndexed { i, label ->
                                             androidx.compose.material3.FilterChip(
                                                 selected = statMode == i, onClick = { statMode = i }, label = { Text(label) }
                                             )
@@ -304,6 +306,7 @@ fun LedgerApp() {
                                             tripsViewModel::recentIncomes, tripsViewModel::delete, tripsViewModel::dismiss,
                                             onOpenDetail = { detailViewModel.open(it) }
                                         )
+                                        3 -> com.ledger.app.ui.CarScreen(carState, carViewModel::load)
                                         else -> YearInsights(insightsState, insightsViewModel::loadYear)
                                     }
                                 }
