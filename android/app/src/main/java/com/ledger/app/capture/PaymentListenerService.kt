@@ -24,12 +24,15 @@ class PaymentListenerService : NotificationListenerService() {
         val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
             ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()
         if (text.isNullOrBlank()) return
+        // chat notifications are nobody's business: from WeChat only payment messages leave the phone
+        if (sbn.packageName == "com.tencent.mm" && !PAYMENT_WORDS.containsMatchIn((title ?: "") + " " + text)) return
 
         CaptureQueue.add(this, CaptureQueue.Item(sbn.packageName, title, text, sbn.postTime))
         UploadWorker.enqueue(this)
     }
 
     companion object {
+        private val PAYMENT_WORDS = Regex("已支付|已扣费|支付成功|付款|收款|转账|红包|到账|退款|扣款|¥|￥")
         val WATCHED = setOf(
             "com.tencent.mm",
             "com.eg.android.AlipayGphone",

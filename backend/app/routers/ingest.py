@@ -15,6 +15,7 @@ from app.deps import get_current_user
 from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
+from app.merchants import rule_applies
 from app.flights import MILEAGE, parse_flights, store_flights, sync_flight_trips
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -45,8 +46,9 @@ def _pick_category(db: Session, ledger_id: int, tx_type: str, merchant: Optional
             cat = (db.query(models.Category).filter(models.Category.ledger_id == ledger_id, models.Category.name == fixed_cat).first())
             if cat:
                 return cat, False
-    for rule in db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger_id):
-        if rule.pattern and rule.pattern.lower() in hay.lower():
+    rules = sorted(db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger_id), key=lambda r: -len(r.pattern or ""))
+    for rule in rules:                                    # the most specific shop name first
+        if rule_applies(rule.pattern, merchant):
             cat = db.get(models.Category, rule.category_id)
             if cat:
                 return cat, False
@@ -79,7 +81,7 @@ def _fallback_category(cats, tx_type: str, merchant: Optional[str]):
     return by_name.get("其他支出" if tx_type == "expense" else "其他收入")
 
 
-def _find_merge_target(db: Session, ledger_id: int, parsed: Parsed, when) -> Optional[models.Transaction]:
+def _find_merge_target(db: Session, ledger_id: int, parsed: Parsed, when, text: str = "") -> Optional[models.Transaction]:
     """The same purchase is often reported twice (WeChat notification + bank SMS). Merge when the amount
     and direction match within a short window AND the new report comes from a source the record has not
     seen yet - two coffees bought back to back come from the same source and stay two records."""
@@ -98,6 +100,9 @@ def _find_merge_target(db: Session, ledger_id: int, parsed: Parsed, when) -> Opt
     for tx in candidates:
         seen = set((tx.sources or "").split(","))
         if tx.source != models.TxSource.manual and parsed.origin not in seen and tx.sources:
+            return tx
+        # Alipay announces a family-card payment twice ("...使用你赠送的亲情卡消费" and "你有一笔..元的支出"): one payment
+        if parsed.origin == "alipay" and seen == {"alipay"} and ("亲情卡" in (tx.raw_text or "")) != ("亲情卡" in text):
             return tx
     return None
 
@@ -204,7 +209,7 @@ def ingest(
             )
             .first()
         )
-        target = None if same else _find_merge_target(db, user.ledger_id, parsed, when)
+        target = None if same else _find_merge_target(db, user.ledger_id, parsed, when, text)
         if same:
             # the exact same message re-posted by the phone (notification update): never a second record
             tx, status = same, "duplicate"
@@ -220,6 +225,11 @@ def ingest(
             if parsed.account_hint and not target.account_hint:
                 target.account_hint = parsed.account_hint
             target.raw_text = f"{target.raw_text or ''}\n---\n{text}".strip()
+            if target.needs_review and target.merchant:
+                # the first report (a wallet notification) often has no shop name; now it has one: look again
+                cat, guessed = _pick_category(db, user.ledger_id, target.tx_type.value, target.merchant, target.raw_text, target.amount, target.occurred_at)
+                if cat and not guessed:
+                    target.category_id, target.needs_review = cat.id, False
             tx, status = target, "merged"
         else:
             cat, guessed = _pick_category(db, user.ledger_id, parsed.tx_type, parsed.merchant, text, parsed.amount, when)
@@ -253,9 +263,11 @@ def ingest(
             db.flush()
             relink_orphans(db, user.ledger_id)   # ...and a purchase may complete an earlier-arrived refund
 
+    # what is not a payment is nobody's business (chat messages, codes, ads): keep only the fingerprint that stops repeats
+    keep = status != "ignored"
     ev = models.RawEvent(
         ledger_id=user.ledger_id, user_id=user.id, fingerprint=fp, source=source,
-        title=title, text=text, posted_at=posted, status=status,
+        title=title if keep else "", text=text if keep else "", posted_at=posted, status=status,
         transaction_id=tx.id if tx else None,
     )
     db.add(ev)

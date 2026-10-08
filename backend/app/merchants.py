@@ -14,3 +14,24 @@ def shop_core(merchant: Optional[str]) -> str:
         prev, m = m, _PREFIX.sub("", m)
     m = re.sub(r"^(?:天猫|淘宝|京东商城)[-/]", "", m)
     return m.strip("*… ").strip()
+
+
+# Payment platforms and catch-all merchants: they stand for thousands of different shops (a Meituan payment can be a
+# dinner or a shared bike), so correcting one of them must never become a rule for all.
+GENERIC_CORES = {
+    "微信", "微信支付", "支付宝", "财付通", "云闪付", "京东", "京东商城", "淘宝", "天猫", "拼多多", "拼多多平台商户", "抖音", "抖音支付",
+    "美团", "美团支付", "美团平台商户", "美团商户", "美团商户/北京三快在线科技有限公司", "北京三快在线科技有限公司", "扫二维码付款",
+}
+
+
+def is_generic(core: str) -> bool:
+    return len(core) < 2 or core in GENERIC_CORES
+
+
+def rule_applies(pattern: str, merchant: Optional[str]) -> bool:
+    """A learned rule is about a SHOP: it applies when the merchant's bare shop name is that shop (or, for a long
+    enough name, contains it) - never because the pattern happens to appear somewhere in a message."""
+    core = shop_core(merchant)
+    if not core or not pattern:
+        return False
+    return pattern == core or (len(pattern) >= 4 and pattern in core)

@@ -140,7 +140,7 @@ curl http://localhost:8000/health        # {"status":"ok"}
 cd backend
 python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt pytest httpx   # Linux/macOS: .venv/bin/pip
-.venv/Scripts/python -m pytest tests                          # 65 个测试
+.venv/Scripts/python -m pytest tests                          # 71 个测试
 ```
 
 **安卓**：用 Android Studio 打开 `android/`，或命令行 `./gradlew assembleDebug`。服务器地址默认是占位值，想把你自己的地址编译进去，在 `android/local.properties`（不会被提交）里写：

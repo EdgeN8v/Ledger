@@ -10,7 +10,7 @@ from app import models, schemas
 from app.database import get_db
 from app.clock import now_local
 from app.deps import get_current_user
-from app.merchants import shop_core
+from app.merchants import is_generic, shop_core
 from app.refunds import refunded_amount
 from app.stats import cycle_bounds, period_data
 from app.parsing import parse_transaction, ParseError
@@ -150,7 +150,7 @@ def update_transaction(
 
     # correcting a category once teaches the server: that shop goes into this category from now on, however it is paid
     core = shop_core(tx.merchant)
-    if "category_id" in changes and changes["category_id"] and len(core) >= 2:
+    if "category_id" in changes and changes["category_id"] and not is_generic(core):
         rule = (
             db.query(models.MerchantRule)
             .filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.pattern == core)
@@ -168,6 +168,8 @@ def update_transaction(
                     models.Transaction.tx_type == tx.tx_type, models.Transaction.refund_of_id.is_(None))
             .all()
         ):
+            if shop_core(other.merchant) != core:
+                continue
             other.category_id = changes["category_id"]
             other.needs_review = False
 

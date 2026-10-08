@@ -807,3 +807,73 @@ def test_correcting_a_shop_fixes_all_its_old_transactions_and_categories_follow_
 def test_a_balance_in_the_title_is_not_the_amount():
     p = parse_message("alipay", "你的亲情卡剩余9203.06元", "某某使用你赠送的亲情卡消费8.90元", datetime(2026, 10, 7, 18, 41))
     assert p is not None and str(p.amount) == "8.90" and p.tx_type == "expense"
+
+
+def _tx(client):
+    return client.get("/transactions", params={"limit": 50}).json()
+
+
+def test_hotels_are_lodging_and_noodle_wraps_are_food(client):
+    _sms(client, "【某银行】您账户1234于10月6日12:00向支付宝外部商户-某某酒店管理有限公司支出300元,可用余额900元。", 12, 0)
+    _sms(client, "【某银行】您账户1234于10月6日13:00向微信支付-某某驴肉火烧支出20元,可用余额880元。", 13, 0)
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    got = {t["merchant"]: cats[t["category_id"]] for t in _tx(client)}
+    assert got["支付宝外部商户-某某酒店管理有限公司"] == "住宿" and got["微信支付-某某驴肉火烧"] == "餐饮"
+
+
+def test_a_platform_is_never_learned_and_a_rule_matches_the_shop_not_the_text(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    _sms(client, "【某银行】您账户1234于10月6日12:00向微信支付-美团支出137.5元,可用余额900元。", 12, 0)
+    _sms(client, "【某银行】您账户1234于10月6日12:05向美团支付-美团骑行支出0.99元,可用余额899元。", 12, 5)
+    rows = {t["merchant"]: t for t in _tx(client)}
+    big, bike = rows["微信支付-美团"], rows["美团支付-美团骑行"]
+    client.put(f"/transactions/{big['id']}", json={"category_id": cats["人情"]})         # correcting the dinner...
+    rows = {t["merchant"]: t for t in _tx(client)}
+    assert rows["微信支付-美团"]["category_id"] == cats["人情"]
+    assert rows["美团支付-美团骑行"]["category_id"] == bike["category_id"]                  # ...leaves the bike alone
+    assert client.get("/categories").status_code == 200
+    # and no rule was created for a platform: the next Meituan payment is judged on its own
+    _sms(client, "【某银行】您账户1234于10月7日12:00向微信支付-美团支出9元,可用余额800元。", 12, 0, day=7)
+    nxt = [t for t in _tx(client) if t["amount"] == "9.00"][0]
+    assert nxt["category_id"] != cats["人情"] or nxt["needs_review"] is True
+
+
+def test_the_second_report_of_a_shop_gets_the_learned_category_even_when_the_first_had_no_name(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    _sms(client, "【某银行】您账户1234于10月5日12:00向支付宝外部商户-某某专车支出20元,可用余额900元。", 12, 0, day=5)
+    first = _tx(client)[0]
+    client.put(f"/transactions/{first['id']}", json={"category_id": cats["车辆出行"]})
+    # a wallet notification arrives first (no shop name, so a guess), then the bank SMS brings the name
+    client.post("/ingest", json={"source": "alipay", "title": "支付宝", "text": "你有一笔31.83元的支出，点此查看详情。", "posted_at_ms": ms(2026, 10, 6, 21, 17)})
+    _sms(client, "【某银行】您账户1234于10月6日21:17向支付宝外部商户-某某专车支出31.83元,可用余额800元。", 21, 17)
+    row = [t for t in _tx(client) if t["amount"] == "31.83"]
+    assert len(row) == 1 and row[0]["category_id"] == cats["车辆出行"] and row[0]["needs_review"] is False
+
+
+def test_a_family_card_payment_announced_twice_is_one_record(client):
+    t0 = ms(2026, 10, 6, 13, 2)
+    client.post("/ingest", json={"source": "alipay", "title": "你的亲情卡剩余9203.06元", "text": "某某使用你赠送的亲情卡消费14.00元", "posted_at_ms": t0})
+    client.post("/ingest", json={"source": "alipay", "title": "支付宝", "text": "你有一笔14.00元的支出，点此查看详情。", "posted_at_ms": t0 + 1000})
+    _sms(client, "【某银行】您账户1234于10月6日13:02向支付宝外部商户-某某馄饨支出14元,可用余额900元。", 13, 2)
+    rows = [t for t in _tx(client) if t["amount"] == "14.00"]
+    assert len(rows) == 1 and rows[0]["merchant"] == "支付宝外部商户-某某馄饨"
+
+
+def test_chat_messages_are_not_kept(client):
+    from app.database import SessionLocal
+    from app import models
+    client.post("/ingest", json={"source": "wechat", "title": "某人", "text": "今晚吃什么", "posted_at_ms": ms(2026, 10, 6, 13, 2)})
+    with SessionLocal() as db:
+        ev = db.query(models.RawEvent).order_by(models.RawEvent.id.desc()).first()
+        assert ev.status == "ignored" and ev.text == "" and ev.title == ""
+
+
+def test_update_downloads_need_the_secret_link(client, tmp_path, monkeypatch):
+    (tmp_path / "App-1.apk").write_bytes(b"apk")
+    monkeypatch.setenv("LEDGER_UPDATE_DIR", str(tmp_path))
+    monkeypatch.setenv("LEDGER_UPDATE_TOKEN", "s3cret")
+    assert client.get("/update/s3cret/App-1.apk").content == b"apk"
+    assert client.get("/update/wrong/App-1.apk").status_code == 404
+    assert client.get("/update/s3cret/..%2Fetc.apk").status_code == 404
+    monkeypatch.delenv("LEDGER_UPDATE_TOKEN")
+    assert client.get("/update/s3cret/App-1.apk").status_code == 404

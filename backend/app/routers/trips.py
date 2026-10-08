@@ -23,7 +23,7 @@ from app.flights import sync_flight_trips
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 ZERO = Decimal(0)
-TRIP_CATEGORIES = ("车辆出行", "餐饮", "娱乐", "其他支出")        # what a trip pulls in by default
+TRIP_CATEGORIES = ("车辆出行", "餐饮", "娱乐", "住宿", "其他支出")        # what a trip pulls in by default
 # What an employer actually pays back on a business trip: bookings and lodging. Taxis and meals are covered by the
 # allowances (which come back as income), so they stay the user's own spending.
 BOOKING = re.compile(r"机票|航空|南航|东航|春秋|海航|国航|吉祥|携程|飞猪|同程|去哪儿|途牛|12306|铁路|高铁|火车|酒店|宾馆|民宿|客栈|住宿|如家|汉庭|全季|亚朵")

@@ -137,7 +137,7 @@ Bank SMS wording differs between banks. CCB and Bank of Communications are verif
 cd backend
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt pytest httpx      # Windows: .venv/Scripts/pip
-.venv/bin/python -m pytest tests                             # 65 tests
+.venv/bin/python -m pytest tests                             # 71 tests
 ```
 
 **Android**: open `android/` in Android Studio, or `./gradlew assembleDebug`. The default server address is a placeholder; to bake in your own, put this in `android/local.properties` (never committed):
