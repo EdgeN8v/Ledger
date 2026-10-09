@@ -52,9 +52,9 @@ fun CarScreen(state: CarUiState, onLoad: (String) -> Unit) {
         )
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("油 + 保养维修 + 保险", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(money(r.core_total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = ExpenseColor)
-                Text("加上停车、洗车、过路、配件等一共 ${money(r.all_total)}", style = MaterialTheme.typography.bodySmall,
+                Text("养车一共", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(money(r.all_total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = ExpenseColor)
+                Text("其中 油 + 保养维修 + 保险 ${money(r.core_total)}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             }
         }
@@ -93,7 +93,7 @@ fun CarScreen(state: CarUiState, onLoad: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable { open = if (open == b.key) null else b.key }) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(b.label + (if (b.core) "" else "  (还没定算不算)"), fontWeight = FontWeight.Medium)
+                        Text(b.label, fontWeight = FontWeight.Medium)
                         Text("${money(b.total)} · ${b.count}笔")
                     }
                     if (open == b.key) b.items.forEach {

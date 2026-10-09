@@ -16,7 +16,7 @@ from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
 from app.merchants import rule_applies
-from app.flights import MILEAGE, parse_flights, store_flights, sync_flight_trips
+from app.flights import MILEAGE, looks_like_ticket, parse_flights, store_flights, sync_flight_trips
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -195,7 +195,7 @@ def ingest(
     elif mileage:
         status = "ignored"
     elif parsed is None:
-        status = "failed" if looks_financial(f"{title} {text}") else "ignored"
+        status = "failed" if (looks_financial(f"{title} {text}") or looks_like_ticket(text)) else "ignored"
     else:
         when = parsed.occurred_at or posted
         same = (

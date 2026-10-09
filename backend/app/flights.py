@@ -106,6 +106,14 @@ def parse_flights(text: str, posted: datetime) -> list[dict]:
     return [f for f in out if f["flight_no"][:2] in AIRLINES]
 
 
+_AD = re.compile("升级|优惠|立减|满减|领券|红包|促销|折扣|抢购|拒收请回复|退订回|回T")
+
+
+def looks_like_ticket(text: str) -> bool:
+    """A message about an air ticket (issued / booked) - used to keep the ones the parser does not understand yet."""
+    return "航班" in text and bool(re.search(r"机票|出票|乘机人|订单", text)) and not _AD.search(text)
+
+
 def store_flights(db: Session, ledger_id: int, flights: list[dict]) -> int:
     """Keep the flights of the account holder. Returns how many are new."""
     ledger = db.get(models.Ledger, ledger_id)

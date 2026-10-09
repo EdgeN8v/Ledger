@@ -13,11 +13,13 @@ object SmsInboxScanner {
     private const val FILE = "ledger_capture"
     private const val KEY_LAST_ID = "sms_last_id"
     private const val FIRST_RUN_DAYS = 30L
+    private val TICKET_WORDS = Regex("机票|出票|乘机人|订单")
+    private val AD_WORDS = Regex("升级|优惠|立减|满减|领券|红包|促销|折扣|抢购|拒收请回复")
     private val MONEY_WORDS = listOf("支出", "收入", "消费", "转入", "转出", "扣款", "取现", "存入", "入账", "支付", "退款")
 
     /** Money movements and airline ticket messages; everything else (codes, ads) stays on the phone. */
     fun isRelevant(body: String): Boolean {
-        val ticket = body.contains("乘机人") && body.contains("航班") && (body.contains("支付成功") || body.contains("成功预定"))
+        val ticket = body.contains("航班") && TICKET_WORDS.containsMatchIn(body) && !AD_WORDS.containsMatchIn(body)
         return ticket || (body.contains("元") && MONEY_WORDS.any { body.contains(it) })
     }
 

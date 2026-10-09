@@ -900,3 +900,12 @@ def test_a_parking_fixed_item_counts_as_parking_in_the_car_report(client):
     rep = client.get("/analysis/car", params={"range": "year"}).json()
     by = {b["key"]: b for b in rep["buckets"]}
     assert float(by["parking"]["total"]) == 300 and float(by["other"]["total"]) == 0
+
+
+def test_an_unreadable_ticket_message_is_kept_so_a_rule_can_be_written_from_it(client):
+    odd = "【某平台】您的订单已出票成功，国航CA1234航班，10月12日 北京-上海，请按时乘机。"
+    r = _flight_sms(client, odd)
+    assert r["status"] == "failed"
+    assert client.get("/ingest/failed").json()[0]["text"].startswith("【某平台】您的订单已出票成功")
+    ad = _flight_sms(client, "【某航空】升级公务舱优惠，航班CA1234机票立减200元", day=8)
+    assert ad["status"] == "ignored"
