@@ -318,3 +318,16 @@ data class ReportDto(
     val alerts: List<String>,
     val subscriptions: List<String>
 )
+
+data class CareOdometerDto(val km: Int = 0, val as_of: String = "", val per_day: Double = 0.0, val est_km: Int = 0)
+data class CareServiceDto(val id: Int = 0, val item: String = "", val name: String = "", val date: String = "", val km: Int? = null, val cost: String? = null, val note: String? = null)
+data class CareItemDto(
+    val key: String = "", val name: String = "", val interval_km: Int? = null, val interval_months: Int? = null, val note: String? = null,
+    val last: CareServiceDto? = null, val due_km: Int? = null, val due_date: String? = null, val left_km: Int? = null, val left_days: Int? = null,
+    val eta_date: String? = null, val status: String = "unknown"
+)
+data class CareChoiceDto(val key: String = "", val name: String = "")
+data class CarCareDto(
+    val odometer: CareOdometerDto? = null, val items: List<CareItemDto> = emptyList(),
+    val history: List<CareServiceDto> = emptyList(), val choices: List<CareChoiceDto> = emptyList()
+)

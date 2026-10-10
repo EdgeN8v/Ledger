@@ -1069,3 +1069,20 @@ def test_signed_in_users_can_fetch_the_latest_build(client, tmp_path, monkeypatc
     got = client.get("/app-update/latest")
     assert got.status_code == 200 and got.json()["versionCode"] == 11
     assert client.get("/app-update/apk").content == b"apk"
+
+
+def test_car_upkeep_counts_down_from_the_odometer(client):
+    client.post("/carcare/odometer", json={"km": 100000, "on": "2026-01-01"})
+    client.post("/carcare/odometer", json={"km": 103000, "on": "2026-04-11"})        # 100 days -> 30 km/day
+    client.post("/carcare/services", json={"item": "oil", "on": "2026-04-11", "km": 103000, "cost": "480"})
+    client.put("/carcare/items/belt", json={"due_km": 130000})
+    rep = client.get("/carcare").json()
+    assert rep["odometer"]["per_day"] == 30.0
+    by = {i["key"]: i for i in rep["items"]}
+    assert by["oil"]["due_km"] == 111000 and by["oil"]["last"]["cost"] == "480.00"
+    assert by["belt"]["due_km"] == 130000 and by["belt"]["status"] in ("ok", "soon")
+    assert by["spark"]["status"] == "unknown"
+    client.post("/carcare/odometer", json={"km": 112000})
+    assert {i["key"]: i for i in client.get("/carcare").json()["items"]}["oil"]["status"] == "overdue"
+    sid = client.get("/carcare").json()["history"][0]["id"]
+    assert client.delete(f"/carcare/services/{sid}").status_code == 200

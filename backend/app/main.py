@@ -4,7 +4,7 @@ from app.database import Base, SessionLocal, engine
 from app.maintenance import split_car_costs, sweep_wallet_only, ensure_columns, ignore_mileage_notes, fix_keyword_conflicts, normalise_merchant_rules, apply_fixed_items, merge_car_and_transport, backfill_balances, flag_existing_refunds, recategorize_uncategorized, relink_orphan_refunds, sync_default_categories, sync_refund_categories
 from app.config import settings
 from app.reports import start_scheduler
-from app.routers import accounts, analysis, auth, categories, reports, transactions, ingest, plan, trips, updates
+from app.routers import accounts, analysis, auth, categories, reports, transactions, ingest, plan, trips, updates, carcare
 
 if not settings.database_url.startswith("sqlite") and settings.jwt_secret.startswith("change-me"):
     raise RuntimeError("JWT_SECRET must be set to a real random value outside local development")
@@ -38,6 +38,7 @@ app.include_router(plan.router)
 app.include_router(analysis.router)
 app.include_router(reports.router)
 app.include_router(trips.router)
+app.include_router(carcare.router)
 app.include_router(updates.router)
 app.include_router(updates.app_router)
 

@@ -228,3 +228,42 @@ class Flight(Base):
     ordered_on = Column(Date, nullable=False)
     ticket_no = Column(String, nullable=True)
     price = Column(Numeric(12, 2), nullable=True)  # whole order, when the SMS says so
+
+
+class CarItem(Base):
+    """A kind of upkeep (oil, brake fluid...) with how often it is due. Per ledger, so the numbers can be changed."""
+    __tablename__ = "car_items"
+
+    id = Column(Integer, primary_key=True)
+    ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
+    key = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    interval_km = Column(Integer, nullable=True)
+    interval_months = Column(Integer, nullable=True)
+    due_km = Column(Integer, nullable=True)          # used only until the first service is recorded
+    due_date = Column(Date, nullable=True)
+    note = Column(String, nullable=True)
+    sort = Column(Integer, nullable=True)
+
+
+class CarService(Base):
+    """One upkeep or repair that was done."""
+    __tablename__ = "car_services"
+
+    id = Column(Integer, primary_key=True)
+    ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
+    item_key = Column(String, nullable=False)
+    on_date = Column(Date, nullable=False)
+    km = Column(Integer, nullable=True)
+    cost = Column(Numeric(12, 2), nullable=True)
+    note = Column(String, nullable=True)
+
+
+class CarOdometer(Base):
+    """What the dashboard said on a day."""
+    __tablename__ = "car_odometer"
+
+    id = Column(Integer, primary_key=True)
+    ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
+    on_date = Column(Date, nullable=False)
+    km = Column(Integer, nullable=False)

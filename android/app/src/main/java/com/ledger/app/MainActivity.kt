@@ -276,7 +276,7 @@ fun LedgerApp() {
                                             .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                                     ) {
-                                        listOf("总览", "花在哪里", "出行", "用车", "全年").forEachIndexed { i, label ->
+                                        listOf("总览", "花在哪里", "出行", "用车", "保养", "全年").forEachIndexed { i, label ->
                                             androidx.compose.material3.FilterChip(
                                                 selected = statMode == i, onClick = { statMode = i }, label = { Text(label) }
                                             )
@@ -310,6 +310,7 @@ fun LedgerApp() {
                                             onOpenDetail = { detailViewModel.open(it) }
                                         )
                                         3 -> com.ledger.app.ui.CarScreen(carState, carViewModel::load, carViewModel::setBucket)
+                                        4 -> com.ledger.app.ui.CareScreen()
                                         else -> YearInsights(insightsState, insightsViewModel::loadYear)
                                     }
                                 }

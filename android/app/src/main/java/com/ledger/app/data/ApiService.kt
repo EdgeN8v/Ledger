@@ -79,6 +79,18 @@ interface ApiService {
     @PUT("plan")
     suspend fun setPlan(@Body body: PlanInRequest): PlanDto
 
+    @GET("carcare")
+    suspend fun carCare(): CarCareDto
+
+    @POST("carcare/odometer")
+    suspend fun setOdometer(@Body body: Map<String, @JvmSuppressWildcards Any?>)
+
+    @POST("carcare/services")
+    suspend fun addCareService(@Body body: Map<String, @JvmSuppressWildcards Any?>)
+
+    @DELETE("carcare/services/{id}")
+    suspend fun deleteCareService(@Path("id") id: Int)
+
     @GET("analysis/car")
     suspend fun carReport(@Query("range") range: String): CarReportDto
 
