@@ -20,7 +20,8 @@ data class DetailRequest(
     val dateTo: String,
     val expenseOnly: Boolean = true,
     val tripId: Int? = null,
-    val businessOnly: Boolean = false
+    val businessOnly: Boolean = false,
+    val sub: String? = null          // one sub-category of the category; "__none__" = not sorted into one yet
 )
 
 data class DetailUiState(
@@ -28,6 +29,7 @@ data class DetailUiState(
     val sort: String = "time_desc",     // time_desc / time_asc / amount_desc / amount_asc
     val items: List<TransactionDto> = emptyList(),
     val categories: List<CategoryDto> = emptyList(),
+    val subs: List<com.ledger.app.data.SubTotalDto> = emptyList(),
     val loading: Boolean = false,
     val loadingMore: Boolean = false,
     val endReached: Boolean = false,
@@ -56,6 +58,42 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         reload()
+        loadSubs()
+    }
+
+    /** How the category splits into its sub-categories (net of refunds), for the chips on top. */
+    private fun loadSubs() {
+        val r = _state.value.request ?: return
+        val cid = r.categoryId ?: return
+        viewModelScope.launch {
+            try {
+                val got = api().subTotals(cid, r.dateFrom, r.dateTo, !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()))
+                _state.value = _state.value.copy(subs = got)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun setSubFilter(sub: String?) {
+        val r = _state.value.request ?: return
+        if (r.sub == sub) return
+        val next = r.copy(sub = sub)
+        val cached = com.ledger.app.data.DiskCache.get<List<TransactionDto>>(getApplication<Application>(), cacheKey(next, _state.value.sort))
+        _state.value = _state.value.copy(request = next, items = cached ?: emptyList(), endReached = false, loading = cached == null)
+        reload()
+    }
+
+    /** Pick the kind inside the category (clothes, snacks...); the server remembers it for that shop. */
+    fun setSub(id: Int, sub: String?) {
+        viewModelScope.launch {
+            try {
+                api().updateTransaction(id, mapOf("sub" to (sub ?: "")))
+                reload()
+                loadSubs()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "修改失败")
+            }
+        }
     }
 
     fun close() { _state.value = DetailUiState() }
@@ -70,7 +108,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun cacheKey(r: DetailRequest, sort: String) =
-        "detail_" + (listOf(r.categoryId, r.query, r.dateFrom, r.dateTo, r.expenseOnly, r.tripId, r.businessOnly, sort,
+        "detail_" + (listOf(r.categoryId, r.sub, r.query, r.dateFrom, r.dateTo, r.expenseOnly, r.tripId, r.businessOnly, sort,
             com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())).joinToString("|")).hashCode()
 
     fun setSort(sort: String) {
@@ -85,7 +123,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         val s = _state.value
         val r = s.request ?: return emptyList()
         return api().listTransactions(
-            dateFrom = if (r.tripId != null) null else r.dateFrom, dateTo = if (r.tripId != null) null else r.dateTo, categoryId = r.categoryId,
+            dateFrom = if (r.tripId != null) null else r.dateFrom, dateTo = if (r.tripId != null) null else r.dateTo, categoryId = r.categoryId, sub = r.sub,
             txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId, businessOnly = r.businessOnly,
             excludeBusiness = r.tripId == null && !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()),
             sort = s.sort, limit = limit, offset = offset
@@ -124,6 +162,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 api().updateTransaction(id, mapOf("category_id" to categoryId, "needs_review" to false))
                 reload()
+                loadSubs()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "修改失败")
             }

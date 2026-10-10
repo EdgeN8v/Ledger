@@ -328,10 +328,10 @@ def test_long_press_category_change_fixes_the_whole_merchant(client):
     for h in (10, 11, 12):
         r = _sms(client, f"【建设银行】您账户1234于10月6日{h}:00向支付宝外部商户-金源泉信息技术支出11元,可用余额900元。", h, 0)
         ids.append(r["transaction"]["id"])
-    client.put(f"/transactions/{ids[0]}", json={"category_id": cats["车辆出行"]})
+    client.put(f"/transactions/{ids[0]}", json={"category_id": cats["交通/酒店"]})
     for i in ids:
         t = [x for x in client.get("/transactions").json() if x["id"] == i][0]
-        assert t["category_id"] == cats["车辆出行"] and t["needs_review"] is False
+        assert t["category_id"] == cats["交通/酒店"] and t["needs_review"] is False
 
 
 def test_refund_inherits_the_category_of_its_purchase(client):
@@ -438,7 +438,7 @@ def test_fixed_items_file_payments_and_reserve_budget(client):
 
 def test_car_and_transport_are_one_category(client):
     names = [c["name"] for c in client.get("/categories").json()]
-    assert "车辆出行" in names and "交通" not in names and "车辆" not in names and "家人" in names
+    assert "交通/酒店" in names and "交通" not in names and "车辆" not in names and "家人" in names
 
 
 def test_trip_is_counted_but_not_extrapolated(client):
@@ -489,18 +489,18 @@ def test_dismissed_trip_suggestion_is_not_offered_again(client):
 def test_a_learned_shop_is_recognised_through_any_payment_channel(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     first = _sms(client, "【建设银行】您账户1234于9月27日12:00向支付宝外部商户-某贸易有限公司支出9元,可用余额900元。", 12, 0, day=27)["transaction"]
-    client.put(f"/transactions/{first['id']}", json={"category_id": cats["车辆出行"]})
+    client.put(f"/transactions/{first['id']}", json={"category_id": cats["交通/酒店"]})
     later = _sms(client, "【建设银行】您账户1234于10月5日15:20向微信支付-某贸易有限公司支出6元,可用余额890元。", 15, 20, day=5)["transaction"]
-    assert later["category_id"] == cats["车辆出行"] and later["needs_review"] is False
+    assert later["category_id"] == cats["交通/酒店"] and later["needs_review"] is False
     again = _sms(client, "【建设银行】您账户1234于10月6日15:20向支付宝-某贸易有限公司支出5元,可用余额880元。", 15, 20, day=6)["transaction"]
-    assert again["category_id"] == cats["车辆出行"]
+    assert again["category_id"] == cats["交通/酒店"]
 
 
 def test_travel_agency_and_airline_purchases_are_travel_not_entertainment(client):
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     for shop in ("支付宝外部商户-携程旅行网", "支付宝-中国东方航空股份有限公司", "支付宝-中国南方航空", "支付宝-春秋航空"):
         r = _sms(client, f"【某银行】您账户1234于10月7日11:26向{shop}支出748.95元,可用余额900元。", 11, 26, day=7)
-        assert cats[r["transaction"]["category_id"]] == "车辆出行", shop
+        assert cats[r["transaction"]["category_id"]] == "交通/酒店", shop
 
 
 def test_business_trip_is_receivable_not_spending_until_paid_back(client):
@@ -578,7 +578,7 @@ def test_manual_tag_and_the_two_views_of_business_spending(client):
     assert float(b["total_expense"]) == 30.0 - 620.0           # 30 meal + 748.95 advance - 1368.95 paid back
     biz = [c for c in b["by_category"] if c["category_name"] == "出差垫付"]
     assert biz and float(biz[0]["total"]) == 748.95 - 1368.95            # its own line, net of the money paid back
-    assert not any(c["category_name"] == "车辆出行" for c in b["by_category"])   # not mixed into the road category
+    assert not any(c["category_name"] == "交通/酒店" for c in b["by_category"])   # not mixed into the road category
     x = client.get("/analysis/cycle", params={"year": 2026, "month": 9, "include_business": True}).json()
     assert float(x["total_expense"]) == 30.0 - 620.0
     assert [t["merchant"] for t in client.get("/transactions", params={"business_only": True, "tx_type": "expense"}).json()] == ["支付宝外部商户-携程旅行网"]
@@ -818,7 +818,7 @@ def test_hotels_are_lodging_and_noodle_wraps_are_food(client):
     _sms(client, "【某银行】您账户1234于10月6日13:00向微信支付-某某驴肉火烧支出20元,可用余额880元。", 13, 0)
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     got = {t["merchant"]: cats[t["category_id"]] for t in _tx(client)}
-    assert got["支付宝外部商户-某某酒店管理有限公司"] == "住宿" and got["微信支付-某某驴肉火烧"] == "餐饮"
+    assert got["支付宝外部商户-某某酒店管理有限公司"] == "交通/酒店" and got["微信支付-某某驴肉火烧"] == "餐饮"
 
 
 def test_a_platform_is_never_learned_and_a_rule_matches_the_shop_not_the_text(client):
@@ -842,12 +842,12 @@ def test_the_second_report_of_a_shop_gets_the_learned_category_even_when_the_fir
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     _sms(client, "【某银行】您账户1234于10月5日12:00向支付宝外部商户-某某专车支出20元,可用余额900元。", 12, 0, day=5)
     first = _tx(client)[0]
-    client.put(f"/transactions/{first['id']}", json={"category_id": cats["车辆出行"]})
+    client.put(f"/transactions/{first['id']}", json={"category_id": cats["交通/酒店"]})
     # a wallet notification arrives first (no shop name, so a guess), then the bank SMS brings the name
     client.post("/ingest", json={"source": "alipay", "title": "支付宝", "text": "你有一笔31.83元的支出，点此查看详情。", "posted_at_ms": ms(2026, 10, 6, 21, 17)})
     _sms(client, "【某银行】您账户1234于10月6日21:17向支付宝外部商户-某某专车支出31.83元,可用余额800元。", 21, 17)
     row = [t for t in _tx(client) if t["amount"] == "31.83"]
-    assert len(row) == 1 and row[0]["category_id"] == cats["车辆出行"] and row[0]["needs_review"] is False
+    assert len(row) == 1 and row[0]["category_id"] == cats["交通/酒店"] and row[0]["needs_review"] is False
 
 
 def test_a_family_card_payment_announced_twice_is_one_record(client):
@@ -881,13 +881,13 @@ def test_update_downloads_need_the_secret_link(client, tmp_path, monkeypatch):
 
 def test_my_car_category_and_its_report(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
-    assert "我的车" in cats and "车辆出行" in cats
+    assert "我的车" in cats and "交通/酒店" in cats
     _sms(client, "【某银行】您账户1234于10月5日12:00向微信支付-中国石化某某加油站支出300元,可用余额900元。", 12, 0, day=5)
     _sms(client, "【某银行】您账户1234于10月6日12:00向微信支付-某某汽修保养支出500元,可用余额400元。", 12, 0, day=6)
     _sms(client, "【某银行】您账户1234于10月6日13:00向支付宝外部商户-高德打车支出30元,可用余额370元。", 13, 0, day=6)
     got = {t["merchant"]: t["category_id"] for t in client.get("/transactions", params={"limit": 50}).json()}
     assert got["微信支付-中国石化某某加油站"] == cats["我的车"] and got["微信支付-某某汽修保养"] == cats["我的车"]
-    assert got["支付宝外部商户-高德打车"] == cats["车辆出行"]
+    assert got["支付宝外部商户-高德打车"] == cats["交通/酒店"]
     rep = client.get("/analysis/car", params={"range": "year"}).json()
     by = {b["key"]: b for b in rep["buckets"]}
     assert float(by["fuel"]["total"]) == 300 and float(by["repair"]["total"]) == 500 and float(rep["core_total"]) == 800
@@ -922,10 +922,10 @@ def test_a_travel_site_ticket_message_marks_the_way_back_as_booked_without_inven
     t = client.get("/trips").json()[0]
     assert t["open_end"] is True and t["return_booked"] == "2026-10-09" and float(t["allowance_total"]) == 0
     # the user fills in the day he is back: the hint goes away and the allowance is counted
-    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-10-11", "kind": "business",
+    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-10-13", "kind": "business",
                                           "daily_allowance": 180, "commute_allowance": 80})
     t = client.get("/trips").json()[0]
-    assert t["return_booked"] is None and t["open_end"] is False and float(t["allowance_total"]) == 80 + 180 * 4
+    assert t["return_booked"] is None and t["open_end"] is False and float(t["allowance_total"]) == 80 + 180 * 6
     # a ticket that is not a way home changes nothing
     other = _flight_sms(client, "【携程】订单尾号1，上海-北京，机票出票成功，出行必读", day=9, h=11)
     assert other["status"] == "flight"
@@ -1086,3 +1086,32 @@ def test_car_upkeep_counts_down_from_the_odometer(client):
     assert {i["key"]: i for i in client.get("/carcare").json()["items"]}["oil"]["status"] == "overdue"
     sid = client.get("/carcare").json()["history"][0]["id"]
     assert client.delete(f"/carcare/services/{sid}").status_code == 200
+
+
+def test_sub_categories_are_guessed_learned_and_snacks_leave_shopping(client):
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    assert "住宿" not in cats and "日用" not in cats and cats["餐饮"]["subs"] == ["饭店", "外卖", "食材", "零食"]
+    assert cats["交通/酒店"]["subs"] == ["交通", "酒店"]
+    cid = {n: c["id"] for n, c in cats.items()}
+
+    def pay(shop, h, note=None):
+        r = _sms(client, f"【建设银行】您账户1234于10月6日{h}:00向{shop}支出30元,可用余额900元。", h, 0)
+        return client.get("/transactions", params={"limit": 50}).json()[0] if r else None
+
+    snack = pay("京东支付-京东商城-三只松鼠旗舰店", 10)
+    assert cats["餐饮"]["id"] == snack["category_id"] and snack["sub"] == "零食"            # food bought on a shopping platform
+    hotel = pay("微信支付-全季酒店", 11)
+    assert hotel["category_id"] == cid["交通/酒店"] and hotel["sub"] == "酒店"
+    rest = pay("微信支付-老乡鸡", 12)
+    assert rest["category_id"] == cid["餐饮"] and rest["sub"] == "饭店"
+    shirt = pay("支付宝-淘宝-某某服饰旗舰店", 13)
+    assert shirt["category_id"] == cid["购物"] and shirt["sub"] == "服装"
+    unknown = pay("支付宝-淘宝-某某贸易有限公司", 14)
+    assert unknown["category_id"] == cid["购物"] and unknown["sub"] is None
+    # the user decides what that shop is: remembered for its next payment
+    assert client.put(f"/transactions/{unknown['id']}", json={"sub": "日用品"}).json()["sub"] == "日用品"
+    again = pay("支付宝-淘宝-某某贸易有限公司", 15)
+    assert again["sub"] == "日用品"
+    assert client.put(f"/transactions/{again['id']}", json={"sub": "饭店"}).status_code == 400          # not a shopping sub
+    got = client.get("/transactions/subs", params={"category_id": cid["购物"]}).json()
+    assert {g["sub"] for g in got} >= {"服装", "日用品"}

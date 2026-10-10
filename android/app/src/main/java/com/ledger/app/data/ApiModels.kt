@@ -38,8 +38,11 @@ data class CategoryDto(
     val tx_type: String,
     val keywords: String?,
     val sort_order: Int? = null,
-    val recent_total: String? = null
+    val recent_total: String? = null,
+    val subs: List<String>? = null
 )
+
+data class SubTotalDto(val sub: String? = null, val total: String = "0", val count: Int = 0)
 
 data class CategoryOrderRequest(val tx_type: String, val ids: List<Int>)
 
@@ -100,6 +103,7 @@ data class TransactionDto(
     val trip_name: String? = null,
     val is_transfer: Boolean = false,
     val family_card: Boolean = false,
+    val sub: String? = null,
     val source: String,
     val raw_text: String?,
     val needs_review: Boolean,

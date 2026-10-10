@@ -46,7 +46,9 @@ fun DetailScreen(
     onBack: () -> Unit,
     onSort: (String) -> Unit,
     onLoadMore: () -> Unit,
-    onSetCategory: (txId: Int, categoryId: Int) -> Unit
+    onSetCategory: (txId: Int, categoryId: Int) -> Unit,
+    onSetSub: (txId: Int, sub: String?) -> Unit = { _, _ -> },
+    onSubFilter: (String?) -> Unit = {}
 ) {
     val req = state.request ?: return
     val listState = rememberLazyListState()
@@ -78,6 +80,18 @@ fun DetailScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             SORTS.forEach { (k, label) -> FilterChip(selected = state.sort == k, onClick = { onSort(k) }, label = { Text(label) }) }
+        }
+        if (state.subs.isNotEmpty()) {
+            val allTotal = state.subs.sumOf { it.total.toDoubleOrNull() ?: 0.0 }
+            FlowRow(modifier = Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = req.sub == null, onClick = { onSubFilter(null) },
+                    label = { Text("全部 ¥" + String.format(java.util.Locale.CHINA, "%,.0f", allTotal)) })
+                state.subs.forEach { s ->
+                    val key = s.sub ?: "__none__"
+                    FilterChip(selected = req.sub == key, onClick = { onSubFilter(key) },
+                        label = { Text((s.sub ?: "未细分") + " ¥" + String.format(java.util.Locale.CHINA, "%,.0f", s.total.toDoubleOrNull() ?: 0.0) + " · ${s.count}笔") })
+                }
+            }
         }
         Box(modifier = Modifier.fillMaxSize()) {
             if (state.loading) {
@@ -115,7 +129,8 @@ fun DetailScreen(
     pickFor?.let { tx ->
         CategoryPickerDialog(
             tx = tx, categories = state.categories, onDismiss = { pickFor = null },
-            onPick = { c -> pickFor = null; onSetCategory(tx.id, c) }
+            onPick = { c -> pickFor = null; onSetCategory(tx.id, c) },
+            onPickSub = { s -> pickFor = null; onSetSub(tx.id, s) }
         )
     }
 }

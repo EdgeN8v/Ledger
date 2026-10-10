@@ -7,6 +7,7 @@ from app.clock import now_local
 
 from app import models
 from app.default_categories import DEFAULT_CATEGORIES
+from app.default_categories import TRAVEL_NAME
 
 CAR_KEYWORDS_NOW = next(k for n, _i, _t, k in DEFAULT_CATEGORIES if n == "我的车")
 from app.parsers import parse_message
@@ -43,7 +44,8 @@ def ensure_columns(db: Session) -> None:
     wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL"), ("return_booked_on", "VARCHAR")],
               "ledgers": [("home_city", "VARCHAR")],
               "categories": [("sort_order", "INTEGER")],
-              "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("family_card", "BOOLEAN DEFAULT FALSE NOT NULL"), ("car_bucket", "VARCHAR")]}
+              "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("family_card", "BOOLEAN DEFAULT FALSE NOT NULL"), ("car_bucket", "VARCHAR"), ("sub", "VARCHAR")],
+              "merchant_rules": [("sub", "VARCHAR")]}
     insp = inspect(db.get_bind())
     for table, cols in wanted.items():
         have = {c["name"] for c in insp.get_columns(table)}
@@ -163,7 +165,7 @@ def split_car_costs(db: Session) -> None:
     import json as _json
     for ledger in db.query(models.Ledger).all():
         cats = {c.name: c for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id)}
-        travel = cats.get("车辆出行")
+        travel = cats.get(TRAVEL_NAME)
         if travel is None or "我的车" in cats:
             continue
         mine = models.Category(ledger_id=ledger.id, name="我的车", icon="🚘", tx_type=models.TxType.expense, keywords="")
@@ -181,7 +183,7 @@ def split_car_costs(db: Session) -> None:
                 r.category_id = mine.id
         items = load(ledger)
         for it in items:
-            if it.get("category") == "车辆出行" and CAR_COST.search(it.get("name", "")):
+            if it.get("category") == TRAVEL_NAME and CAR_COST.search(it.get("name", "")):
                 it["category"] = "我的车"
         if items:
             ledger.fixed_items = _json.dumps(items, ensure_ascii=False)
@@ -193,7 +195,7 @@ def merge_car_and_transport(db: Session) -> None:
     '交通' into '车辆', rename it, and remove the emptied category."""
     for ledger in db.query(models.Ledger).all():
         by_name = {c.name: c for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id)}
-        car, trans = by_name.get("车辆") or by_name.get("车辆出行"), by_name.get("交通")
+        car, trans = by_name.get("车辆") or by_name.get(TRAVEL_NAME), by_name.get("交通")
         if car is None:
             continue
         if trans is not None and trans.id != car.id:
@@ -203,7 +205,7 @@ def merge_car_and_transport(db: Session) -> None:
             db.query(models.MerchantRule).filter(models.MerchantRule.category_id == trans.id).update({"category_id": car.id})
             db.flush()
             db.delete(trans)
-        car.name = "车辆出行"
+        car.name = TRAVEL_NAME
         car.icon = "🚗"
     db.commit()
 
@@ -255,7 +257,7 @@ def fix_keyword_conflicts(db: Session) -> None:
     # the car's own costs moved to their own category: they must not also sit in the travel keyword list
     car_words = {k.strip() for k in CAR_KEYWORDS_NOW.split(",")} - {"高德打车", "租车", "代驾"}
     for ledger in db.query(models.Ledger).all():
-        trv = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "车辆出行").first()
+        trv = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == TRAVEL_NAME).first()
         mine = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "我的车").first()
         if trv and trv.keywords and mine:
             trv.keywords = ",".join(k for k in trv.keywords.split(",") if k.strip() and k.strip() not in car_words and k.strip() not in {"充电宝", "电动车", "蔚来", "小鹏", "理想", "特斯拉", "汽车", "车辆"})
@@ -273,4 +275,40 @@ def fix_keyword_conflicts(db: Session) -> None:
         shop = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "购物").first()
         if shop and shop.keywords:
             shop.keywords = ",".join(k for k in shop.keywords.split(",") if k.strip() and k.strip() != "盒马")
+    db.commit()
+
+
+def restructure_categories(db: Session) -> None:
+    """One-off, safe to repeat: travel is now "交通/酒店" and takes over lodging; daily goods are part of shopping."""
+    import json as _json
+    from app.fixed import load
+    old_travel = "车辆出行"
+    for ledger in db.query(models.Ledger).all():
+        cats = {c.name: c for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id)}
+
+        def merge(src, dst, sub):
+            have = [k.strip() for k in (dst.keywords or "").split(",") if k.strip()]
+            dst.keywords = ",".join(have + [k.strip() for k in (src.keywords or "").split(",") if k.strip() and k.strip() not in have])
+            db.query(models.Transaction).filter(models.Transaction.category_id == src.id).update({"category_id": dst.id, "sub": sub})
+            db.query(models.MerchantRule).filter(models.MerchantRule.category_id == src.id).update({"category_id": dst.id, "sub": sub})
+            db.flush()
+            db.delete(src)
+
+        travel = cats.get(TRAVEL_NAME) or cats.get(old_travel)
+        if travel is not None and travel.name != TRAVEL_NAME:
+            travel.name, travel.icon = TRAVEL_NAME, "\U0001f9f3"
+        if cats.get("住宿") is not None:
+            if travel is None:
+                cats["住宿"].name, cats["住宿"].icon = TRAVEL_NAME, "\U0001f9f3"
+            else:
+                merge(cats["住宿"], travel, "酒店")
+        shop = cats.get("购物")
+        if cats.get("日用") is not None and shop is not None:
+            merge(cats["日用"], shop, "日用品")
+        items = load(ledger)
+        moved = {old_travel: TRAVEL_NAME, "住宿": TRAVEL_NAME, "日用": "购物"}
+        if any(it.get("category") in moved for it in items):
+            for it in items:
+                it["category"] = moved.get(it.get("category"), it.get("category"))
+            ledger.fixed_items = _json.dumps(items, ensure_ascii=False)
     db.commit()

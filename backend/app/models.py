@@ -80,6 +80,11 @@ class Category(Base):
 
     ledger = relationship("Ledger", back_populates="categories")
 
+    @property
+    def subs(self):
+        from app.subcats import SUBS
+        return SUBS.get(self.name, [])
+
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -104,6 +109,7 @@ class Transaction(Base):
     is_transfer = Column(Boolean, default=False)   # money moved between the user's own accounts: not income/expense
     category_locked = Column(Boolean, nullable=False, default=False)   # the user chose the category: nothing re-files it
     car_bucket = Column(String, nullable=True)                         # the user's own choice of car-cost kind (fuel, repair...)
+    sub = Column(String, nullable=True)                                # the kind inside the category (snacks, clothes, hotel...)
     family_card = Column(Boolean, nullable=False, default=False)       # paid by someone else with the user's card (the family card)
 
     source = Column(Enum(TxSource), nullable=False, default=TxSource.manual)
@@ -146,6 +152,7 @@ class MerchantRule(Base):
     ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
     pattern = Column(String, nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    sub = Column(String, nullable=True)
 
     __table_args__ = (Index("ix_merchant_rules_ledger_pattern", "ledger_id", "pattern", unique=True),)
 

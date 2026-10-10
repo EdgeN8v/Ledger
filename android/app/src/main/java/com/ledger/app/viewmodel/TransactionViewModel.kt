@@ -206,6 +206,18 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /** The kind inside the category (clothes, snacks, hotel...). */
+    fun setSub(id: Int, sub: String?) {
+        viewModelScope.launch {
+            try {
+                api().updateTransaction(id, mapOf("sub" to (sub ?: "")))
+                reloadLoaded()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "修改失败")
+            }
+        }
+    }
+
     /** tripId = null takes the purchase out of its trip. */
     fun setBusinessTrip(tx: TransactionDto, tripId: Int?) {
         viewModelScope.launch {

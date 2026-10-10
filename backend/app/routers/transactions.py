@@ -14,6 +14,7 @@ from app.merchants import UNNAMED_DEDUCTION, is_generic, is_unnamed_deduction, s
 from app.refunds import refunded_amount
 from app.stats import cycle_bounds, period_data
 from app.parsing import parse_transaction, ParseError
+from app import subcats
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -70,6 +71,7 @@ def list_transactions(
     date_from: Optional[str] = None,       # YYYY-MM-DD, inclusive
     date_to: Optional[str] = None,         # YYYY-MM-DD, inclusive
     category_id: Optional[int] = None,
+    sub: Optional[str] = None,             # one sub-category; '__none__' = not yet sorted into one
     tx_type: Optional[str] = None,         # expense / income
     kind: Optional[str] = None,            # transfer = only transfers, normal = hide transfers
     q: Optional[str] = None,               # substring of merchant / note / message text
@@ -96,6 +98,8 @@ def list_transactions(
         query = query.filter(T.occurred_at < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
     if category_id:
         query = query.filter(T.category_id == category_id)
+    if sub:
+        query = query.filter(T.sub.is_(None) if sub == "__none__" else T.sub == sub)
     if tx_type in ("expense", "income"):
         query = query.filter(T.tx_type == models.TxType(tx_type))
     if kind == "transfer":
@@ -191,9 +195,71 @@ def update_transaction(
             other.category_id = changes["category_id"]
             other.needs_review = False
 
+    cat = db.get(models.Category, tx.category_id) if tx.category_id else None
+    cat_name = cat.name if cat else None
+    rules = subcats.rules_of(db, user.ledger_id)
+    if "sub" in changes:
+        wanted = (changes["sub"] or None)
+        if wanted is not None and wanted not in subcats.SUBS.get(cat_name, []):
+            raise HTTPException(400, "this sub-category does not belong to the category")
+        tx.sub = wanted
+        core = shop_core(tx.merchant)
+        if wanted and not is_generic(core):
+            # the user said what kind this shop is: remember it, and file the shop's other payments the same way
+            rule = db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.pattern == core).first()
+            if rule:
+                rule.sub = wanted
+            else:
+                db.add(models.MerchantRule(ledger_id=user.ledger_id, pattern=core, category_id=tx.category_id, sub=wanted))
+            for other in (db.query(models.Transaction)
+                          .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.merchant.contains(core),
+                                  models.Transaction.id != tx.id, models.Transaction.category_id == tx.category_id,
+                                  models.Transaction.tx_type == tx.tx_type).all()):
+                if shop_core(other.merchant) == core:
+                    other.sub = wanted
+    elif changes.get("category_id"):
+        tx.sub = subcats.guess(cat_name, tx.merchant, tx.note, rules) if tx.tx_type == models.TxType.expense else None
+        for other in db.query(models.Transaction).filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.id != tx.id,
+                                                         models.Transaction.category_id == tx.category_id, models.Transaction.sub.is_(None)).all():
+            other.sub = subcats.guess(cat_name, other.merchant, other.note, rules) if other.tx_type == models.TxType.expense else None
+
     db.commit()
     db.refresh(tx)
     return tx
+
+
+@router.get("/subs")
+def sub_totals(
+    category_id: int,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    exclude_business: bool = False,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """How a category's spending splits into its sub-categories, net of refunds (same range filters as the list)."""
+    from app.stats import refunded_map
+    T = models.Transaction
+    q = db.query(T).filter(T.ledger_id == user.ledger_id, T.category_id == category_id, T.tx_type == models.TxType.expense,
+                           T.is_transfer.is_(False), T.refund_of_id.is_(None))
+    if date_from:
+        q = q.filter(T.occurred_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        q = q.filter(T.occurred_at < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
+    if exclude_business:
+        biz = [x.id for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business")]
+        if biz:
+            q = q.filter(T.trip_id.is_(None) | ~T.trip_id.in_(biz) | (T.is_reimbursement.is_(True)))
+    refunds = refunded_map(db, user.ledger_id)
+    totals: dict = {}
+    for t in q.all():
+        net = Decimal(t.amount) - refunds.get(t.id, Decimal(0))
+        if net <= 0:
+            continue
+        cur = totals.setdefault(t.sub, [Decimal(0), 0])
+        cur[0] += net
+        cur[1] += 1
+    return [{"sub": k, "total": str(v[0]), "count": v[1]} for k, v in sorted(totals.items(), key=lambda kv: -kv[1][0])]
 
 
 @router.delete("/{tx_id}", status_code=status.HTTP_204_NO_CONTENT)

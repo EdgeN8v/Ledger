@@ -98,6 +98,7 @@ fun TransactionListScreen(
     onLoadMore: () -> Unit,
     onFilterChange: (TxFilter) -> Unit,
     onSetCategory: (txId: Int, categoryId: Int) -> Unit,
+    onSetSub: (txId: Int, sub: String?) -> Unit = { _, _ -> },
     onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
     onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
@@ -241,6 +242,7 @@ fun TransactionListScreen(
             categories = state.categories,
             onDismiss = { pickFor = null },
             onPick = { catId -> pickFor = null; onSetCategory(tx.id, catId) },
+            onPickSub = { s -> pickFor = null; onSetSub(tx.id, s) },
             trips = state.businessTrips,
             onTrip = { tripId -> pickFor = null; onSetTrip(tx, tripId) },
             onNewTrip = { pickFor = null; newTripFor = tx }
@@ -462,6 +464,7 @@ internal fun CategoryPickerDialog(
     categories: List<CategoryDto>,
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
+    onPickSub: (String?) -> Unit = {},
     trips: List<com.ledger.app.data.TripDto> = emptyList(),
     onTrip: (Int?) -> Unit = {},
     onNewTrip: (() -> Unit)? = null
@@ -499,6 +502,18 @@ internal fun CategoryPickerDialog(
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
                 CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, if (tx.trip_id == null) tx.category_id else null, tx.tx_type, onPick)
+                val subs = categories.find { it.id == tx.category_id }?.subs.orEmpty()
+                if (subs.isNotEmpty() && tx.tx_type == "expense") {
+                    Text(
+                        "「${categories.find { it.id == tx.category_id }?.name}」里是哪一种? 这家店以后自动按这个分",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        subs.forEach { s -> FilterChip(selected = tx.sub == s, onClick = { onPickSub(s) }, label = { Text(s) }) }
+                        if (tx.sub != null) FilterChip(selected = false, onClick = { onPickSub(null) }, label = { Text("不细分") })
+                    }
+                }
             }
         },
         confirmButton = {},
@@ -551,7 +566,7 @@ internal fun TransactionRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         (if (tx.family_card) "👛亲情卡 · " else "") +
-                            (if (biz) "出差垫付 · ${tx.trip_name ?: ""}" else if (tx.is_reimbursement) "出差报销" else if (tx.is_transfer) "转账" else (category?.name ?: "未分类")) + " · " + time +
+                            (if (biz) "出差垫付 · ${tx.trip_name ?: ""}" else if (tx.is_reimbursement) "出差报销" else if (tx.is_transfer) "转账" else (category?.name ?: "未分类") + (tx.sub?.let { "·$it" } ?: "")) + " · " + time +
                             (if (!tx.note.isNullOrBlank() && tx.note != tx.merchant && !tx.is_transfer) (if (fullText) "\n" else " · ") + tx.note else "") +
                             (if (fullText && !tx.account_hint.isNullOrBlank()) "\n付款: " + tx.account_hint else ""),
                         style = MaterialTheme.typography.bodySmall,

@@ -129,6 +129,7 @@ interface ApiService {
         @Query("date_from") dateFrom: String? = null,
         @Query("date_to") dateTo: String? = null,
         @Query("category_id") categoryId: Int? = null,
+        @Query("sub") sub: String? = null,
         @Query("tx_type") txType: String? = null,
         @Query("kind") kind: String? = null,
         @Query("q") q: String? = null,
@@ -140,6 +141,14 @@ interface ApiService {
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0
     ): List<TransactionDto>
+
+    @GET("transactions/subs")
+    suspend fun subTotals(
+        @Query("category_id") categoryId: Int,
+        @Query("date_from") dateFrom: String? = null,
+        @Query("date_to") dateTo: String? = null,
+        @Query("exclude_business") excludeBusiness: Boolean = false
+    ): List<SubTotalDto>
 
     @PUT("transactions/{id}")
     suspend fun updateTransaction(@Path("id") id: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): TransactionDto

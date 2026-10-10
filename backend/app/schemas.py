@@ -58,6 +58,7 @@ class CategoryOut(BaseModel):
     keywords: Optional[str]
     sort_order: Optional[int] = None
     recent_total: Decimal = Decimal(0)     # spent (or earned) in the last 90 days: the default order
+    subs: list[str] = []
 
     class Config:
         from_attributes = True
@@ -80,6 +81,7 @@ class TransactionUpdate(BaseModel):
     occurred_at: Optional[datetime] = None
     needs_review: Optional[bool] = None
     car_bucket: Optional[str] = None
+    sub: Optional[str] = None
 
 
 class TransactionOut(BaseModel):
@@ -103,6 +105,7 @@ class TransactionOut(BaseModel):
     is_transfer: bool = False
     family_card: bool = False
     car_bucket: Optional[str] = None
+    sub: Optional[str] = None
     source: TxSource
     raw_text: Optional[str]
     needs_review: bool
