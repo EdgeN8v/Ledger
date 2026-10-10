@@ -39,6 +39,7 @@ app.include_router(analysis.router)
 app.include_router(reports.router)
 app.include_router(trips.router)
 app.include_router(updates.router)
+app.include_router(updates.app_router)
 
 if settings.scheduler_enabled:
     start_scheduler()

@@ -103,6 +103,8 @@ fun SettingsScreen(
             }
         }
 
+        UpdateCard()
+
         CaptureCard()
 
         AppearanceCard()

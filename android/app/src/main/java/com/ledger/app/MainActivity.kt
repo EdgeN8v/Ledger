@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             LedgerTheme {
                 LedgerApp()
+                com.ledger.app.ui.UpdateCheckOnStart()
             }
         }
     }

@@ -34,6 +34,8 @@ object ApiClient {
         return lanUp
     }
 
+    fun http(context: Context): OkHttpClient = client(context.applicationContext)
+
     private fun client(context: Context): OkHttpClient = shared ?: synchronized(this) {
         shared ?: OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)

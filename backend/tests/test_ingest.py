@@ -1060,3 +1060,12 @@ def test_a_fixed_item_matches_its_payee_and_a_nameless_payment_is_not_guessed_as
     rows = client.get("/transactions", params={"limit": 20}).json()
     by = {t["merchant"]: cats[t["category_id"]] for t in rows}
     assert by["微信"] == "家人" and by["微信支付-某某汽修"] == "我的车"
+
+
+def test_signed_in_users_can_fetch_the_latest_build(client, tmp_path, monkeypatch):
+    (tmp_path / "Ledger-v1.apk").write_bytes(b"apk")
+    (tmp_path / "version.json").write_text('{"versionCode": 11, "versionName": "1.0", "apk": "Ledger-v1.apk", "notes": ["x"]}', encoding="utf-8")
+    monkeypatch.setenv("LEDGER_UPDATE_DIR", str(tmp_path))
+    got = client.get("/app-update/latest")
+    assert got.status_code == 200 and got.json()["versionCode"] == 11
+    assert client.get("/app-update/apk").content == b"apk"
