@@ -1,12 +1,40 @@
 """Startup upkeep that keeps existing ledgers in step with code changes."""
 import re
+from typing import Optional
 from sqlalchemy.orm import Session
+
+from app.clock import now_local
 
 from app import models
 from app.default_categories import DEFAULT_CATEGORIES
 
 CAR_KEYWORDS_NOW = next(k for n, _i, _t, k in DEFAULT_CATEGORIES if n == "我的车")
 from app.parsers import parse_message
+
+
+WALLET_ONLY_NOTE = "没对上银行短信(多半是微信零钱付的),不计入"
+
+
+def sweep_wallet_only(db: Session, ledger_id: Optional[int] = None) -> int:
+    """The bank SMS is the record of truth. A WeChat / Alipay notice that no bank SMS joined within half an hour was paid
+    from the wallet balance (or a card that sends no SMS): it is set aside, not counted, and says why. If the SMS turns
+    up later the two merge and the record counts again."""
+    from datetime import timedelta
+    q = db.query(models.Transaction).filter(models.Transaction.source == models.TxSource.notification,
+                                           models.Transaction.is_transfer.is_(False), models.Transaction.refund_of_id.is_(None),
+                                           models.Transaction.category_locked.is_(False),
+                                           models.Transaction.created_at < now_local() - timedelta(minutes=30))        # judged by when the server heard of it
+    if ledger_id:
+        q = q.filter(models.Transaction.ledger_id == ledger_id)
+    n = 0
+    for t in q.all():
+        if "," in (t.sources or ""):
+            continue                                        # a bank source is among them
+        t.is_transfer, t.needs_review, t.note = True, False, WALLET_ONLY_NOTE
+        n += 1
+    if n:
+        db.commit()
+    return n
 
 
 def ensure_columns(db: Session) -> None:

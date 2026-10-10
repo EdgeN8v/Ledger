@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.database import Base, SessionLocal, engine
-from app.maintenance import split_car_costs, ensure_columns, ignore_mileage_notes, fix_keyword_conflicts, normalise_merchant_rules, apply_fixed_items, merge_car_and_transport, backfill_balances, flag_existing_refunds, recategorize_uncategorized, relink_orphan_refunds, sync_default_categories, sync_refund_categories
+from app.maintenance import split_car_costs, sweep_wallet_only, ensure_columns, ignore_mileage_notes, fix_keyword_conflicts, normalise_merchant_rules, apply_fixed_items, merge_car_and_transport, backfill_balances, flag_existing_refunds, recategorize_uncategorized, relink_orphan_refunds, sync_default_categories, sync_refund_categories
 from app.config import settings
 from app.reports import start_scheduler
 from app.routers import accounts, analysis, auth, categories, reports, transactions, ingest, plan, trips, updates
@@ -13,6 +13,7 @@ Base.metadata.create_all(bind=engine)
 
 with SessionLocal() as _db:
     ensure_columns(_db)
+    sweep_wallet_only(_db)
     ignore_mileage_notes(_db)
     flag_existing_refunds(_db)
     split_car_costs(_db)

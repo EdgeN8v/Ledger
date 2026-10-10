@@ -997,3 +997,24 @@ def test_an_unnamed_wechat_deduction_is_learned_but_a_named_one_still_follows_it
     _sms(client, "【某银行】您账户1234于10月8日09:00向微信支付-某某驴肉火烧支出20元,可用余额900元。", 9, 0, day=8)
     row = [t for t in client.get("/transactions", params={"limit": 50}).json() if t["amount"] == "20.00"][0]
     assert row["category_id"] == cats["餐饮"]
+
+
+def test_a_wallet_notice_no_bank_sms_joined_is_set_aside_and_counts_again_if_the_sms_comes_late(client):
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app import models
+    from app.maintenance import sweep_wallet_only, WALLET_ONLY_NOTE
+    client.post("/ingest", json={"source": "wechat", "title": "微信支付", "text": "已扣费¥7.90", "posted_at_ms": ms(2026, 10, 6, 8, 30)})
+    with SessionLocal() as db:
+        assert sweep_wallet_only(db) == 0                      # too fresh: the SMS may still be on its way
+        for x in db.query(models.Transaction).all():
+            x.created_at = x.created_at - timedelta(hours=1)
+        db.commit()
+        assert sweep_wallet_only(db) == 1
+    t = [x for x in client.get("/transactions", params={"limit": 50}).json() if x["amount"] == "7.90"][0]
+    assert t["is_transfer"] is True and t["note"] == WALLET_ONLY_NOTE
+    s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
+    assert float(s["total_expense"]) == 0
+    _sms(client, "【某银行】您账户1234于10月6日08:30向微信支付-某某小店支出7.9元,可用余额900元。", 8, 30, day=6)
+    t = [x for x in client.get("/transactions", params={"limit": 50}).json() if x["amount"] == "7.90"]
+    assert len(t) == 1 and t[0]["is_transfer"] is False and t[0]["merchant"] == "微信支付-某某小店"

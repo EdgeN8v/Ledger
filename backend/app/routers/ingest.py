@@ -15,6 +15,7 @@ from app.deps import get_current_user
 from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
+from app.maintenance import WALLET_ONLY_NOTE, sweep_wallet_only
 from app.merchants import UNNAMED_DEDUCTION, is_unnamed_deduction, rule_applies
 from app.flights import MILEAGE, looks_like_ticket, note_return_ticket, parse_flights, store_flights, sync_flight_trips
 
@@ -223,6 +224,8 @@ def ingest(
             tx, status = same, "duplicate"
         elif target:
             was_unnamed = not (target.merchant or "").strip()
+            if target.note == WALLET_ONLY_NOTE:                  # the bank SMS did come, only late: it counts after all
+                target.is_transfer, target.note = False, None
             seen = set(filter(None, (target.sources or "").split(",")))
             seen.add(parsed.origin)
             target.sources = ",".join(sorted(seen))
@@ -281,6 +284,7 @@ def ingest(
     )
     db.add(ev)
     db.commit()
+    sweep_wallet_only(db, user.ledger_id)
     if status == "flight":
         sync_flight_trips(db, user.ledger_id)
     if tx:
