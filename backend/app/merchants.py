@@ -35,3 +35,12 @@ def rule_applies(pattern: str, merchant: Optional[str]) -> bool:
     if not core or not pattern:
         return False
     return pattern == core or (len(pattern) >= 4 and pattern in core)
+
+
+# WeChat's "已扣费 ¥7.90" notice names neither shop nor card (pay-later, auto-renewals): what the user decides about one
+# such payment is learned for all of them under this key
+UNNAMED_DEDUCTION = "微信已扣费(无商户)"
+
+
+def is_unnamed_deduction(merchant: Optional[str], text: Optional[str]) -> bool:
+    return not (merchant or "").strip() and "已扣费" in (text or "")

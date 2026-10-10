@@ -10,7 +10,7 @@ from app import models, schemas
 from app.database import get_db
 from app.clock import now_local
 from app.deps import get_current_user
-from app.merchants import is_generic, shop_core
+from app.merchants import UNNAMED_DEDUCTION, is_generic, is_unnamed_deduction, shop_core
 from app.refunds import refunded_amount
 from app.stats import cycle_bounds, period_data
 from app.parsing import parse_transaction, ParseError
@@ -151,6 +151,18 @@ def update_transaction(
         tx.category_locked = True                  # the user decided: no fixed item or rule re-files it later
 
     # correcting a category once teaches the server: that shop goes into this category from now on, however it is paid
+    if "category_id" in changes and changes["category_id"] and is_unnamed_deduction(tx.merchant, tx.raw_text):
+        rule = db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.pattern == UNNAMED_DEDUCTION).first()
+        if rule:
+            rule.category_id = changes["category_id"]
+        else:
+            db.add(models.MerchantRule(ledger_id=user.ledger_id, pattern=UNNAMED_DEDUCTION, category_id=changes["category_id"]))
+        tx.needs_review = False
+        for other in (db.query(models.Transaction)
+                      .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.id != tx.id, models.Transaction.needs_review.is_(True),
+                              models.Transaction.category_locked.is_(False), models.Transaction.tx_type == tx.tx_type).all()):
+            if is_unnamed_deduction(other.merchant, other.raw_text):
+                other.category_id, other.needs_review = changes["category_id"], False
     core = shop_core(tx.merchant)
     if "category_id" in changes and changes["category_id"] and not is_generic(core):
         rule = (

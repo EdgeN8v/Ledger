@@ -981,3 +981,19 @@ def test_imported_rows_are_filed_like_live_ones_and_own_transfers_pair_up(client
     by = {t["merchant"]: t for t in client.get("/transactions", params={"limit": 50}).json()}
     assert cats[by["微信支付-某某火烧"]["category_id"]] == "餐饮" and by["微信支付-某某火烧"]["needs_review"] is False
     assert by["微信支付-某某未知小店"]["needs_review"] is True               # a guess is flagged, as for a live payment
+
+
+def test_an_unnamed_wechat_deduction_is_learned_but_a_named_one_still_follows_its_shop(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    client.post("/ingest", json={"source": "wechat", "title": "微信支付", "text": "已扣费¥7.90", "posted_at_ms": ms(2026, 10, 6, 8, 30)})
+    first = [t for t in client.get("/transactions", params={"limit": 50}).json() if t["amount"] == "7.90"][0]
+    assert first["needs_review"] is True
+    client.put(f"/transactions/{first['id']}", json={"category_id": cats["购物"]})
+    client.post("/ingest", json={"source": "wechat", "title": "微信支付", "text": "已扣费¥9.90", "posted_at_ms": ms(2026, 10, 7, 8, 30)})
+    nxt = [t for t in client.get("/transactions", params={"limit": 50}).json() if t["amount"] == "9.90"][0]
+    assert nxt["category_id"] == cats["购物"] and nxt["needs_review"] is False
+    # when the bank SMS for the same deduction brings a shop name, the shop decides
+    client.post("/ingest", json={"source": "wechat", "title": "微信支付", "text": "已扣费¥20.00", "posted_at_ms": ms(2026, 10, 8, 9, 0)})
+    _sms(client, "【某银行】您账户1234于10月8日09:00向微信支付-某某驴肉火烧支出20元,可用余额900元。", 9, 0, day=8)
+    row = [t for t in client.get("/transactions", params={"limit": 50}).json() if t["amount"] == "20.00"][0]
+    assert row["category_id"] == cats["餐饮"]

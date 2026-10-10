@@ -15,7 +15,7 @@ from app.deps import get_current_user
 from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
-from app.merchants import rule_applies
+from app.merchants import UNNAMED_DEDUCTION, is_unnamed_deduction, rule_applies
 from app.flights import MILEAGE, looks_like_ticket, note_return_ticket, parse_flights, store_flights, sync_flight_trips
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -47,6 +47,11 @@ def _pick_category(db: Session, ledger_id: int, tx_type: str, merchant: Optional
             if cat:
                 return cat, False
     rules = sorted(db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger_id), key=lambda r: -len(r.pattern or ""))
+    if is_unnamed_deduction(merchant, text):
+        rule = next((r for r in rules if r.pattern == UNNAMED_DEDUCTION), None)
+        cat = db.get(models.Category, rule.category_id) if rule else None
+        if cat:
+            return cat, False
     for rule in rules:                                    # the most specific shop name first
         if rule_applies(rule.pattern, merchant):
             cat = db.get(models.Category, rule.category_id)
@@ -217,6 +222,7 @@ def ingest(
             # the exact same message re-posted by the phone (notification update): never a second record
             tx, status = same, "duplicate"
         elif target:
+            was_unnamed = not (target.merchant or "").strip()
             seen = set(filter(None, (target.sources or "").split(",")))
             seen.add(parsed.origin)
             target.sources = ",".join(sorted(seen))
@@ -228,7 +234,7 @@ def ingest(
             if parsed.account_hint and not target.account_hint:
                 target.account_hint = parsed.account_hint
             target.raw_text = f"{target.raw_text or ''}\n---\n{text}".strip()
-            if target.needs_review and target.merchant:
+            if (target.needs_review or was_unnamed) and target.merchant and not target.category_locked:
                 # the first report (a wallet notification) often has no shop name; now it has one: look again
                 cat, guessed = _pick_category(db, user.ledger_id, target.tx_type.value, target.merchant, target.raw_text, target.amount, target.occurred_at)
                 if cat and not guessed:
@@ -249,7 +255,7 @@ def ingest(
                 sources=parsed.origin,
                 source=models.TxSource.sms if source == "sms" else models.TxSource.notification,
                 raw_text=text,
-                needs_review=False if (parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant)) else ((guessed or not parsed.merchant) if not parsed.is_refund else True),
+                needs_review=False if (parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant)) else ((guessed or (not parsed.merchant and not (is_unnamed_deduction(parsed.merchant, text) and not guessed))) if not parsed.is_refund else True),
                 is_transfer=parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant),
                 is_refund=parsed.is_refund,
                 occurred_at=when,
