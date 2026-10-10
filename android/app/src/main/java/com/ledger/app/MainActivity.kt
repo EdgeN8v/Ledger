@@ -306,7 +306,7 @@ fun LedgerApp() {
                                             tripsViewModel::recentIncomes, tripsViewModel::delete, tripsViewModel::dismiss,
                                             onOpenDetail = { detailViewModel.open(it) }
                                         )
-                                        3 -> com.ledger.app.ui.CarScreen(carState, carViewModel::load)
+                                        3 -> com.ledger.app.ui.CarScreen(carState, carViewModel::load, carViewModel::setBucket)
                                         else -> YearInsights(insightsState, insightsViewModel::loadYear)
                                     }
                                 }

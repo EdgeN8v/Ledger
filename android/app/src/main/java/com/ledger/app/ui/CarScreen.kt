@@ -32,11 +32,13 @@ import com.ledger.app.ui.theme.ExpenseColor
 import com.ledger.app.viewmodel.CarUiState
 
 /** What the car costs: fuel, upkeep and insurance are the "core"; parking, washing, tolls and parts sit beside it. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun CarScreen(state: CarUiState, onLoad: (String) -> Unit) {
+fun CarScreen(state: CarUiState, onLoad: (String) -> Unit, onSetBucket: (Int, String) -> Unit) {
     LaunchedEffect(Unit) { onLoad(state.range) }
     val r = state.report
     var open by remember { mutableStateOf<String?>(null) }
+    var editing by remember { mutableStateOf<com.ledger.app.data.CarItemDto?>(null) }
     Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = state.range == "year", onClick = { onLoad("year") }, label = { Text("今年") })
@@ -86,7 +88,7 @@ fun CarScreen(state: CarUiState, onLoad: (String) -> Unit) {
                 }
             }
         }
-        Text("明细(点开看每一笔)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
+        Text("明细: 点一个分项展开, 点一笔可以改它属于哪一项", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
         r.buckets.forEach { b ->
             if (b.count == 0 && !b.core) return@forEach
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -96,10 +98,16 @@ fun CarScreen(state: CarUiState, onLoad: (String) -> Unit) {
                         Text(b.label, fontWeight = FontWeight.Medium)
                         Text("${money(b.total)} · ${b.count}笔")
                     }
-                    if (open == b.key) b.items.forEach {
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(it.date.substring(5) + "  " + it.merchant, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
-                            Text(money(it.amount), style = MaterialTheme.typography.bodySmall)
+                    if (b.desc.isNotBlank()) Text("包括: ${b.desc}", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                    if (open == b.key) b.items.forEach { it0 ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { editing = it0 }) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(it0.date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(money(it0.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            }
+                            Text(it0.merchant + (it0.note?.let { n -> "\n$n" } ?: "") + (if (it0.manual) "\n(你指定的分项)" else ""),
+                                style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -108,6 +116,25 @@ fun CarScreen(state: CarUiState, onLoad: (String) -> Unit) {
         Text(
             "油耗(每百公里几升)需要升数和里程, 短信里没有, 这里只统计花了多少钱。",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)
+        )
+    }
+    editing?.let { it0 ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("这笔是哪一类", maxLines = 1) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(it0.date + "  " + money(it0.amount) + "\n" + it0.merchant + (it0.note?.let { n -> "\n$n" } ?: ""), style = MaterialTheme.typography.bodySmall)
+                    Text("选一个分项:", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (state.report?.choices ?: emptyList()).forEach { c ->
+                            FilterChip(selected = false, onClick = { editing = null; onSetBucket(it0.id, c.key) }, label = { Text(c.label) })
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { editing = null }) { Text("取消") } }
         )
     }
 }

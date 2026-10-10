@@ -42,7 +42,7 @@ def refunded_amount(db: Session, expense_id: int) -> Decimal:
     return Decimal(total or 0)
 
 
-def link_refund(db: Session, refund: models.Transaction) -> Optional[models.Transaction]:
+def link_refund(db: Session, refund: models.Transaction, refunded: Optional[dict] = None) -> Optional[models.Transaction]:
     """Attach this refund to the purchase it cancels (if one can be identified) and return that purchase."""
     if refund.refund_of_id or refund.tx_type != models.TxType.income:
         return None
@@ -60,7 +60,7 @@ def link_refund(db: Session, refund: models.Transaction) -> Optional[models.Tran
         .order_by(models.Transaction.occurred_at.desc())
         .all()
     )
-    room = [(e, e.amount - refunded_amount(db, e.id)) for e in candidates]
+    room = [(e, e.amount - (refunded.get(e.id, 0) if refunded is not None else refunded_amount(db, e.id))) for e in candidates]
     room = [(e, left) for e, left in room if left >= refund.amount]
     exact = [e for e, left in room if e.amount == refund.amount and left == e.amount]   # untouched, same amount
     target = None
@@ -77,6 +77,8 @@ def link_refund(db: Session, refund: models.Transaction) -> Optional[models.Tran
     refund.refund_of_id = target.id
     refund.category_id = target.category_id
     refund.needs_review = False
+    if refunded is not None:
+        refunded[target.id] = refunded.get(target.id, 0) + refund.amount
     return target
 
 
@@ -90,8 +92,12 @@ def relink_orphans(db: Session, ledger_id: Optional[int] = None) -> int:
     )
     if ledger_id is not None:
         q = q.filter(models.Transaction.ledger_id == ledger_id)
+    from app.stats import refunded_map
+    refunded = {}
+    for lid in {r.ledger_id for r in q.all()}:               # one pass for the money already refunded, not one query per candidate
+        refunded.update(refunded_map(db, lid))
     n = 0
     for r in q.order_by(models.Transaction.occurred_at).all():
-        if link_refund(db, r):
+        if link_refund(db, r, refunded):
             n += 1
     return n

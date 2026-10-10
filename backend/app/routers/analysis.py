@@ -214,6 +214,16 @@ def analyse_year(
 
 
 # ---- "my car": what keeping it on the road costs
+CAR_BUCKET_DESC = {
+    "fuel": "加油站、中石化、中石油、中海油、壳牌",
+    "repair": "保养、机油、轮胎、刹车、变速箱、正时、电瓶、4S店、汽修",
+    "insurance": "车险",
+    "parking": "停车场、物业停车费",
+    "wash": "洗车、汽车美容",
+    "toll": "ETC、高速费、通行宝",
+    "parts": "车品、脚踏板、改装、特调",
+    "other": "没认出是哪一类的用车花费: 点一笔可以改成别的分项",
+}
 CAR_BUCKETS = [
     ("fuel", "加油", True, re.compile("加油|石化|石油|海油|壳牌|协和石油")),
     ("repair", "保养维修", True, re.compile("保养|机油|修车|汽修|汽车服务|汽配|轮胎|4S|维修|钣金|养护|刹车|蓄电池|电瓶|正时|变速箱|分动箱|差速器|离合|积碳|挖煤|机脚|废气阀|涡轮|发动机")),
@@ -259,7 +269,9 @@ def car_costs(range: str = "12m", db: Session = Depends(get_db), user: models.Us
         eff = t.amount - refunds.get(t.id, ZERO)
         if eff <= 0:
             continue
-        key, _label, _core = car_bucket(t.merchant, t.raw_text)
+        key, _label, _core = car_bucket(t.merchant, f"{t.note or ''} {t.raw_text or ''}")
+        if t.car_bucket in buckets:
+            key = t.car_bucket                        # the user said which kind it is
         if key == "other":                     # the user's own "parking fee" fixed item (paid to a property company, say)
             fx = item_for(fixed, t.amount, t.merchant, t.raw_text or "", t.occurred_at)
             if fx and "停车" in fx.get("name", ""):
@@ -267,14 +279,18 @@ def car_costs(range: str = "12m", db: Session = Depends(get_db), user: models.Us
         b = buckets[key]
         b["total"] += eff
         b["count"] += 1
-        b["items"].append({"id": t.id, "date": t.occurred_at.strftime("%Y-%m-%d"), "merchant": _shop(t.merchant), "amount": eff})
+        b["items"].append({"id": t.id, "date": t.occurred_at.strftime("%Y-%m-%d"), "merchant": _shop(t.merchant), "amount": eff,
+                           "note": t.note if t.note and t.note != t.merchant else None, "manual": bool(t.car_bucket)})
         m = monthly[t.occurred_at.strftime("%Y-%m")]
         m["fuel" if key == "fuel" else "repair" if key in ("repair", "insurance") else "other"] += eff
+    for b in buckets.values():
+        b["desc"] = CAR_BUCKET_DESC.get(b["key"], "")
     core_total = sum((b["total"] for b in buckets.values() if b["core"]), ZERO)
     all_total = sum((b["total"] for b in buckets.values()), ZERO)
     fuel = buckets["fuel"]
     first = min((datetime.strptime(i["date"], "%Y-%m-%d").date() for b in buckets.values() for i in b["items"]), default=today)
     return {
+        "choices": [{"key": k, "label": l} for k, l, _c, _r in CAR_BUCKETS] + [{"key": "other", "label": "其他用车"}],
         "since": start.isoformat(), "first_record": first.isoformat(), "range": range,
         "core_total": core_total, "all_total": all_total,
         "buckets": sorted(buckets.values(), key=lambda b: (-int(b["core"]), -b["total"])),

@@ -90,6 +90,18 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<CarUiState> = _state
     private fun api() = ApiClient.create(getApplication())
 
+    /** The user says which kind of car cost one payment is. */
+    fun setBucket(txId: Int, bucket: String) {
+        viewModelScope.launch {
+            try {
+                api().updateTransaction(txId, mapOf("car_bucket" to bucket))
+                load()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "修改失败")
+            }
+        }
+    }
+
     fun load(range: String = _state.value.range) {
         viewModelScope.launch {
             val key = "car_" + range

@@ -1034,3 +1034,15 @@ def test_family_card_filter_and_hospital_payments_are_medical(client):
     assert [x["amount"] for x in client.get("/transactions", params={"kind": "mine"}).json()] == ["40.00"]
     cyc = client.get("/analysis/cycle").json()
     assert float(cyc["family_total"]) == 99
+
+
+def test_the_user_can_say_which_kind_of_car_cost_a_payment_is(client):
+    _sms(client, "【某银行】您账户1234于10月5日12:00向微信支付-某某汽车服务中心支出300元,可用余额900元。", 12, 0, day=5)
+    rep = client.get("/analysis/car", params={"range": "year"}).json()
+    item = [i for b in rep["buckets"] for i in b["items"] if float(i["amount"]) == 300][0]
+    assert {b["key"]: b for b in rep["buckets"]}["repair"]["desc"]
+    client.put(f"/transactions/{item['id']}", json={"car_bucket": "parts"})
+    rep = client.get("/analysis/car", params={"range": "year"}).json()
+    by = {b["key"]: b for b in rep["buckets"]}
+    assert float(by["parts"]["total"]) == 300 and by["parts"]["items"][0]["manual"] is True and float(by["repair"]["total"]) == 0
+    assert {c["key"] for c in rep["choices"]} >= {"fuel", "repair", "insurance", "other"}

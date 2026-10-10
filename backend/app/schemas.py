@@ -79,6 +79,7 @@ class TransactionUpdate(BaseModel):
     merchant: Optional[str] = None
     occurred_at: Optional[datetime] = None
     needs_review: Optional[bool] = None
+    car_bucket: Optional[str] = None
 
 
 class TransactionOut(BaseModel):
@@ -101,6 +102,7 @@ class TransactionOut(BaseModel):
     trip_name: Optional[str] = None
     is_transfer: bool = False
     family_card: bool = False
+    car_bucket: Optional[str] = None
     source: TxSource
     raw_text: Optional[str]
     needs_review: bool
