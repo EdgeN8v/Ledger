@@ -947,7 +947,7 @@ def test_importing_a_statement_adds_once_and_skips_what_sms_already_saw(client):
         user = db.query(models.User).first()
         first = import_rows(db, ledger.id, user.id, rows, "demo")
         second = import_rows(db, ledger.id, user.id, rows, "demo")
-    assert first == {"added": 3, "duplicate": 0, "seen": 1} and second["added"] == 0 and second["duplicate"] == 4
+    assert first == {"added": 3, "duplicate": 0, "seen": 1, "transfers_paired": 0} and second["added"] == 0 and second["duplicate"] == 4
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     got = {t["merchant"]: cats.get(t["category_id"]) for t in client.get("/transactions", params={"limit": 50}).json()}
     assert got["某某汽修·机油"] == "我的车" and got["公积金提取"] == "公积金"
@@ -961,3 +961,23 @@ def test_importing_a_statement_adds_once_and_skips_what_sms_already_saw(client):
         apply_fixed_items(db)
     cats2 = {c["id"]: c["name"] for c in client.get("/categories").json()}
     assert {t["merchant"]: cats2.get(t["category_id"]) for t in client.get("/transactions", params={"limit": 50}).json()}["公积金提取"] == "公积金"
+
+
+def test_imported_rows_are_filed_like_live_ones_and_own_transfers_pair_up(client):
+    from app.database import SessionLocal
+    from app.importer import import_rows
+    from app import models
+    _sms(client, "【建设银行】您账户8714于9月26日20:00存入5000元,可用余额6000.00元。", 20, 0, day=26)
+    rows = [
+        {"key": "a", "when": datetime(2026, 10, 1, 12, 0), "amount": "30", "tx_type": "expense", "merchant": "微信支付-某某火烧", "account": "某银行9545"},
+        {"key": "b", "when": datetime(2026, 10, 6, 12, 0), "amount": "50", "tx_type": "expense", "merchant": "微信支付-某某未知小店", "account": "某银行9545"},
+        {"key": "t", "when": datetime(2026, 10, 6, 20, 0), "amount": "5000", "tx_type": "expense", "merchant": "本人", "account": "某银行9545", "is_transfer": True},
+    ]
+    with SessionLocal() as db:
+        ledger = db.query(models.Ledger).first(); user = db.query(models.User).first()
+        got = import_rows(db, ledger.id, user.id, rows, "t2")
+    assert got["added"] == 3
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    by = {t["merchant"]: t for t in client.get("/transactions", params={"limit": 50}).json()}
+    assert cats[by["微信支付-某某火烧"]["category_id"]] == "餐饮" and by["微信支付-某某火烧"]["needs_review"] is False
+    assert by["微信支付-某某未知小店"]["needs_review"] is True               # a guess is flagged, as for a live payment
