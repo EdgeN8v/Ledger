@@ -512,7 +512,8 @@ internal fun TransactionRow(
     category: CategoryDto?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    showDate: Boolean = false
+    showDate: Boolean = false,
+    fullText: Boolean = false          // drill-down screens: every line in full, wrapped, never cut off with an ellipsis
 ) {
     val badgeColor = CategoryBadgeColors[Math.floorMod(category?.id ?: 0, CategoryBadgeColors.size)]
     val biz = tx.trip_kind == "business" && !tx.is_reimbursement
@@ -543,7 +544,7 @@ internal fun TransactionRow(
                     title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = if (fullText) 6 else 1,
                     overflow = TextOverflow.Ellipsis,
                     color = if (fullyRefunded) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                 )
@@ -551,10 +552,11 @@ internal fun TransactionRow(
                     Text(
                         (if (tx.family_card) "👛亲情卡 · " else "") +
                             (if (biz) "出差垫付 · ${tx.trip_name ?: ""}" else if (tx.is_reimbursement) "出差报销" else if (tx.is_transfer) "转账" else (category?.name ?: "未分类")) + " · " + time +
-                            (if (!tx.note.isNullOrBlank() && tx.note != tx.merchant && !tx.is_transfer) " · " + tx.note else ""),
+                            (if (!tx.note.isNullOrBlank() && tx.note != tx.merchant && !tx.is_transfer) (if (fullText) "\n" else " · ") + tx.note else "") +
+                            (if (fullText && !tx.account_hint.isNullOrBlank()) "\n付款: " + tx.account_hint else ""),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        maxLines = if (fullText) 8 else 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )

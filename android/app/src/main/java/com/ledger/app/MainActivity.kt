@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.ledger.app.ui.theme.ThemeState.mode = com.ledger.app.data.Prefs.getThemeMode(this)
+        // a cache written by an older version may lack fields the new screens expect: start fresh after every update
+        com.ledger.app.data.Prefs.clearCacheOnUpdate(this)
         com.ledger.app.capture.MaintenanceWorker.schedule(this)
         com.ledger.app.capture.MaintenanceWorker.runNow(this)
         setContent {

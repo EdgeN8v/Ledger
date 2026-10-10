@@ -94,7 +94,7 @@ fun DetailScreen(
                         val tx = state.items[i]
                         TransactionRow(
                             tx, state.categories.find { it.id == tx.category_id },
-                            onClick = {}, onLongClick = { pickFor = tx }, showDate = true
+                            onClick = {}, onLongClick = { pickFor = tx }, showDate = true, fullText = true
                         )
                     }
                     item {

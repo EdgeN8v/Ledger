@@ -46,6 +46,15 @@ object Prefs {
         DiskCache.trim(context, mb * 1024L * 1024L)
     }
 
+    /** Cached screens of an older build can lack newer fields (Gson leaves them null): drop the cache once per update. */
+    fun clearCacheOnUpdate(context: Context) {
+        val code = com.ledger.app.BuildConfig.VERSION_CODE
+        if (prefs(context).getInt("cache_version", 0) != code) {
+            DiskCache.clear(context)
+            prefs(context).edit().putInt("cache_version", code).apply()
+        }
+    }
+
     /** Appearance: "system" / "light" / "dark". */
     fun getThemeMode(context: Context): String = prefs(context).getString("theme_mode", "system") ?: "system"
 

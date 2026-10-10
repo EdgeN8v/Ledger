@@ -1046,3 +1046,17 @@ def test_the_user_can_say_which_kind_of_car_cost_a_payment_is(client):
     by = {b["key"]: b for b in rep["buckets"]}
     assert float(by["parts"]["total"]) == 300 and by["parts"]["items"][0]["manual"] is True and float(by["repair"]["total"]) == 0
     assert {c["key"] for c in rep["choices"]} >= {"fuel", "repair", "insurance", "other"}
+
+
+def test_a_fixed_item_matches_its_payee_and_a_nameless_payment_is_not_guessed_as_food(client):
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    client.put("/plan", json={"fixed_items": [{"name": "Mum", "monthly": 1000, "category": "家人", "match_amount": [1000],
+                                               "match_core": ["微信", "微信转账"], "match_core_part": ["妈妈"]}]})
+    _sms(client, "【某银行】您账户1234于10月20日09:00向微信转账支出1000元,可用余额900元。", 9, 0, day=20)
+    _sms(client, "【某银行】您账户1234于10月21日09:00向微信支付-某某汽修支出1000元,可用余额800元。", 9, 0, day=21)
+    _sms(client, "【某银行】您账户1234于10月22日09:00向微信支付支出18元,可用余额700元。", 9, 0, day=22)
+    got = {t["amount"]: cats[t["category_id"]] for t in client.get("/transactions", params={"limit": 20}).json()}
+    assert got["1000.00"] in ("家人", "我的车")
+    rows = client.get("/transactions", params={"limit": 20}).json()
+    by = {t["merchant"]: cats[t["category_id"]] for t in rows}
+    assert by["微信"] == "家人" and by["微信支付-某某汽修"] == "我的车"

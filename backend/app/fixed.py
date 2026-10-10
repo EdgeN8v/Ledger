@@ -37,8 +37,15 @@ def matches(item: dict, amount, merchant: Optional[str], text: str, when: Option
     amounts = item.get("match_amount") or []
     merchants = item.get("match_merchants") or []
     texts = item.get("match_text") or []
-    if not (amounts or merchants or texts):
+    cores_exact = item.get("match_core") or []             # the bare shop name must BE one of these ...
+    cores_part = item.get("match_core_part") or []         # ... or contain one of these (a named person)
+    if not (amounts or merchants or texts or cores_exact or cores_part):
         return False
+    if cores_exact or cores_part:
+        from app.merchants import shop_core
+        core = shop_core(merchant)
+        if not (core in cores_exact or any(p in core for p in cores_part)):
+            return False
     if amounts and not any(abs(float(amount) - float(a)) < 0.005 for a in amounts):
         return False
     hay = f"{merchant or ''} {text or ''}"

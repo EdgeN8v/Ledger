@@ -82,6 +82,9 @@ def _fallback_category(cats, tx_type: str, merchant: Optional[str]):
     """Nothing matched: a small payment to an individual is almost always a food stall / small vendor; anything
     else lands in the catch-all so no record is left uncategorised (the user can long-press to change it)."""
     by_name = {c.name: c for c in cats}
+    from app.merchants import shop_core
+    if tx_type == "expense" and shop_core(merchant) in ("", "消费", "微信支付", "支付宝-消费", "微信", "支付宝"):
+        return by_name.get("其他支出")                      # a payment that names nothing is not "probably a meal"
     if tx_type == "expense" and merchant and _NAME_ONLY.match(merchant.strip()):
         return by_name.get("餐饮")
     return by_name.get("其他支出" if tx_type == "expense" else "其他收入")
