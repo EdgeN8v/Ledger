@@ -14,7 +14,8 @@ def ensure_columns(db: Session) -> None:
     from sqlalchemy import inspect, text
     wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL"), ("return_booked_on", "VARCHAR")],
               "ledgers": [("home_city", "VARCHAR")],
-              "categories": [("sort_order", "INTEGER")]}
+              "categories": [("sort_order", "INTEGER")],
+              "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL")]}
     insp = inspect(db.get_bind())
     for table, cols in wanted.items():
         have = {c["name"] for c in insp.get_columns(table)}
@@ -192,6 +193,8 @@ def apply_fixed_items(db: Session) -> None:
                                                     models.Transaction.tx_type == models.TxType.expense,
                                                     models.Transaction.is_transfer.is_(False),
                                                     models.Transaction.refund_of_id.is_(None)).all():
+            if t.category_locked:
+                continue
             name = category_name_for(items, "expense", t.amount, t.merchant, t.raw_text or "", t.occurred_at)
             if name and name in cats and t.category_id != cats[name]:
                 t.category_id = cats[name]

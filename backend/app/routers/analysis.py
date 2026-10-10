@@ -215,12 +215,12 @@ def analyse_year(
 # ---- "my car": what keeping it on the road costs
 CAR_BUCKETS = [
     ("fuel", "加油", True, re.compile("加油|石化|石油|海油|壳牌|协和石油")),
-    ("repair", "保养维修", True, re.compile("保养|机油|修车|汽修|汽车服务|汽配|轮胎|4S|维修|钣金|养护|刹车|蓄电池")),
+    ("repair", "保养维修", True, re.compile("保养|机油|修车|汽修|汽车服务|汽配|轮胎|4S|维修|钣金|养护|刹车|蓄电池|电瓶|正时|变速箱|分动箱|差速器|离合|积碳|挖煤|机脚|废气阀|涡轮|发动机")),
     ("insurance", "保险", True, re.compile("车险|保险|人保|太保|平安财")),
     ("parking", "停车", False, re.compile("停车|车位|车场|P云")),
     ("wash", "洗车", False, re.compile("洗车|汽车美容")),
     ("toll", "过路费", False, re.compile("ETC|高速|路桥|过路|服务区")),
-    ("parts", "配件", False, re.compile("车品|汽车用品|踏板|脚踏|配件|车饰|车友")),
+    ("parts", "配件", False, re.compile("车品|汽车用品|踏板|脚踏|配件|车饰|车友|特调|改装|调校")),
 ]
 
 

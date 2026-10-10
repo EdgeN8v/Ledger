@@ -147,6 +147,8 @@ def update_transaction(
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(tx, field, value)
+    if changes.get("category_id"):
+        tx.category_locked = True                  # the user decided: no fixed item or rule re-files it later
 
     # correcting a category once teaches the server: that shop goes into this category from now on, however it is paid
     core = shop_core(tx.merchant)

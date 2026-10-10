@@ -102,6 +102,7 @@ class Transaction(Base):
     is_reimbursement = Column(Boolean, default=False)   # income that is the employer paying a business trip back
     trip_id = Column(Integer, ForeignKey("trips.id"), nullable=True)   # part of a trip: kept out of the daily pace forecast
     is_transfer = Column(Boolean, default=False)   # money moved between the user's own accounts: not income/expense
+    category_locked = Column(Boolean, nullable=False, default=False)   # the user chose the category: nothing re-files it
 
     source = Column(Enum(TxSource), nullable=False, default=TxSource.manual)
     raw_text = Column(Text, nullable=True)  # original voice transcript / notification / sms text

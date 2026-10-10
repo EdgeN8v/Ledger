@@ -929,3 +929,35 @@ def test_a_travel_site_ticket_message_marks_the_way_back_as_booked_without_inven
     # a ticket that is not a way home changes nothing
     other = _flight_sms(client, "【携程】订单尾号1，上海-北京，机票出票成功，出行必读", day=9, h=11)
     assert other["status"] == "flight"
+
+
+def test_importing_a_statement_adds_once_and_skips_what_sms_already_saw(client):
+    from app.database import SessionLocal
+    from app.importer import import_rows
+    from app import models
+    _sms(client, "【建设银行】您账户1234于10月6日21:25向淘宝支出2元,可用余额800.00元。", 21, 25)
+    rows = [
+        {"key": "1", "when": datetime(2026, 10, 6, 21, 25), "amount": "2", "tx_type": "expense", "merchant": "淘宝", "account": "建设银行1234"},
+        {"key": "2", "when": datetime(2026, 9, 10, 16, 44), "amount": "300", "tx_type": "expense", "merchant": "某某汽修·机油", "note": "机油保养", "account": "某银行9545", "category": "我的车", "split": True},
+        {"key": "3", "when": datetime(2026, 9, 10, 16, 44), "amount": "200", "tx_type": "expense", "merchant": "某某汽修·刹车片", "account": "某银行9545", "category": "我的车", "split": True},
+        {"key": "4", "when": datetime(2026, 9, 25, 15, 2), "amount": "4000", "tx_type": "income", "merchant": "公积金提取", "account": "某银行9545", "category": "公积金"},
+    ]
+    with SessionLocal() as db:
+        ledger = db.query(models.Ledger).first()
+        user = db.query(models.User).first()
+        first = import_rows(db, ledger.id, user.id, rows, "demo")
+        second = import_rows(db, ledger.id, user.id, rows, "demo")
+    assert first == {"added": 3, "duplicate": 0, "seen": 1} and second["added"] == 0 and second["duplicate"] == 4
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    got = {t["merchant"]: cats.get(t["category_id"]) for t in client.get("/transactions", params={"limit": 50}).json()}
+    assert got["某某汽修·机油"] == "我的车" and got["公积金提取"] == "公积金"
+    rep = client.get("/analysis/car", params={"range": "12m"}).json()
+    by = {b["key"]: float(b["total"]) for b in rep["buckets"]}
+    assert by["repair"] == 500                                   # oil and brake pads are upkeep
+    # a category the user chose is not re-filed by a fixed item that happens to match
+    client.put("/plan", json={"fixed_items": [{"name": "Mum", "monthly": 4000, "category": "家人", "match_amount": [4000]}]})
+    from app.maintenance import apply_fixed_items
+    with SessionLocal() as db:
+        apply_fixed_items(db)
+    cats2 = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    assert {t["merchant"]: cats2.get(t["category_id"]) for t in client.get("/transactions", params={"limit": 50}).json()}["公积金提取"] == "公积金"
