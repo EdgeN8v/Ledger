@@ -12,7 +12,7 @@ from app.parsers import parse_message
 def ensure_columns(db: Session) -> None:
     """create_all adds tables but never columns: add the ones introduced later (additive only)."""
     from sqlalchemy import inspect, text
-    wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL")],
+    wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL"), ("return_booked_on", "VARCHAR")],
               "ledgers": [("home_city", "VARCHAR")],
               "categories": [("sort_order", "INTEGER")]}
     insp = inspect(db.get_bind())

@@ -909,3 +909,23 @@ def test_an_unreadable_ticket_message_is_kept_so_a_rule_can_be_written_from_it(c
     assert client.get("/ingest/failed").json()[0]["text"].startswith("【某平台】您的订单已出票成功")
     ad = _flight_sms(client, "【某航空】升级公务舱优惠，航班CA1234机票立减200元", day=8)
     assert ad["status"] == "ignored"
+
+
+def test_a_travel_site_ticket_message_marks_the_way_back_as_booked_without_inventing_a_date(client):
+    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
+    _flight_sms(client, CSAIR)
+    _pay(client, "南方航空", 748.95)
+    t = client.get("/trips").json()[0]
+    assert t["open_end"] is True and t["return_booked"] is None
+    r = _flight_sms(client, "【携程】订单尾号38874087，首都-虹桥，机票出票成功，出行必读：https://sdp.example.com/x ，拒收请回复R", day=9)
+    assert r["status"] == "flight"
+    t = client.get("/trips").json()[0]
+    assert t["open_end"] is True and t["return_booked"] == "2026-10-09" and float(t["allowance_total"]) == 0
+    # the user fills in the day he is back: the hint goes away and the allowance is counted
+    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-10-11", "kind": "business",
+                                          "daily_allowance": 180, "commute_allowance": 80})
+    t = client.get("/trips").json()[0]
+    assert t["return_booked"] is None and t["open_end"] is False and float(t["allowance_total"]) == 80 + 180 * 4
+    # a ticket that is not a way home changes nothing
+    other = _flight_sms(client, "【携程】订单尾号1，上海-北京，机票出票成功，出行必读", day=9, h=11)
+    assert other["status"] == "flight"

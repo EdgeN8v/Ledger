@@ -114,6 +114,30 @@ def looks_like_ticket(text: str) -> bool:
     return "航班" in text and bool(re.search(r"机票|出票|乘机人|订单", text)) and not _AD.search(text)
 
 
+# A travel site's "ticket issued" message names only the two airports and the order tail - no date, no flight number
+CTRIP_ISSUED = re.compile(r"订单尾号(\d+)[，,]\s*([^，,\-－]{1,12}?)[-－]([^，,\-－]{1,12}?)[，,][^，,]*?机票出票成功")
+
+
+def note_return_ticket(db: Session, ledger_id: int, text: str, posted: datetime) -> bool:
+    """'Order ...: Beijing-Shanghai, ticket issued' while an away trip is open: the way back is booked even though the
+    message does not say when. The trip stays open (no allowance is invented) but is marked, so the app can ask for the date."""
+    m = CTRIP_ISSUED.search(text)
+    if not m:
+        return False
+    ledger = db.get(models.Ledger, ledger_id)
+    home = city_of(getattr(ledger, "home_city", None) or DEFAULT_HOME)
+    if city_of(m.group(3)) != home or city_of(m.group(2)) == home:
+        return True                                           # a ticket message, just not a ticket home
+    trip = (db.query(models.Trip)
+            .filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business", models.Trip.open_end.is_(True),
+                    models.Trip.start_date <= posted.date().isoformat())
+            .order_by(models.Trip.start_date.desc()).first())
+    if trip:
+        trip.return_booked_on = posted.date().isoformat()
+        db.commit()
+    return True
+
+
 def store_flights(db: Session, ledger_id: int, flights: list[dict]) -> int:
     """Keep the flights of the account holder. Returns how many are new."""
     ledger = db.get(models.Ledger, ledger_id)

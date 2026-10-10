@@ -100,6 +100,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
             for c, v in sorted(by.items(), key=lambda kv: kv[1], reverse=True)
         ],
         flights=[f"{f.depart_at:%m-%d %H:%M} {f.flight_no} {f.origin}→{f.dest}" for f in legs],
+        return_booked=trip.return_booked_on if (business and trip.open_end) else None,
         open_end=bool(business and trip.open_end), long_trip=bool(business and is_long_trip(trip)),
         kind=trip.kind or "personal", days=days, daily_allowance=trip.daily_allowance, commute_allowance=trip.commute_allowance,
         allowance_total=allowance, expected_reimbursement=(total + allowance) if business else ZERO, settled=settled,
@@ -184,7 +185,7 @@ def update_trip(trip_id: int, payload: schemas.TripIn, db: Session = Depends(get
     if not trip:
         raise HTTPException(404, "trip not found")
     if (trip.start_date, trip.end_date) != (payload.start_date, payload.end_date):
-        trip.dates_locked, trip.open_end = True, False                   # the user knows better than the tickets (e.g. a changed return)
+        trip.dates_locked, trip.open_end, trip.return_booked_on = True, False, None                   # the user knows better than the tickets (e.g. a changed return)
     trip.name, trip.start_date, trip.end_date = payload.name.strip() or trip.name, payload.start_date, payload.end_date
     trip.kind, trip.daily_allowance, trip.commute_allowance = payload.kind, payload.daily_allowance, payload.commute_allowance
     if payload.auto_tag is not None:

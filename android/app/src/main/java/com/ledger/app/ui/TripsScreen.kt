@@ -99,7 +99,7 @@ fun TripsScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(t.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text((if (t.open_end) "${md(t.start_date)} 出发 · 回程未订" else "${md(t.start_date)} – ${md(t.end_date)}") + " · ${t.count} 笔", style = MaterialTheme.typography.bodySmall,
+                            Text((if (t.open_end) "${md(t.start_date)} 出发 · " + (if (t.return_booked != null) "回程票已出, 日期待填" else "回程未订") else "${md(t.start_date)} – ${md(t.end_date)}") + " · ${t.count} 笔", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(money(t.total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
@@ -113,6 +113,7 @@ fun TripsScreen(
                         Text(
                             if (t.settled) "✅ 已报销到账 ${money(t.received_amount)}; 其中只有补贴 ${money(t.allowance_gain)} 记为收入, 垫付的钱是还给你自己的" +
                                 (if ((t.difference?.toDoubleOrNull() ?: 0.0) < -0.5) ", 还差 ${money(t.difference?.removePrefix("-"))} 没收到" else "")
+                            else if (t.open_end && t.return_booked != null) "🛬 回程票已出票(${t.return_booked.substring(5).replace('-', '月')}日收到通知), 但短信里没写回来的日期: 点下面「修改」填一下, 补贴就会算上。现在只记垫付 ${money(t.total)}"
                             else if (t.open_end) "🛫 回程票还没订: 回来的日期定了再算补贴, 现在只记垫付 ${money(t.total)}"
                             else if (t.long_trip) "🧾 长差(${t.days}天): 补贴由单位另行发放, 不计入; 垫付 ${money(t.total)}"
                             else "🧾 出差垫付 ${money(t.total)} + 补贴 ${money(t.allowance_total)} = 待报销 ${money(t.expected_reimbursement)}",

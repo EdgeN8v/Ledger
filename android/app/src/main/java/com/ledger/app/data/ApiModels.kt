@@ -187,7 +187,7 @@ data class TripCategoryDto(val name: String, val icon: String?, val total: Strin
 data class TripDto(
     val id: Int, val name: String, val start_date: String, val end_date: String,
     val total: String, val count: Int, val by_category: List<TripCategoryDto>,
-    val kind: String = "personal", val days: Int = 1, val flights: List<String> = emptyList(), val open_end: Boolean = false, val long_trip: Boolean = false, val daily_allowance: String? = null,
+    val kind: String = "personal", val days: Int = 1, val flights: List<String> = emptyList(), val return_booked: String? = null, val open_end: Boolean = false, val long_trip: Boolean = false, val daily_allowance: String? = null,
     val commute_allowance: String? = null, val allowance_total: String = "0",
     val expected_reimbursement: String = "0", val settled: Boolean = false,
     val received_amount: String? = null, val allowance_gain: String? = null, val difference: String? = null

@@ -16,7 +16,7 @@ from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
 from app.merchants import rule_applies
-from app.flights import MILEAGE, looks_like_ticket, parse_flights, store_flights, sync_flight_trips
+from app.flights import MILEAGE, looks_like_ticket, note_return_ticket, parse_flights, store_flights, sync_flight_trips
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -185,10 +185,13 @@ def ingest(
 
     ticket = parse_flights(text, posted)
     mileage = bool(MILEAGE.search(text))
-    parsed = None if (ticket or mileage) else parse_message(source, title, text, posted)
+    ctrip = (not ticket) and note_return_ticket(db, user.ledger_id, text, posted)
+    parsed = None if (ticket or mileage or ctrip) else parse_message(source, title, text, posted)
     status, tx = "ignored", None
 
-    if ticket:
+    if ctrip:
+        status = "flight"
+    elif ticket:
         # an airline ticket SMS describes a flight (and so a business trip); it is never money by itself
         store_flights(db, user.ledger_id, ticket)
         status = "flight"
