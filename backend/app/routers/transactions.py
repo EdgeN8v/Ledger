@@ -102,6 +102,10 @@ def list_transactions(
         query = query.filter(T.is_transfer.is_(True))
     elif kind == "normal":
         query = query.filter(T.is_transfer.is_(False))
+    elif kind == "family":
+        query = query.filter(T.family_card.is_(True), T.is_transfer.is_(False))
+    elif kind == "mine":
+        query = query.filter(T.family_card.is_(False), T.is_transfer.is_(False))
     if q:
         like = f"%{q.strip()}%"
         query = query.filter(T.merchant.ilike(like) | T.note.ilike(like) | T.raw_text.ilike(like))

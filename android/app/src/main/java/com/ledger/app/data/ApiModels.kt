@@ -99,6 +99,7 @@ data class TransactionDto(
     val trip_kind: String? = null,
     val trip_name: String? = null,
     val is_transfer: Boolean = false,
+    val family_card: Boolean = false,
     val source: String,
     val raw_text: String?,
     val needs_review: Boolean,
@@ -247,6 +248,7 @@ data class BigSpendDto(val id: Int, val category_id: Int? = null, val merchant: 
 data class DayStatDto(val date: String, val total: String)
 
 data class CycleAnalysisDto(
+    val family_total: String = "0",
     val year: Int,
     val month: Int,
     val period_start: String,

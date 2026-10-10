@@ -136,6 +136,7 @@ def cycle_analysis(db: Session, l: models.Ledger, year: Optional[int] = None, mo
         avg_daily=(data.expense / elapsed).quantize(Decimal("0.01")), categories=categories, top_shops=top_shops,
         biggest=biggest, daily=daily, weekday_totals=[weekday.get(i, ZERO) for i in range(7)], weekly=weekly, trips=trips, trip_total=trip_total,
         small_count=len(small), small_total=small_total, insights=insights,
+        family_total=sum((eff for t, eff in data.expenses if t.family_card), ZERO),
     )
 
 

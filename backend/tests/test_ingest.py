@@ -1018,3 +1018,19 @@ def test_a_wallet_notice_no_bank_sms_joined_is_set_aside_and_counts_again_if_the
     _sms(client, "【某银行】您账户1234于10月6日08:30向微信支付-某某小店支出7.9元,可用余额900元。", 8, 30, day=6)
     t = [x for x in client.get("/transactions", params={"limit": 50}).json() if x["amount"] == "7.90"]
     assert len(t) == 1 and t[0]["is_transfer"] is False and t[0]["merchant"] == "微信支付-某某小店"
+
+
+def test_family_card_filter_and_hospital_payments_are_medical(client):
+    from app.database import SessionLocal
+    from app import models
+    _sms(client, "【某银行】您账户1234于10月6日12:00向微信支付-上海市某某中心医院缴费支出40元,可用余额900元。", 12, 0, day=6)
+    _sms(client, "【某银行】您账户1234于10月6日13:00向支付宝-淘宝-某某支出99元,可用余额800元。", 13, 0, day=6)
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    rows = {t["merchant"]: t for t in client.get("/transactions", params={"limit": 50}).json()}
+    assert cats[rows["微信支付-上海市某某中心医院缴费"]["category_id"]] == "医疗"
+    with SessionLocal() as db:
+        t = db.get(models.Transaction, rows["支付宝-淘宝-某某"]["id"]); t.family_card = True; db.commit()
+    assert [x["amount"] for x in client.get("/transactions", params={"kind": "family"}).json()] == ["99.00"]
+    assert [x["amount"] for x in client.get("/transactions", params={"kind": "mine"}).json()] == ["40.00"]
+    cyc = client.get("/analysis/cycle").json()
+    assert float(cyc["family_total"]) == 99

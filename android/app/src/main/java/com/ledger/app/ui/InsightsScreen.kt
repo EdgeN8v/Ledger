@@ -140,6 +140,10 @@ private fun CycleBody(
                     if (prev > 0) " (现在是它的 ${(spent / prev * 100).toInt()}%)" else "",
                 style = MaterialTheme.typography.bodySmall
             )
+            if ((c.family_total.toDoubleOrNull() ?: 0.0) > 0) Text(
+                "其中老婆用亲情卡花了 ${money(c.family_total)} (${((c.family_total.toDoubleOrNull() ?: 0.0) / (if (spent > 0) spent else 1.0) * 100).toInt()}%)",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 

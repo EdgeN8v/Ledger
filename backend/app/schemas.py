@@ -100,6 +100,7 @@ class TransactionOut(BaseModel):
     trip_kind: Optional[str] = None
     trip_name: Optional[str] = None
     is_transfer: bool = False
+    family_card: bool = False
     source: TxSource
     raw_text: Optional[str]
     needs_review: bool
@@ -350,6 +351,7 @@ class CycleAnalysis(BaseModel):
     small_count: int
     small_total: Decimal
     insights: list[str]
+    family_total: Decimal = Decimal(0)     # of the total, what was paid with the family card
 
 
 class CycleRow(BaseModel):

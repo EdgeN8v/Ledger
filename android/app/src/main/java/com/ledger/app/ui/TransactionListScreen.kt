@@ -383,7 +383,7 @@ private fun FilterHeader(state: TransactionUiState, onFilterChange: (TxFilter) -
     val rangeLabel = RANGES.first { it.first == f.range }.second
     val catLabel = f.categoryId?.let { id -> state.categories.find { it.id == id }?.name }
     val typeLabel = when (f.type) { "expense" -> "支出"; "income" -> "收入"; else -> null }
-    val kindLabel = when (f.kind) { "normal" -> "不含转账"; "transfer" -> "只看转账"; else -> null }
+    val kindLabel = when (f.kind) { "normal" -> "不含转账"; "transfer" -> "只看转账"; "family" -> "只看亲情卡"; "mine" -> "不含亲情卡"; else -> null }
 
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 2.dp),
@@ -402,7 +402,7 @@ private fun FilterHeader(state: TransactionUiState, onFilterChange: (TxFilter) -
                 state.categories.filter { f.type == null || it.tx_type == f.type }.map { it.id.toString() as String? to ((it.icon ?: "") + " " + it.name) },
             f.categoryId?.toString()
         ) { onFilterChange(f.copy(categoryId = it?.toIntOrNull())) }
-        DropChip("转账", kindLabel, listOf(null to "都显示", "normal" to "不含转账", "transfer" to "只看转账"), f.kind) {
+        DropChip("转账", kindLabel, listOf(null to "都显示", "normal" to "不含转账", "transfer" to "只看转账", "family" to "只看亲情卡(老婆)", "mine" to "不含亲情卡"), f.kind) {
             onFilterChange(f.copy(kind = it))
         }
         Surface(
@@ -549,7 +549,9 @@ internal fun TransactionRow(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        (if (biz) "出差垫付 · ${tx.trip_name ?: ""}" else if (tx.is_reimbursement) "出差报销" else if (tx.is_transfer) "转账" else (category?.name ?: "未分类")) + " · " + time,
+                        (if (tx.family_card) "👛亲情卡 · " else "") +
+                            (if (biz) "出差垫付 · ${tx.trip_name ?: ""}" else if (tx.is_reimbursement) "出差报销" else if (tx.is_transfer) "转账" else (category?.name ?: "未分类")) + " · " + time +
+                            (if (!tx.note.isNullOrBlank() && tx.note != tx.merchant && !tx.is_transfer) " · " + tx.note else ""),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
