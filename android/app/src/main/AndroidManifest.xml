@@ -41,6 +41,18 @@
             </intent-filter>
         </service>
 
+        <!-- Reads the shop name off WeChat's payment-success page (connected to WeChat only, see PayeeReaderService). -->
+        <service
+            android:name=".capture.PayeeReaderService"
+            android:exported="true"
+            android:label="记账: 读取微信付款商家"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/payee_accessibility" />
+        </service>
+
         <!-- Event driven, no polling: wakes only when a text message arrives (or the phone boots) -->
         <receiver
             android:name=".capture.SmsReceiver"

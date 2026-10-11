@@ -109,6 +109,8 @@ fun SettingsScreen(
 
         CaptureCard()
 
+        PayeeCard()
+
         AppearanceCard()
 
         CacheCard()
