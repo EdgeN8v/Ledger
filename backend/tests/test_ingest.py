@@ -1175,3 +1175,22 @@ def test_scan_code_payments_are_not_a_shop_zero_payments_are_ignored_and_a_payee
     assert refund["refund_of_id"] is not None and refund["needs_review"] is False          # paired with the closest same-amount payment
     z = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "支付宝", "text": "支付宝: 已支付¥0.00", "posted_at_ms": ms(2026, 10, 6, 11, 0)}).json()
     assert z["status"] == "ignored"
+
+
+def test_shop_name_read_from_the_wechat_payment_page_is_put_on_the_scan_code_payment(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    names = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    # the page is read first, the payment arrives afterwards
+    page = "上海某某汽修服务中心\n￥800.00\n支付成功\n完成"
+    got = client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": page, "posted_at_ms": ms(2026, 10, 6, 18, 31)}).json()
+    assert got["status"] == "hint"
+    _sms(client, "【建设银行】您账户1234于10月6日18:31向微信支付-扫二维码付款充值支出800元,可用余额900元。", 18, 31)
+    t = client.get("/transactions").json()[0]
+    assert t["merchant"] == "微信支付-上海某某汽修服务中心" and names[t["category_id"]] == "我的车"
+    # the other order: payment first, page afterwards
+    _sms(client, "【建设银行】您账户1234于10月7日12:00向微信支付-扫二维码付款充值支出36元,可用余额800元。", 12, 0, day=7)
+    got = client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": "某某面馆\n￥36.00\n支付成功\n完成", "posted_at_ms": ms(2026, 10, 7, 12, 1)}).json()
+    assert got["status"] == "applied"
+    t = [x for x in client.get("/transactions").json() if x["amount"] == "36.00"][0]
+    assert t["merchant"] == "微信支付-某某面馆" and names[t["category_id"]] == "餐饮"
+    assert client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": "某某面馆\n￥36.00\n支付成功\n完成", "posted_at_ms": ms(2026, 10, 7, 12, 1)}).json()["status"] == "duplicate"

@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, schemas, screenpay
 from app.clock import from_epoch_ms
 from app.database import get_db
 from app.deps import get_current_user
@@ -199,6 +199,9 @@ def ingest(
 ):
     if payload.source in SHOP_APPS:
         return _store_order_hint(db, user, payload)
+    if payload.source == screenpay.SOURCE:
+        lines = [l for l in (payload.text or "").splitlines()][:30]
+        return schemas.IngestResult(status=screenpay.store_and_apply(db, user.ledger_id, user.id, from_epoch_ms(payload.posted_at_ms), lines))
     source = SOURCE_MAP.get(payload.source)
     if source is None:
         return schemas.IngestResult(status="ignored")
@@ -301,6 +304,8 @@ def ingest(
         if status in ("created", "merged"):
             _update_balance(db, user.ledger_id, parsed, when)
         db.flush()
+        if status in ("created", "merged"):
+            screenpay.apply_pending(db, tx)           # the shop name may already have been read off the payment page
         if status == "created":
             _pair_transfer(db, user.ledger_id, tx)
             if parsed.is_refund:
