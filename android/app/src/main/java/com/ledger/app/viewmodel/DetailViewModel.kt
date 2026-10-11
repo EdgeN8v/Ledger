@@ -157,10 +157,12 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Long-press fix, same as on the main list. */
-    fun setCategory(id: Int, categoryId: Int) {
+    fun setCategory(id: Int, categoryId: Int, sub: String? = null) {
         viewModelScope.launch {
             try {
-                api().updateTransaction(id, mapOf("category_id" to categoryId, "needs_review" to false))
+                val body = mutableMapOf<String, Any?>("category_id" to categoryId, "needs_review" to false)
+                if (sub != null) body["sub"] = sub
+                api().updateTransaction(id, body)
                 reload()
                 loadSubs()
             } catch (e: Exception) {

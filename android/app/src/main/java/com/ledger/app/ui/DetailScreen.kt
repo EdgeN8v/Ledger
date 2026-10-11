@@ -46,8 +46,7 @@ fun DetailScreen(
     onBack: () -> Unit,
     onSort: (String) -> Unit,
     onLoadMore: () -> Unit,
-    onSetCategory: (txId: Int, categoryId: Int) -> Unit,
-    onSetSub: (txId: Int, sub: String?) -> Unit = { _, _ -> },
+    onSetCategory: (txId: Int, categoryId: Int, sub: String?) -> Unit,
     onSubFilter: (String?) -> Unit = {}
 ) {
     val req = state.request ?: return
@@ -129,8 +128,7 @@ fun DetailScreen(
     pickFor?.let { tx ->
         CategoryPickerDialog(
             tx = tx, categories = state.categories, onDismiss = { pickFor = null },
-            onPick = { c -> pickFor = null; onSetCategory(tx.id, c) },
-            onPickSub = { s -> pickFor = null; onSetSub(tx.id, s) }
+            onConfirm = { c, sub -> pickFor = null; onSetCategory(tx.id, c, sub) }
         )
     }
 }

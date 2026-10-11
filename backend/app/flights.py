@@ -240,6 +240,8 @@ def sync_flight_trips(db: Session, ledger_id: int) -> None:
             db.delete(trip)
             db.flush()
             continue
+        if trip is None and getattr(ledger, "trips_enabled", True) is False:
+            continue                                           # the user no longer fronts business trips: do not open new ones
         if trip is None and ((j["closed"] and last < today - timedelta(days=HISTORY_DAYS)) or (not j["closed"] and last < today - timedelta(days=30))):
             continue                                           # history: it was reimbursed long ago, do not bring it back as "to be reimbursed"
         if trip is None and not _paid_by_user(db, ledger, fl, start, end):

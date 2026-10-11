@@ -194,10 +194,12 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
 
     /** Long-press category change: the server also fixes the same merchant's other unconfirmed records and
      *  remembers the choice for future imports. */
-    fun setCategory(id: Int, categoryId: Int) {
+    fun setCategory(id: Int, categoryId: Int, sub: String? = null) {
         viewModelScope.launch {
             try {
-                api().updateTransaction(id, mapOf("category_id" to categoryId, "needs_review" to false))
+                val body = mutableMapOf<String, Any?>("category_id" to categoryId, "needs_review" to false)
+                if (sub != null) body["sub"] = sub
+                api().updateTransaction(id, body)
                 reloadLoaded()
                 _state.value = _state.value.copy(message = "已归类,同商户以后自动归到这一类")
             } catch (e: Exception) {

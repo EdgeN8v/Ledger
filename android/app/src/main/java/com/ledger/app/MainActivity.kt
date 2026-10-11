@@ -108,6 +108,19 @@ fun LedgerApp() {
     val txState by transactionViewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // warm every tab at start: the screens read these view models / the disk cache, so nothing waits for the network on first open
+    val signedIn = authState.loggedIn || com.ledger.app.data.Prefs.isLoggedIn(context)
+    androidx.compose.runtime.LaunchedEffect(signedIn) {
+        if (!signedIn) return@LaunchedEffect
+        insightsViewModel.loadCycle(); insightsViewModel.loadYear(); planViewModel.load(); accountsViewModel.refresh()
+        carViewModel.load(); reportViewModel.load(); tripsViewModel.load()
+        try {
+            val care = com.ledger.app.data.ApiClient.create(context).carCare()
+            com.ledger.app.data.DiskCache.put(context, "care", care)
+        } catch (_: Exception) {
+        }
+    }
+
     var isListening by remember { mutableStateOf(false) }
     var editingTransaction by remember { mutableStateOf<TransactionDto?>(null) }
 
@@ -212,7 +225,7 @@ fun LedgerApp() {
                     DetailScreen(
                         state = detailState, onBack = { detailViewModel.close() }, onSort = detailViewModel::setSort,
                         onLoadMore = detailViewModel::loadMore, onSetCategory = detailViewModel::setCategory,
-                        onSetSub = detailViewModel::setSub, onSubFilter = detailViewModel::setSubFilter
+                        onSubFilter = detailViewModel::setSubFilter
                     )
                     return@composable
                 }
@@ -261,8 +274,7 @@ fun LedgerApp() {
                                 onRefresh = { transactionViewModel.syncAndRefresh() },
                                 onLoadMore = { transactionViewModel.loadMore() },
                                 onFilterChange = { transactionViewModel.setFilter(it) },
-                                onSetCategory = { id, cat -> transactionViewModel.setCategory(id, cat) },
-                                onSetSub = { id, s -> transactionViewModel.setSub(id, s) },
+                                onSetCategory = { id, cat, sub -> transactionViewModel.setCategory(id, cat, sub) },
                                 onSetTrip = { tx, tripId -> transactionViewModel.setBusinessTrip(tx, tripId) },
                                 onNewBusinessTrip = { tx, name, start, end, daily, commute, autoTag -> transactionViewModel.newBusinessTripWith(tx, name, start, end, daily, commute, autoTag) },
                                 onEditTransaction = { tx -> editingTransaction = tx; navController.navigate("add") },

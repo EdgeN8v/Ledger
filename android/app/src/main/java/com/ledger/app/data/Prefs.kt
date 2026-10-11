@@ -46,12 +46,14 @@ object Prefs {
         DiskCache.trim(context, mb * 1024L * 1024L)
     }
 
-    /** Cached screens of an older build can lack newer fields (Gson leaves them null): drop the cache once per update. */
+    /** Bump CACHE_SCHEMA only when a cached screen's data changes in a way old files cannot be read with (Gson leaves
+     *  missing fields null). Ordinary updates keep the cache, so the app opens with last time's data at once. */
+    private const val CACHE_SCHEMA = 2
+
     fun clearCacheOnUpdate(context: Context) {
-        val code = com.ledger.app.BuildConfig.VERSION_CODE
-        if (prefs(context).getInt("cache_version", 0) != code) {
+        if (prefs(context).getInt("cache_schema", 0) != CACHE_SCHEMA) {
             DiskCache.clear(context)
-            prefs(context).edit().putInt("cache_version", code).apply()
+            prefs(context).edit().putInt("cache_schema", CACHE_SCHEMA).apply()
         }
     }
 

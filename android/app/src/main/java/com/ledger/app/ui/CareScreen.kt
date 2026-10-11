@@ -52,7 +52,7 @@ private fun leftText(i: CareItemDto): String {
 fun CareScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
-    var data by remember { mutableStateOf<CarCareDto?>(null) }
+    var data by remember { mutableStateOf(com.ledger.app.data.DiskCache.get<CarCareDto>(context, "care")) }
     var error by remember { mutableStateOf<String?>(null) }
     var tick by remember { mutableIntStateOf(0) }
     var odoDialog by remember { mutableStateOf(false) }
@@ -62,6 +62,7 @@ fun CareScreen() {
     LaunchedEffect(tick) {
         try {
             data = ApiClient.create(context).carCare(); error = null
+            com.ledger.app.data.DiskCache.put(context, "care", data)
         } catch (e: Exception) {
             error = e.message ?: "加载失败"
         }

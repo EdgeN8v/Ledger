@@ -44,6 +44,7 @@ import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -97,8 +98,7 @@ fun TransactionListScreen(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onFilterChange: (TxFilter) -> Unit,
-    onSetCategory: (txId: Int, categoryId: Int) -> Unit,
-    onSetSub: (txId: Int, sub: String?) -> Unit = { _, _ -> },
+    onSetCategory: (txId: Int, categoryId: Int, sub: String?) -> Unit,
     onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
     onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
@@ -193,7 +193,7 @@ fun TransactionListScreen(
                                 TransactionRow(
                                     tx,
                                     state.categories.find { it.id == tx.category_id },
-                                    onClick = { onEditTransaction(tx) },
+                                    onClick = {},
                                     onLongClick = { pickFor = tx },
                                     fullText = true
                                 )
@@ -242,11 +242,8 @@ fun TransactionListScreen(
             tx = tx,
             categories = state.categories,
             onDismiss = { pickFor = null },
-            onPick = { catId -> pickFor = null; onSetCategory(tx.id, catId) },
-            onPickSub = { s -> pickFor = null; onSetSub(tx.id, s) },
-            trips = state.businessTrips,
-            onTrip = { tripId -> pickFor = null; onSetTrip(tx, tripId) },
-            onNewTrip = { pickFor = null; newTripFor = tx }
+            onConfirm = { catId, sub -> pickFor = null; onSetCategory(tx.id, catId, sub) },
+            onEdit = { pickFor = null; onEditTransaction(tx) }
         )
     }
 }
@@ -464,59 +461,45 @@ internal fun CategoryPickerDialog(
     tx: TransactionDto,
     categories: List<CategoryDto>,
     onDismiss: () -> Unit,
-    onPick: (Int) -> Unit,
-    onPickSub: (String?) -> Unit = {},
-    trips: List<com.ledger.app.data.TripDto> = emptyList(),
-    onTrip: (Int?) -> Unit = {},
-    onNewTrip: (() -> Unit)? = null
+    onConfirm: (categoryId: Int, sub: String?) -> Unit,
+    onEdit: (() -> Unit)? = null
 ) {
-    val canBusiness = tx.tx_type == "expense" && !tx.is_reimbursement && (onNewTrip != null || trips.isNotEmpty() || tx.trip_id != null)
+    var selCat by remember { mutableStateOf(tx.category_id) }
+    var selSub by remember { mutableStateOf(tx.sub) }
+    val subs = categories.find { it.id == selCat }?.subs.orEmpty()
+    val changed = selCat != tx.category_id || selSub != tx.sub
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("这笔怎么记", maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    (tx.merchant ?: tx.note ?: "") + "  ¥" + tx.amount,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (canBusiness) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
                     Text(
-                        "🧾 出差垫付: 之后公司会报销, 不算你的开销",
-                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                        listOfNotNull(
+                            (tx.merchant ?: "") + "  ¥" + tx.amount,
+                            tx.note?.takeIf { it.isNotBlank() && it != tx.merchant },
+                            tx.occurred_at.replace('T', ' ').take(16) + (tx.account_hint?.let { "  $it" } ?: "")
+                        ).joinToString("\n"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        trips.forEach { t ->
-                            FilterChip(selected = tx.trip_id == t.id, onClick = { onTrip(t.id) }, label = { Text("归入「${t.name}」") })
-                        }
-                        if (onNewTrip != null) FilterChip(selected = false, onClick = onNewTrip, label = { Text("＋ 新建一次出差") })
-                        if (tx.trip_id != null) FilterChip(selected = false, onClick = { onTrip(null) }, label = { Text("移出出差") })
-                    }
                 }
                 Text(
-                    if (canBusiness) "或者: 选一个类别,这家商户以后自动归到这一类" else "选一个类别,这家商户以后自动归到这一类",
+                    "选好类别(和下面的小类), 再点「确认」才生效; 这家商户以后自动按这个分",
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
-                CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, if (tx.trip_id == null) tx.category_id else null, tx.tx_type, onPick)
-                val subs = categories.find { it.id == tx.category_id }?.subs.orEmpty()
-                if (subs.isNotEmpty() && tx.tx_type == "expense") {
-                    Text(
-                        "「${categories.find { it.id == tx.category_id }?.name}」里是哪一种? 这家店以后自动按这个分",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                    )
+                CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, selCat, tx.tx_type, onPick = { id -> if (id != selCat) { selCat = id; selSub = null } })
+                if (tx.tx_type == "expense" && subs.isNotEmpty()) {
+                    Text("哪一种?", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        subs.forEach { s -> FilterChip(selected = tx.sub == s, onClick = { onPickSub(s) }, label = { Text(s) }) }
+                        subs.forEach { s -> FilterChip(selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, label = { Text(s) }) }
                     }
                 }
+                if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }
             }
         },
-        confirmButton = {},
+        confirmButton = { Button(enabled = changed && selCat != null, onClick = { onConfirm(selCat!!, selSub) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
