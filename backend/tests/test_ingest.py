@@ -1205,3 +1205,14 @@ def test_changing_category_and_sub_in_one_request_for_a_new_shop(client):
     _sms(client, "【建设银行】您账户1234于10月7日10:00向微信支付-某某宠物用品店支出60元,可用余额800元。", 10, 0, day=7)
     nxt = client.get("/transactions").json()[0]
     assert nxt["sub"] == "狗粮"                                              # the shop's sub was learned
+
+
+def test_a_person_named_payee_never_becomes_a_rule(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向支付宝-淘宝-饶佳美支出257元,可用余额900元。", 10, 0)
+    t = client.get("/transactions").json()[0]
+    assert client.put(f"/transactions/{t['id']}", json={"category_id": cats["狗狗"], "sub": "狗粮"}).status_code == 200
+    _sms(client, "【建设银行】您账户1234于10月7日10:00向支付宝-淘宝-饶佳美支出30元,可用余额800元。", 10, 0, day=7)
+    nxt = client.get("/transactions").json()[0]
+    assert nxt["category_id"] != cats["狗狗"]                                # a seller's name says nothing about what the next purchase is
+    assert not client.get("/transactions", params={"q": "饶佳美"}).json()[0]["sub"] == "狗粮"

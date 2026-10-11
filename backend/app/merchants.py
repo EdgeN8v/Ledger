@@ -24,8 +24,21 @@ GENERIC_CORES = {
 }
 
 
+# A payee that is just a person's name (a second-hand seller, a stall's collection code) says nothing about what was bought,
+# so correcting one payment must never become a rule for the next: a surname plus one or two characters, not a brand.
+_SURNAMES = ("王李张刘陈杨黄赵吴周徐孙马朱胡郭何高林罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎贺顾毛郝龚邵万钱严覃武戴莫孔向汤饶尤庞聂冉"
+             "欧阳司马上官诸葛慕容")
+_NOT_PERSON = {"钱大妈", "孙大妈", "麦当劳", "金拱门", "高德", "龙湖", "万达", "汤姆熊", "田园牧歌"}
+_SHOP_END = tuple("店馆行部司铺坊厅园院社站摊屋堂楼庄场吧")
+
+
+def is_person(core: str) -> bool:
+    return (2 <= len(core) <= 3 and all("一" <= c <= "鿿" for c in core) and core[0] in _SURNAMES
+            and core not in _NOT_PERSON and not core.endswith(_SHOP_END))
+
+
 def is_generic(core: str) -> bool:
-    return len(core) < 2 or core in GENERIC_CORES
+    return len(core) < 2 or core in GENERIC_CORES or is_person(core)
 
 
 def rule_applies(pattern: str, merchant: Optional[str]) -> bool:
