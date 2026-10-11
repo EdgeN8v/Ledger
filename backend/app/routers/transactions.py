@@ -195,6 +195,7 @@ def update_transaction(
             other.category_id = changes["category_id"]
             other.needs_review = False
 
+    db.flush()                                    # the category step may have just added this shop's rule: the sub step must see it
     cat = db.get(models.Category, tx.category_id) if tx.category_id else None
     cat_name = cat.name if cat else None
     rules = subcats.rules_of(db, user.ledger_id)

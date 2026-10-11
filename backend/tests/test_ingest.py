@@ -1194,3 +1194,14 @@ def test_shop_name_read_from_the_wechat_payment_page_is_put_on_the_scan_code_pay
     t = [x for x in client.get("/transactions").json() if x["amount"] == "36.00"][0]
     assert t["merchant"] == "微信支付-某某面馆" and names[t["category_id"]] == "餐饮"
     assert client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": "某某面馆\n￥36.00\n支付成功\n完成", "posted_at_ms": ms(2026, 10, 7, 12, 1)}).json()["status"] == "duplicate"
+
+
+def test_changing_category_and_sub_in_one_request_for_a_new_shop(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向微信支付-某某宠物用品店支出88元,可用余额900元。", 10, 0)
+    t = client.get("/transactions").json()[0]
+    got = client.put(f"/transactions/{t['id']}", json={"category_id": cats["狗狗"], "sub": "狗粮", "needs_review": False})
+    assert got.status_code == 200 and got.json()["sub"] == "狗粮"
+    _sms(client, "【建设银行】您账户1234于10月7日10:00向微信支付-某某宠物用品店支出60元,可用余额800元。", 10, 0, day=7)
+    nxt = client.get("/transactions").json()[0]
+    assert nxt["sub"] == "狗粮"                                              # the shop's sub was learned

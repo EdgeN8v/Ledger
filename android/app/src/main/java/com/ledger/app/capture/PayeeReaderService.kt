@@ -28,7 +28,8 @@ class PayeeReaderService : AccessibilityService() {
         val lines = ArrayList<String>()
         collect(root, lines, 0)
         root.recycle()
-        if (lines.none { it == "支付成功" || it == "付款成功" }) return
+        if (lines.any { it.contains("支付") }) android.util.Log.d("PayeeReader", pkg + " " + lines.take(24).toString())   // temporary, read over adb
+        if (lines.none { it.contains("支付成功") || it.contains("付款成功") }) return
         if (lines.none { AMOUNT.matches(it) }) return
         val key = lines.joinToString("|")
         if (key == lastKey && now - lastAt < 60_000) return
@@ -48,6 +49,8 @@ class PayeeReaderService : AccessibilityService() {
             c?.recycle()
         }
     }
+
+    override fun onServiceConnected() { android.util.Log.d("PayeeReader", "connected") }
 
     override fun onInterrupt() {}
 
