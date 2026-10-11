@@ -79,6 +79,9 @@ interface ApiService {
     @PUT("plan")
     suspend fun setPlan(@Body body: PlanInRequest): PlanDto
 
+    @POST("import/jd")
+    suspend fun importJd(@Body body: Map<String, @JvmSuppressWildcards Any?>): JdImportDto
+
     @GET("carcare")
     suspend fun carCare(): CarCareDto
 

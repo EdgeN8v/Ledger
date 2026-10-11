@@ -335,3 +335,9 @@ data class CarCareDto(
     val odometer: CareOdometerDto? = null, val items: List<CareItemDto> = emptyList(),
     val history: List<CareServiceDto> = emptyList(), val choices: List<CareChoiceDto> = emptyList()
 )
+
+data class JdUnmatchedDto(val date: String = "", val amount: String = "", val title: String = "", val pay: String = "")
+data class JdImportDto(
+    val orders: Int = 0, val matched: Int = 0, val unmatched: Int = 0, val noted: Int = 0, val recategorized: Int = 0, val subbed: Int = 0,
+    val unmatched_list: List<JdUnmatchedDto> = emptyList()
+)

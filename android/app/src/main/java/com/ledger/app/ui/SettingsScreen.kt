@@ -105,6 +105,8 @@ fun SettingsScreen(
 
         UpdateCard()
 
+        ImportCard()
+
         CaptureCard()
 
         AppearanceCard()

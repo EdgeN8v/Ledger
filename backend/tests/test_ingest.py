@@ -1115,3 +1115,23 @@ def test_sub_categories_are_guessed_learned_and_snacks_leave_shopping(client):
     assert client.put(f"/transactions/{again['id']}", json={"sub": "饭店"}).status_code == 400          # not a shopping sub
     got = client.get("/transactions/subs", params={"category_id": cid["购物"]}).json()
     assert {g["sub"] for g in got} >= {"服装", "日用品"}
+
+
+def test_jd_statement_fills_in_what_was_bought(client):
+    import base64, io, zipfile
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向京东支付-京东商城-某某旗舰店支出59.90元,可用余额900元。", 10, 0)
+    _sms(client, "【建设银行】您账户1234于10月7日12:00向京东支付-京东商城-某某店支出88元,可用余额800元。", 12, 0, day=7)
+    csv_text = ("导出信息：\n共：3笔记录\n\n交易时间,商户名称,交易说明,金额,收/付款方式,交易状态,收/支,交易分类,交易订单号,商家订单号,备注\n"
+                "2026-10-06 10:00:05\t,京东平台商户,某某牌洗衣液 家庭装,59.90,建设银行储蓄卡(1234),交易成功,支出,清洁纸品,111\t,222\t, ,\n"
+                "2026-10-07 12:00:00\t,京东平台商户,某某汽车玻璃水 2L,88.00,建设银行储蓄卡(1234),交易成功,支出,汽车用品,333\t,444\t, ,\n"
+                "2026-10-08 12:00:00\t,京东平台商户,没有对上的东西,9.00,建设银行储蓄卡(1234),交易成功,支出,其他网购,555\t,666\t, ,\n")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("jd.csv", csv_text.encode("utf-8"))
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    got = client.post("/import/jd", json={"zip_b64": b64, "password": "", "dry_run": False}).json()
+    assert got["matched"] == 2 and got["unmatched"] == 1 and got["unmatched_list"][0]["title"].startswith("没有对上")
+    cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    rows = {t["amount"]: t for t in client.get("/transactions").json()}
+    assert rows["59.90"]["note"].startswith("某某牌洗衣液") and cats[rows["59.90"]["category_id"]] == "购物" and rows["59.90"]["sub"] == "日用品"
+    assert cats[rows["88.00"]["category_id"]] == "我的车"
