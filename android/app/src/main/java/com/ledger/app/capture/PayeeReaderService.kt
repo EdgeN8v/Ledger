@@ -19,7 +19,8 @@ class PayeeReaderService : AccessibilityService() {
     private var lastAt = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || event.packageName?.toString() != "com.tencent.mm") return
+        val pkg = event?.packageName?.toString()
+        val source = SOURCES[pkg] ?: return
         if (!Prefs.isLoggedIn(this)) return
         val now = System.currentTimeMillis()
         if (now - lastAt < 700) return                           // content-changed events come in bursts
@@ -33,7 +34,7 @@ class PayeeReaderService : AccessibilityService() {
         if (key == lastKey && now - lastAt < 60_000) return
         lastKey = key
         lastAt = now
-        CaptureQueue.add(this, CaptureQueue.Item("screen:wechat", null, lines.take(14).joinToString("\n"), now))
+        CaptureQueue.add(this, CaptureQueue.Item(source, null, lines.take(14).joinToString("\n"), now))
         UploadWorker.enqueue(this)
     }
 
@@ -51,6 +52,7 @@ class PayeeReaderService : AccessibilityService() {
     override fun onInterrupt() {}
 
     companion object {
-        private val AMOUNT = Regex("^[¥￥]\\s*[0-9][0-9,]*(\\.[0-9]{1,2})?$")
+        private val SOURCES = mapOf("com.tencent.mm" to "screen:wechat", "com.eg.android.AlipayGphone" to "screen:alipay")
+        private val AMOUNT = Regex("^[¥￥]?\\s*[0-9][0-9,]*\\.[0-9]{2}$")
     }
 }

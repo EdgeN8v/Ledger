@@ -199,9 +199,9 @@ def ingest(
 ):
     if payload.source in SHOP_APPS:
         return _store_order_hint(db, user, payload)
-    if payload.source == screenpay.SOURCE:
+    if payload.source in screenpay.SOURCES:
         lines = [l for l in (payload.text or "").splitlines()][:30]
-        return schemas.IngestResult(status=screenpay.store_and_apply(db, user.ledger_id, user.id, from_epoch_ms(payload.posted_at_ms), lines))
+        return schemas.IngestResult(status=screenpay.store_and_apply(db, user.ledger_id, user.id, from_epoch_ms(payload.posted_at_ms), lines, payload.source))
     source = SOURCE_MAP.get(payload.source)
     if source is None:
         return schemas.IngestResult(status="ignored")

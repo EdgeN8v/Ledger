@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 from app import models
 from app.merchants import is_generic, shop_core
 
-_AMOUNT = re.compile(r"^[¥￥]\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)$")
+_AMOUNT = re.compile(r"^[¥￥]?\s*([0-9][0-9,]*\.[0-9]{2})$")
 _SKIP = {"支付成功", "付款成功", "微信支付", "完成", "返回", "详情", "账单详情", "查看账单", "支付方式", "优惠", "收款方", "商品", "交易对象", "零钱", "零钱通", "关闭", "确定"}
 WINDOW = timedelta(minutes=20)
-SOURCE = "screen:wechat"
+SOURCES = {"screen:wechat": "微信支付", "screen:alipay": "支付宝"}     # which app the page was read in -> how its payments are named
 
 
 def parse(lines: list[str]) -> tuple[Optional[Decimal], Optional[str]]:
@@ -43,12 +43,12 @@ def _generic(tx: models.Transaction) -> bool:
     return not core or is_generic(core) or "扫二维码付款" in core
 
 
-def apply_to(db: Session, tx: models.Transaction, payee: str) -> bool:
+def apply_to(db: Session, tx: models.Transaction, payee: str, prefix: str = "微信支付") -> bool:
     """Name a payment that has no shop name after the page's payee, and look at its category again."""
     if not _generic(tx):
         return False
     from app.routers.ingest import _pick_category            # lazy: ingest imports this module
-    tx.merchant = f"微信支付-{payee}"
+    tx.merchant = f"{prefix}-{payee}"
     tx.raw_text = f"{tx.raw_text or ''}\n---\n收款方:{payee}".strip()
     if not tx.category_locked:
         cat, guessed = _pick_category(db, tx.ledger_id, tx.tx_type.value, tx.merchant, tx.raw_text, tx.amount, tx.occurred_at)
@@ -57,12 +57,12 @@ def apply_to(db: Session, tx: models.Transaction, payee: str) -> bool:
     return True
 
 
-def store_and_apply(db: Session, ledger_id: int, user_id: int, posted, lines: list[str]) -> str:
+def store_and_apply(db: Session, ledger_id: int, user_id: int, posted, lines: list[str], source: str = "screen:wechat") -> str:
     amount, payee = parse(lines)
     if amount is None or amount <= 0 or not payee:
         return "ignored"
     from app.routers.ingest import _fingerprint
-    fp = _fingerprint(SOURCE, payee, f"{amount:.2f}", posted.strftime("%Y%m%d%H%M"))
+    fp = _fingerprint(source, payee, f"{amount:.2f}", posted.strftime("%Y%m%d%H%M"))
     if db.query(models.RawEvent).filter(models.RawEvent.ledger_id == ledger_id, models.RawEvent.fingerprint == fp).first():
         return "duplicate"
     T = models.Transaction
@@ -70,8 +70,8 @@ def store_and_apply(db: Session, ledger_id: int, user_id: int, posted, lines: li
                              T.occurred_at >= posted - WINDOW, T.occurred_at <= posted + WINDOW)
           .order_by(T.occurred_at.desc()).all())
     tx = next((t for t in tx if _generic(t)), None)
-    applied = bool(tx) and apply_to(db, tx, payee)
-    db.add(models.RawEvent(ledger_id=ledger_id, user_id=user_id, fingerprint=fp, source=SOURCE, title=payee, text=f"{amount:.2f}", posted_at=posted,
+    applied = bool(tx) and apply_to(db, tx, payee, SOURCES[source])
+    db.add(models.RawEvent(ledger_id=ledger_id, user_id=user_id, fingerprint=fp, source=source, title=payee, text=f"{amount:.2f}", posted_at=posted,
                            status="applied" if applied else "hint", transaction_id=tx.id if applied else None))
     db.commit()
     return "applied" if applied else "hint"
@@ -82,8 +82,8 @@ def apply_pending(db: Session, tx: models.Transaction) -> None:
     if tx.tx_type != models.TxType.expense or not _generic(tx):
         return
     E = models.RawEvent
-    ev = (db.query(E).filter(E.ledger_id == tx.ledger_id, E.source == SOURCE, E.status == "hint", E.text == f"{Decimal(tx.amount):.2f}",
+    ev = (db.query(E).filter(E.ledger_id == tx.ledger_id, E.source.in_(list(SOURCES)), E.status == "hint", E.text == f"{Decimal(tx.amount):.2f}",
                              E.posted_at >= tx.occurred_at - WINDOW, E.posted_at <= tx.occurred_at + WINDOW)
           .order_by(E.posted_at.desc()).first())
-    if ev and ev.title and apply_to(db, tx, ev.title):
+    if ev and ev.title and apply_to(db, tx, ev.title, SOURCES[ev.source]):
         ev.status, ev.transaction_id = "applied", tx.id
