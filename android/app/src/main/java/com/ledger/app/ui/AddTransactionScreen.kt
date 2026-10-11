@@ -1,6 +1,7 @@
 package com.ledger.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,7 @@ fun AddTransactionScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
             .padding(24.dp)
     ) {
         Text(
@@ -61,6 +63,31 @@ fun AddTransactionScreen(
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
+
+        // the list cuts long names short: here is the whole record, in full and selectable
+        if (existing != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            ) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        val rows = listOfNotNull(
+                            existing.merchant?.takeIf { it.isNotBlank() }?.let { "商户" to it },
+                            existing.note?.takeIf { it.isNotBlank() && it != existing.merchant }?.let { "说明" to it },
+                            "时间" to existing.occurred_at.replace('T', ' ').take(19),
+                            existing.account_hint?.takeIf { it.isNotBlank() }?.let { "付款" to it },
+                            categories.find { it.id == existing.category_id }?.let { "分类" to (it.name + (existing.sub?.let { s -> " · $s" } ?: "")) },
+                            existing.raw_text?.takeIf { it.isNotBlank() && it != existing.note && it != existing.merchant }?.let { "原文" to it }
+                        )
+                        rows.forEachIndexed { i, (k, v) ->
+                            Text(k, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = if (i == 0) 0.dp else 8.dp))
+                            Text(v, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
 
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

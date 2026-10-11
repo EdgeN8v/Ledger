@@ -194,7 +194,8 @@ fun TransactionListScreen(
                                     tx,
                                     state.categories.find { it.id == tx.category_id },
                                     onClick = { onEditTransaction(tx) },
-                                    onLongClick = { pickFor = tx }
+                                    onLongClick = { pickFor = tx },
+                                    fullText = true
                                 )
                             }
                         }
