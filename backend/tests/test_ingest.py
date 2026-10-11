@@ -1145,3 +1145,20 @@ def test_shop_app_notices_are_collected_only_when_they_are_order_news(client):
     assert send("com.xunmeng.pinduoduo", "拼多多", "您的包裹已签收") == "hint"
     assert send("com.xunmeng.pinduoduo", "拼多多", "您的包裹已签收") == "duplicate"
     assert client.get("/transactions").json() == []                     # collecting only: no money is created
+
+
+def test_dog_things_get_their_own_category_and_delivery_platforms_are_always_delivery(client):
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    assert cats["狗狗"]["subs"] == ["狗粮", "砂/尿垫", "零食", "玩具", "医疗", "其他"]
+
+    def pay(shop, h):
+        _sms(client, f"【建设银行】您账户1234于10月6日{h}:00向{shop}支出30元,可用余额900元。", h, 0)
+        return client.get("/transactions", params={"limit": 50}).json()[0]
+    dog = pay("京东支付-京东商城-冠能狗粮官方旗舰店", 10)
+    assert dog["category_id"] == cats["狗狗"]["id"] and dog["sub"] == "狗粮"
+    pad = pay("微信支付-某某宠物用品店", 11)
+    assert pad["category_id"] == cats["狗狗"]["id"]
+    eleme = pay("支付宝-饿了么/上海拉扎斯信息科技有限公司", 12)
+    assert eleme["category_id"] == cats["餐饮"]["id"] and eleme["sub"] == "外卖"
+    ramen = pay("支付宝-饿了么/拉扎斯网络科技(上海)有限公司 超市便利", 13)
+    assert ramen["sub"] == "外卖"

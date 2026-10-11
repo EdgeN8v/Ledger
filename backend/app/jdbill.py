@@ -68,6 +68,8 @@ def parse(text: str) -> list[dict]:
 def _target(row: dict) -> tuple[Optional[str], Optional[str]]:
     """(category name, sub) from the title and JD's category; None = leave the category as it is."""
     title, kinds = row["title"], row["kind"].split()
+    if subcats.is_pet(title, None):
+        return "狗狗", subcats.keyword_sub("狗狗", title, None)
     if row["shop"] == "京东外卖" or _DELIVERY.search(title):
         return "餐饮", "外卖"
     if "亲密卡" in title:

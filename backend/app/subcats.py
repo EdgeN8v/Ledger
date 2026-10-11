@@ -16,6 +16,7 @@ SUBS = {
     "购物": ["电子产品", "日用品", "服装", "其他"],
     "餐饮": ["饭店", "外卖", "食材", "零食"],
     TRAVEL: ["交通", "酒店"],
+    "狗狗": ["狗粮", "砂/尿垫", "零食", "玩具", "医疗", "其他"],
 }
 
 _SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,酸奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
@@ -33,6 +34,12 @@ _DAILY = ("日用,纸巾,卫生纸,抽纸,湿巾,洗衣,洗发,沐浴,牙膏,牙
 _CLOTHES = ("服饰,服装,衣,裤,鞋,袜,内衣,内裤,文胸,T恤,外套,羽绒,衬衫,卫衣,毛衣,针织,风衣,夹克,西装,牛仔,优衣库,UNIQLO,ZARA,海澜之家,耐克,Nike,阿迪,adidas,安踏,"
             "李宁,波司登,GAP,森马,美特斯邦威,太平鸟,帽,围巾,手套").split(",")
 _VIRTUAL = "会员,流量包,网盘,SVIP,代办,认证,代充,卡密,充值,激活码".split(",")
+_PET = ("宠物,狗粮,犬粮,狗狗,狗砂,狗零食,狗玩具,狗牵引,狗链,遛狗,训犬,尿垫,尿片,冠能,比瑞吉,波奇,宠物医院").split(",")
+_PET_MED = "医院,驱虫,疫苗,体检,诊疗,疫苗,外用药".split(",")
+_PET_FOOD = "狗粮,犬粮,主粮,冻干,罐头".split(",")
+_PET_PAD = "尿垫,尿片,砂,除臭".split(",")
+_PET_SNACK = "零食,磨牙,洁齿,肉干,鸡胸,奖励".split(",")
+_PET_TOY = "玩具,球,啃咬,绳结,飞盘".split(",")
 _HOTEL = ("酒店,宾馆,民宿,客栈,旅馆,住宿,如家,汉庭,全季,亚朵,7天,锦江之星,维也纳,希尔顿,万豪,洲际,华住,度假村,公寓酒店,青年旅舍,快捷酒店,携程酒店,美团酒店,飞猪酒店").split(",")
 # food that was bought on a shopping platform
 _FOOD_ITEM_SNACK = [k for k in _SNACK if k not in ("便利店", "全家", "便利蜂", "罗森", "7-ELEVEN", "711", "咖啡", "星巴克", "瑞幸", "库迪")]
@@ -48,9 +55,20 @@ def _hay(merchant: Optional[str], note: Optional[str]) -> str:
     return f"{merchant or ''} {n}"
 
 
+def is_pet(merchant: Optional[str], note: Optional[str]) -> bool:
+    return _has(_hay(merchant, note), _PET)
+
+
 def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> Optional[str]:
     hay = _hay(merchant, note)
+    if cat_name == "狗狗":
+        for words, sub in ((_PET_MED, "医疗"), (_PET_PAD, "砂/尿垫"), (_PET_TOY, "玩具"), (_PET_SNACK, "零食"), (_PET_FOOD, "狗粮")):
+            if _has(hay, words):
+                return sub
+        return "其他"
     if cat_name == "餐饮":
+        if _has(hay, ("饿了么", "拉扎斯", "美团外卖", "京东外卖", "外卖")):
+            return "外卖"                                # a delivery platform is delivery, whatever was in the bag
         if _has(hay, _GROCERY):
             return "食材"
         if _has(hay, _SNACK):
@@ -111,11 +129,17 @@ def classify_all(db: Session) -> int:
         for t in db.query(models.Transaction).filter(models.Transaction.ledger_id == ledger.id, models.Transaction.tx_type == models.TxType.expense):
             name = cats.get(t.category_id)
             allowed = SUBS.get(name)
+            if name in ("购物", "餐饮", "其他支出") and not t.category_locked and "狗狗" in by_name and is_pet(t.merchant, t.note):
+                t.category_id, t.sub, changed = by_name["狗狗"], keyword_sub("狗狗", t.merchant, t.note), changed + 1
+                continue
             if allowed is None:
                 if t.sub is not None:
                     t.sub, changed = None, changed + 1
                 continue
             if t.sub in allowed:
+                continue
+            if name in ("购物", "餐饮", "其他支出") and not t.category_locked and "狗狗" in by_name and is_pet(t.merchant, t.note):
+                t.category_id, t.sub, changed = by_name["狗狗"], keyword_sub("狗狗", t.merchant, t.note), changed + 1
                 continue
             if name == "购物" and not t.category_locked and "餐饮" in by_name:
                 food = food_instead_of_shopping(t.merchant, t.note)
@@ -130,19 +154,26 @@ def classify_all(db: Session) -> int:
 
 
 def register() -> None:
-    """New transactions get their sub (and the shopping-that-is-food move) at insert time, whichever path creates them."""
+    """New transactions get their sub (and the pet / shopping-that-is-food moves) whichever path creates them; the sub is
+    also filled in when the category is only set after the first insert."""
     from app import models
 
-    @event.listens_for(models.Transaction, "before_insert")
-    def _before_insert(mapper, connection, t):  # noqa: ANN001
-        if t.tx_type != models.TxType.expense or not t.category_id or t.sub is not None:
+    def fill(connection, t):
+        if t.tx_type != models.TxType.expense or not t.category_id:
             return
         C, R = models.Category.__table__, models.MerchantRule.__table__
         row = connection.execute(select(C.c.name, C.c.ledger_id).where(C.c.id == t.category_id)).first()
-        if not row or row[0] not in SUBS:
+        if not row:
             return
         name, ledger_id = row
-        rules = [(p, s) for p, s in connection.execute(select(R.c.pattern, R.c.sub).where(R.c.ledger_id == ledger_id, R.c.sub.isnot(None)))]
+        if not t.category_locked and name in ("购物", "餐饮", "其他支出") and is_pet(t.merchant, t.note):
+            pid = connection.execute(select(C.c.id).where(C.c.ledger_id == ledger_id, C.c.name == "狗狗")).scalar()
+            if pid and t.category_id != pid:
+                t.category_id, t.sub = pid, keyword_sub("狗狗", t.merchant, t.note)
+                return
+        if name not in SUBS or t.sub is not None:
+            return
+        rules = [(p, s_) for p, s_ in connection.execute(select(R.c.pattern, R.c.sub).where(R.c.ledger_id == ledger_id, R.c.sub.isnot(None)))]
         if name == "购物" and not t.category_locked:
             food = food_instead_of_shopping(t.merchant, t.note)
             if food:
@@ -151,3 +182,11 @@ def register() -> None:
                     t.category_id, t.sub = fid, food
                     return
         t.sub = guess(name, t.merchant, t.note, rules)
+
+    @event.listens_for(models.Transaction, "before_insert")
+    def _before_insert(mapper, connection, t):  # noqa: ANN001
+        fill(connection, t)
+
+    @event.listens_for(models.Transaction, "before_update")
+    def _before_update(mapper, connection, t):  # noqa: ANN001
+        fill(connection, t)

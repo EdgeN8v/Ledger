@@ -512,7 +512,6 @@ internal fun CategoryPickerDialog(
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         subs.forEach { s -> FilterChip(selected = tx.sub == s, onClick = { onPickSub(s) }, label = { Text(s) }) }
-                        if (tx.sub != null) FilterChip(selected = false, onClick = { onPickSub(null) }, label = { Text("不细分") })
                     }
                 }
             }
