@@ -1135,3 +1135,13 @@ def test_jd_statement_fills_in_what_was_bought(client):
     rows = {t["amount"]: t for t in client.get("/transactions").json()}
     assert rows["59.90"]["note"].startswith("某某牌洗衣液") and cats[rows["59.90"]["category_id"]] == "购物" and rows["59.90"]["sub"] == "日用品"
     assert cats[rows["88.00"]["category_id"]] == "我的车"
+
+
+def test_shop_app_notices_are_collected_only_when_they_are_order_news(client):
+    def send(pkg, title, text):
+        return client.post("/ingest", json={"source": pkg, "title": title, "text": text, "posted_at_ms": ms(2026, 10, 6, 10, 0)}).json()["status"]
+    assert send("com.jingdong.app.mall", "京东", "您的订单【某某洗衣液】已发货, 预计明天送达") == "hint"
+    assert send("com.jingdong.app.mall", "京东", "限时秒杀 满99减50 订单立减") == "ignored"
+    assert send("com.xunmeng.pinduoduo", "拼多多", "您的包裹已签收") == "hint"
+    assert send("com.xunmeng.pinduoduo", "拼多多", "您的包裹已签收") == "duplicate"
+    assert client.get("/transactions").json() == []                     # collecting only: no money is created

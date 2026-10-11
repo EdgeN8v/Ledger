@@ -32,6 +32,29 @@ SOURCE_MAP = {
 }
 
 
+# Shopping apps: their order notices only say WHAT was bought. For now they are just collected (status "hint"), to see
+# whether they can be matched to payments; nothing in the ledger is created or changed from them.
+SHOP_APPS = {"com.jingdong.app.mall": "jd", "com.xunmeng.pinduoduo": "pdd", "com.taobao.taobao": "taobao", "com.tmall.wireless": "tmall", "com.jd.jrapp": "jdfinance"}
+_ORDER_NOTICE = re.compile(r"已发货|已签收|已出库|待收货|已揽收|派送|取件|包裹|订单|已下单|已支付|退款|退货|售后|换货")
+_PROMO = re.compile(r"优惠|红包|秒杀|领券|降价|会员日|猜你喜欢|直播|签到|福利|限时|抢购|折扣|满\d+减|活动|立减|补贴|大促|爆款")
+
+
+def _store_order_hint(db: Session, user, payload) -> "schemas.IngestResult":
+    title, text = payload.title or "", clean_text(payload.text or "")
+    if not _ORDER_NOTICE.search(f"{title} {text}") or _PROMO.search(f"{title} {text}"):
+        return schemas.IngestResult(status="ignored")
+    posted = from_epoch_ms(payload.posted_at_ms)
+    src = "shop:" + SHOP_APPS[payload.source]
+    fp = _fingerprint(src, title, text, posted.strftime("%Y%m%d%H%M"))
+    if db.query(models.RawEvent).filter(models.RawEvent.ledger_id == user.ledger_id, models.RawEvent.fingerprint == fp).first():
+        return schemas.IngestResult(status="duplicate")
+    ev = models.RawEvent(ledger_id=user.ledger_id, user_id=user.id, fingerprint=fp, source=src, title=title[:200], text=text[:600],
+                         posted_at=posted, status="hint")
+    db.add(ev)
+    db.commit()
+    return schemas.IngestResult(status="hint", event_id=ev.id)
+
+
 def _fingerprint(source: str, title: str, text: str, posted_minute: str) -> str:
     return hashlib.sha1(f"{source}|{title}|{text}|{posted_minute}".encode("utf-8")).hexdigest()
 
@@ -174,6 +197,8 @@ def ingest(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    if payload.source in SHOP_APPS:
+        return _store_order_hint(db, user, payload)
     source = SOURCE_MAP.get(payload.source)
     if source is None:
         return schemas.IngestResult(status="ignored")

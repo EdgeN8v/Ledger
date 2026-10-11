@@ -19,6 +19,8 @@ from app import models, subcats
 
 _AMOUNT = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 _JD_SHOP = re.compile(r"京东|网银在线|JD", re.I)
+_LATER = re.compile(r"白条|小金库|京东金融|网银")          # pay-later / wallet orders reach the bank weeks later, as one JD payment
+_LATER_PAY = ("京东白条", "京东小金库", "余额")
 _GIFT = re.compile(r"礼盒|送礼|礼品")
 _DELIVERY = re.compile(r"人份|套餐|单人餐")
 _DRUG = re.compile(r"酊|膏|药|胶囊|颗粒|口服液|贴")
@@ -103,6 +105,11 @@ def analyze(db: Session, ledger_id: int, rows: list[dict]) -> tuple[list[tuple[d
                                     T.refund_of_id.is_(None), T.amount == row["amount"],
                                     T.occurred_at >= day0 - timedelta(days=1), T.occurred_at < day0 + timedelta(days=2)).all())
         cands = [c for c in cands if c.id not in used]
+        if not cands and row["pay"] in _LATER_PAY:
+            late = (db.query(T).filter(T.ledger_id == ledger_id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
+                                       T.refund_of_id.is_(None), T.amount == row["amount"],
+                                       T.occurred_at >= day0, T.occurred_at < day0 + timedelta(days=75)).all())
+            cands = [c for c in late if c.id not in used and _LATER.search(c.merchant or "")]
         if not cands:
             missing.append(row)
             continue
