@@ -32,8 +32,8 @@ def rule_applies(pattern: str, merchant: Optional[str]) -> bool:
     """A learned rule is about a SHOP: it applies when the merchant's bare shop name is that shop (or, for a long
     enough name, contains it) - never because the pattern happens to appear somewhere in a message."""
     core = shop_core(merchant)
-    if not core or not pattern:
-        return False
+    if not core or not pattern or is_generic(pattern):
+        return False                       # "扫二维码付款" says nothing about the shop: it can never be a shop rule
     return pattern == core or (len(pattern) >= 4 and pattern in core)
 
 

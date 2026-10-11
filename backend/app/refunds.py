@@ -66,6 +66,7 @@ def link_refund(db: Session, refund: models.Transaction, refunded: Optional[dict
     target = None
     for pool in (
         [e for e in exact if same_shop(refund.merchant, e.merchant)],
+        [e for e in exact if timedelta(0) <= refund.occurred_at - e.occurred_at <= timedelta(hours=12)],   # a payee-less refund ("财付通"): the same amount paid hours ago
         exact if len(exact) == 1 else [],
         [e for e, _ in room if same_shop(refund.merchant, e.merchant)],     # partial refund: shop must match
     ):

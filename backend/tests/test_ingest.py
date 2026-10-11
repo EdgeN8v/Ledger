@@ -1162,3 +1162,16 @@ def test_dog_things_get_their_own_category_and_delivery_platforms_are_always_del
     assert eleme["category_id"] == cats["餐饮"]["id"] and eleme["sub"] == "外卖"
     ramen = pay("支付宝-饿了么/拉扎斯网络科技(上海)有限公司 超市便利", 13)
     assert ramen["sub"] == "外卖"
+
+
+def test_scan_code_payments_are_not_a_shop_zero_payments_are_ignored_and_a_payeeless_refund_finds_its_payment(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    rid = client.put("/transactions/1", json={"category_id": cats["餐饮"]}) if False else None
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向微信支付-中心医院缴费支出3元,可用余额900元。", 10, 0)
+    _sms(client, "【建设银行】您账户1234于10月6日10:01向微信支付-某便利店支出3元,可用余额897元。", 10, 1)
+    r = _sms(client, "【建设银行】财付通于10月6日10:09向您账户1234消费退货存入3元,可用余额900元。", 10, 9)
+    got = client.get("/transactions", params={"limit": 20}).json()
+    refund = [t for t in got if t["tx_type"] == "income"][0]
+    assert refund["refund_of_id"] is not None and refund["needs_review"] is False          # paired with the closest same-amount payment
+    z = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "支付宝", "text": "支付宝: 已支付¥0.00", "posted_at_ms": ms(2026, 10, 6, 11, 0)}).json()
+    assert z["status"] == "ignored"

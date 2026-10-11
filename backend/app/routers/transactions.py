@@ -87,7 +87,7 @@ def list_transactions(
 ):
     """Newest first, paged with limit/offset so the app can keep loading as the history grows."""
     T = models.Transaction
-    query = db.query(T).filter(T.ledger_id == user.ledger_id)
+    query = db.query(T).filter(T.ledger_id == user.ledger_id, T.amount > 0)       # a 0.00 record is never useful to show
     if year:
         query = query.filter(extract("year", T.occurred_at) == year)
     if month:

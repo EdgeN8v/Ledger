@@ -221,6 +221,9 @@ def ingest(
     mileage = bool(MILEAGE.search(text))
     ctrip = (not ticket) and note_return_ticket(db, user.ledger_id, text, posted)
     parsed = None if (ticket or mileage or ctrip) else parse_message(source, title, text, posted)
+    zero = parsed is not None and parsed.amount is not None and parsed.amount <= 0      # "已支付 ¥0.00" is not a payment
+    if zero:
+        parsed = None
     status, tx = "ignored", None
 
     if ctrip:
@@ -230,6 +233,8 @@ def ingest(
         store_flights(db, user.ledger_id, ticket)
         status = "flight"
     elif mileage:
+        status = "ignored"
+    elif parsed is None and zero:
         status = "ignored"
     elif parsed is None:
         status = "failed" if (looks_financial(f"{title} {text}") or looks_like_ticket(text)) else "ignored"
