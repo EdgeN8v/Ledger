@@ -225,6 +225,7 @@ class AccountsOverview(BaseModel):
 class LedgerSettings(BaseModel):
     cycle_start_day: Optional[int] = None
     owner_names: Optional[str] = None
+    family_names: Optional[str] = None
 
 
 class PlanIn(BaseModel):

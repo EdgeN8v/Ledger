@@ -143,8 +143,11 @@ def _is_own_name(db: Session, ledger_id: int, merchant: Optional[str]) -> bool:
     """Money to/from the account holder's own name is a move between own accounts, not income or spending."""
     if not merchant:
         return False
-    names = (db.get(models.Ledger, ledger_id).owner_names or "").split(",")
-    return any(n.strip() and n.strip() == merchant.strip() for n in names)
+    ledger = db.get(models.Ledger, ledger_id)
+    names = [n.strip() for n in f"{ledger.owner_names or ''},{getattr(ledger, 'family_names', None) or ''}".split(",") if n.strip()]
+    m = merchant.strip()
+    tail = m.split("-")[-1].strip()                           # "微信转账-兔兔" -> "兔兔"
+    return any(n == m or (n == tail and m.startswith(("微信转账", "转账"))) for n in names)
 
 
 def _update_balance(db: Session, ledger_id: int, parsed: Parsed, when) -> None:
@@ -268,8 +271,10 @@ def ingest(
             # the bank SMS carries the exact time and merchant text; wallets carry the clean merchant name
             if parsed.occurred_at and parsed.channel == "bank":
                 target.occurred_at = parsed.occurred_at
-            if parsed.merchant and not target.merchant:
-                target.merchant = parsed.merchant
+            if parsed.merchant and (not target.merchant or (target.merchant.endswith("微信转账") and parsed.merchant.startswith("微信转账-"))):
+                target.merchant = parsed.merchant                # the notification names the person the bank SMS leaves out
+                if _is_own_name(db, user.ledger_id, parsed.merchant):
+                    target.is_transfer, target.needs_review = True, False
             if parsed.account_hint and not target.account_hint:
                 target.account_hint = parsed.account_hint
             target.raw_text = f"{target.raw_text or ''}\n---\n{text}".strip()

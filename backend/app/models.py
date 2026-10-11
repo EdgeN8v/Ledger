@@ -37,6 +37,7 @@ class Ledger(Base):
     savings_target = Column(Numeric(14, 2), nullable=True)    # how much to keep every pay cycle
     fixed_expenses = Column(Numeric(14, 2), nullable=True)    # rent etc. paid from accounts that send no SMS
     fixed_items = Column(Text, nullable=True)      # JSON list of fixed commitments, see fixed.py
+    family_names = Column(String, nullable=True)   # comma-separated: the spouse's name and the nickname you saved them under; money to them is not spending
     home_city = Column(String, nullable=True)      # where business trips start and end (default 上海)
     trips_enabled = Column(Boolean, nullable=False, default=True)   # False: flight SMS no longer open new business trips
     owner_names = Column(String, nullable=True)    # comma-separated names of the account holders: money from/to them is a transfer

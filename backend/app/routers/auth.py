@@ -31,6 +31,8 @@ def update_ledger_settings(
         if not 1 <= payload.cycle_start_day <= 28:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "cycle_start_day must be 1-28")
         ledger.cycle_start_day = payload.cycle_start_day
+    if payload.family_names is not None:
+        ledger.family_names = payload.family_names.strip() or None
     if payload.owner_names is not None:
         ledger.owner_names = payload.owner_names.strip() or None
     db.commit()

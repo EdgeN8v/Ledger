@@ -1216,3 +1216,10 @@ def test_a_person_named_payee_never_becomes_a_rule(client):
     nxt = client.get("/transactions").json()[0]
     assert nxt["category_id"] != cats["狗狗"]                                # a seller's name says nothing about what the next purchase is
     assert not client.get("/transactions", params={"q": "饶佳美"}).json()[0]["sub"] == "狗粮"
+
+
+def test_money_sent_to_the_spouse_is_a_transfer_not_spending(client):
+    assert client.put("/auth/ledger-settings", json={"family_names": "马测试, 小兔"}).status_code == 200
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向小兔转账支出500元,可用余额900元。", 10, 0)
+    t = client.get("/transactions").json()[0]
+    assert t["is_transfer"] is True
