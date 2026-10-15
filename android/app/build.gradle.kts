@@ -19,8 +19,8 @@ android {
         applicationId = "com.ledger.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 23
-        versionName = "0.4.10"
+        versionCode = 24
+        versionName = "0.4.11"
         // Where the app looks for your server out of the box. Set them in android/local.properties (never committed):
         //   ledger.defaultServer=https://ledger.example.com/     ledger.lanServer=http://192.168.1.10:8000/
         buildConfigField("String", "DEFAULT_SERVER", "\"" + localProp("ledger.defaultServer", "http://192.168.1.10:8000/") + "\"")
@@ -29,7 +29,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 drops the unused ~40 MB of library code (the icon set alone was most of the download); signed with the same
+            // key as the builds already on the phones, so it installs over them as an update
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
