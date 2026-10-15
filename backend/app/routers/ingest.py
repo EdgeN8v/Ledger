@@ -134,7 +134,8 @@ def _find_merge_target(db: Session, ledger_id: int, parsed: Parsed, when, text: 
         if tx.source != models.TxSource.manual and parsed.origin not in seen and tx.sources:
             return tx
         # Alipay announces a family-card payment twice ("...使用你赠送的亲情卡消费" and "你有一笔..元的支出"): one payment
-        if parsed.origin == "alipay" and seen == {"alipay"} and ("亲情卡" in (tx.raw_text or "")) != ("亲情卡" in text):
+        # (the bank SMS may already have joined the record: it is still the same payment)
+        if parsed.origin == "alipay" and "alipay" in seen and ("亲情卡" in (tx.raw_text or "")) != ("亲情卡" in text):
             return tx
     return None
 

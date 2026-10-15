@@ -1237,3 +1237,13 @@ def test_restaurant_with_mama_in_the_name_is_food_and_a_shopless_twin_notice_is_
     ali("你有一笔8.80元的支出", 1)
     rows = [x for x in client.get("/transactions", params={"limit": 20}).json() if x["amount"] == "8.80"]
     assert len(rows) == 1
+
+
+def test_family_card_payment_announced_twice_by_alipay_stays_one_record_even_after_the_bank_sms_joined(client):
+    def ali(title, text, m):
+        return client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": title, "text": text, "posted_at_ms": ms(2026, 10, 6, 17, m)}).json()
+    _sms(client, "【建设银行】您账户1234于10月6日17:10向支付宝-饿了么/上海拉扎斯信息科技有限公司支出8.8元,可用余额900元。", 17, 10)
+    ali("你的亲情卡剩余871.00元", "M***Y（**怡）使用你赠送的亲情卡消费8.80元", 11)
+    ali("交易提醒", "你有一笔8.80元的支出，点此查看详情。", 11)
+    rows = [x for x in client.get("/transactions", params={"limit": 20}).json() if x["amount"] == "8.80"]
+    assert len(rows) == 1
