@@ -258,7 +258,18 @@ def ingest(
             .first()
         )
         target = None if same else _find_merge_target(db, user.ledger_id, parsed, when, text)
-        if same:
+        twin = None
+        if not same and not target and not (parsed.merchant or "").strip() and parsed.tx_type == "expense":
+            # a second, shop-less notice of a payment the same app already reported with its shop name
+            twin = (db.query(models.Transaction)
+                    .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.amount == parsed.amount,
+                            models.Transaction.tx_type == models.TxType.expense, models.Transaction.merchant.isnot(None), models.Transaction.merchant != "",
+                            models.Transaction.sources.contains(parsed.origin),
+                            models.Transaction.occurred_at >= when - timedelta(minutes=3), models.Transaction.occurred_at <= when + timedelta(minutes=3))
+                    .first())
+        if twin:
+            tx, status = twin, "duplicate"
+        elif same:
             # the exact same message re-posted by the phone (notification update): never a second record
             tx, status = same, "duplicate"
         elif target:

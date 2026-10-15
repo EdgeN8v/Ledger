@@ -261,6 +261,10 @@ def fix_keyword_conflicts(db: Session) -> None:
         mine = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "我的车").first()
         if trv and trv.keywords and mine:
             trv.keywords = ",".join(k for k in trv.keywords.split(",") if k.strip() and k.strip() not in car_words and k.strip() not in {"充电宝", "电动车", "蔚来", "小鹏", "理想", "特斯拉", "汽车", "车辆"})
+    for ledger in db.query(models.Ledger).all():          # "妈妈菜" is a restaurant: a bare "妈妈" must not make a meal "family"
+        fam = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "家人").first()
+        if fam and fam.keywords:
+            fam.keywords = ",".join(k for k in fam.keywords.split(",") if k.strip() and k.strip() not in {"妈妈", "爸妈", "父母"})
     moved_to_stay = {"酒店", "民宿", "美团酒店"}
     for ledger in db.query(models.Ledger).all():
         ent2 = db.query(models.Category).filter(models.Category.ledger_id == ledger.id, models.Category.name == "娱乐").first()

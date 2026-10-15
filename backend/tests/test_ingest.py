@@ -1223,3 +1223,17 @@ def test_money_sent_to_the_spouse_is_a_transfer_not_spending(client):
     _sms(client, "【建设银行】您账户1234于10月6日10:00向小兔转账支出500元,可用余额900元。", 10, 0)
     t = client.get("/transactions").json()[0]
     assert t["is_transfer"] is True
+
+
+def test_restaurant_with_mama_in_the_name_is_food_and_a_shopless_twin_notice_is_not_a_second_payment(client):
+    names = {c["id"]: c["name"] for c in client.get("/categories").json()}
+    _sms(client, "【建设银行】您账户1234于10月6日19:00向微信支付-忆家味妈妈菜·家宴·川菜(犀浦店)支出34元,可用余额900元。", 19, 0)
+    t = client.get("/transactions").json()[0]
+    assert names[t["category_id"]] == "餐饮"
+    _sms(client, "【建设银行】您账户1234于10月6日20:00向支付宝-饿了么/上海拉扎斯信息科技有限公司支出8.8元,可用余额800元。", 20, 0)
+    first = client.get("/transactions").json()[0]
+    assert first["amount"] == "8.80"
+    ali = lambda text, m: client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "支付宝", "text": text, "posted_at_ms": ms(2026, 10, 6, 20, m)}).json()
+    ali("你有一笔8.80元的支出", 1)
+    rows = [x for x in client.get("/transactions", params={"limit": 20}).json() if x["amount"] == "8.80"]
+    assert len(rows) == 1
