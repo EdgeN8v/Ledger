@@ -206,7 +206,6 @@ def merge_car_and_transport(db: Session) -> None:
             db.flush()
             db.delete(trans)
         car.name = TRAVEL_NAME
-        car.icon = "🚗"
     db.commit()
 
 
