@@ -40,6 +40,17 @@ object ApiClient {
         shared ?: OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .addInterceptor { chain ->
+                // an IPv4-only Wi-Fi cannot resolve the IPv6-only home name: use the mobile network for this app and retry once
+                try {
+                    chain.proceed(chain.request())
+                } catch (e: java.net.UnknownHostException) {
+                    if (!NetFallback.bindToMobile(context.applicationContext)) {
+                        throw java.io.IOException("当前 Wi-Fi 连不上家里的服务器(它没有 IPv6), 手机流量也不可用。打开手机流量或换个网络试试", e)
+                    }
+                    chain.proceed(chain.request())
+                }
+            }
+            .addInterceptor { chain ->
                 var request = chain.request()
                 val token = Prefs.getToken(context)
                 val b = request.newBuilder()
