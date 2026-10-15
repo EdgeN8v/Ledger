@@ -22,7 +22,9 @@ data class TxFilter(
     val categoryId: Int? = null,
     val kind: String? = null,          // transfer / normal
     val query: String = "",
-    val needsReviewOnly: Boolean = false
+    val needsReviewOnly: Boolean = false,
+    val from: String? = null,          // with range "custom": one day (from == to), or a whole month
+    val to: String? = null
 ) {
     val isActive get() = range != "all" || type != null || categoryId != null || kind != null || query.isNotBlank() || needsReviewOnly
 }
@@ -81,6 +83,7 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             "prev_cycle" -> { val s = cycleStart(today).minusMonths(1); s.toString() to s.plusMonths(1).minusDays(1).toString() }
             "month" -> today.withDayOfMonth(1).toString() to today.withDayOfMonth(today.lengthOfMonth()).toString()
             "last30" -> today.minusDays(29).toString() to today.toString()
+            "custom" -> f.from to f.to
             else -> null to null
         }
     }

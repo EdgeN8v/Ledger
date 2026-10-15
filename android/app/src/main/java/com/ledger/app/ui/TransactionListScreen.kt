@@ -87,7 +87,7 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 private val RANGES = listOf(
-    "all" to "全部时间", "cycle" to "当前账期", "prev_cycle" to "上一账期", "month" to "本月", "last30" to "最近30天"
+    "all" to "全部时间", "cycle" to "当前账期", "prev_cycle" to "上一账期", "month" to "本月", "last30" to "最近30天", "custom" to "自定义"
 )
 
 @Composable
@@ -385,13 +385,24 @@ private fun FilterHeader(state: TransactionUiState, onFilterChange: (TxFilter) -
     val typeLabel = when (f.type) { "expense" -> "支出"; "income" -> "收入"; else -> null }
     val kindLabel = when (f.kind) { "normal" -> "不含转账"; "transfer" -> "只看转账"; "family" -> "只看亲情卡"; "mine" -> "不含亲情卡"; else -> null }
 
+    var pickDay by remember { mutableStateOf(false) }
+    var pickMonth by remember { mutableStateOf(false) }
+    val customLabel = if (f.range == "custom" && f.from != null) customText(f.from, f.to) else null
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DropChip("时间", if (f.range == "all") null else rangeLabel, RANGES.map { it.first as String? to it.second }, f.range) {
-            onFilterChange(f.copy(range = it ?: "all"))
+        DropChip(
+            "时间", customLabel ?: (if (f.range == "all") null else rangeLabel),
+            listOf<Pair<String?, String>>("pick_day" to "📅 选某一天…", "pick_month" to "🗓 选某个月…") + RANGES.filter { it.first != "custom" }.map { it.first as String? to it.second },
+            f.range
+        ) {
+            when (it) {
+                "pick_day" -> pickDay = true
+                "pick_month" -> pickMonth = true
+                else -> onFilterChange(f.copy(range = it ?: "all", from = null, to = null))
+            }
         }
         DropChip("类型", typeLabel, listOf(null to "全部", "expense" to "支出", "income" to "收入"), f.type) {
             onFilterChange(f.copy(type = it, categoryId = null))
@@ -424,6 +435,83 @@ private fun FilterHeader(state: TransactionUiState, onFilterChange: (TxFilter) -
             )
         }
     }
+
+    // a picked day / month: step to the neighbour with one tap instead of scrolling and loading
+    if (f.range == "custom" && f.from != null && f.to != null) {
+        val isDay = f.from == f.to
+        val start = LocalDate.parse(f.from)
+        fun go(delta: Long) {
+            if (isDay) { val d = start.plusDays(delta); onFilterChange(f.copy(from = d.toString(), to = d.toString())) }
+            else { val m = start.withDayOfMonth(1).plusMonths(delta); onFilterChange(f.copy(from = m.toString(), to = m.plusMonths(1).minusDays(1).toString())) }
+        }
+        val atEnd = LocalDate.parse(f.to) >= LocalDate.now()
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            TextButton(onClick = { go(-1) }) { Text(if (isDay) "‹ 前一天" else "‹ 上个月") }
+            Text(customText(f.from, f.to), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp))
+            TextButton(enabled = !atEnd, onClick = { go(1) }) { Text(if (isDay) "后一天 ›" else "下个月 ›") }
+        }
+    }
+
+    if (pickDay) {
+        val st = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = (f.from?.let { LocalDate.parse(it) } ?: LocalDate.now()).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),
+            selectableDates = object : androidx.compose.material3.SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= System.currentTimeMillis() + 86_400_000L
+            }
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { pickDay = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    st.selectedDateMillis?.let { ms ->
+                        val d = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                        onFilterChange(f.copy(range = "custom", from = d.toString(), to = d.toString()))
+                    }
+                    pickDay = false
+                }) { Text("看这一天") }
+            },
+            dismissButton = { TextButton(onClick = { pickDay = false }) { Text("取消") } }
+        ) { androidx.compose.material3.DatePicker(state = st) }
+    }
+    if (pickMonth) {
+        var year by remember { mutableStateOf((f.from?.let { LocalDate.parse(it) } ?: LocalDate.now()).year) }
+        AlertDialog(
+            onDismissRequest = { pickMonth = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { year -= 1 }) { Text("‹") }
+                    Text("${year}年", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
+                    TextButton(enabled = year < LocalDate.now().year, onClick = { year += 1 }) { Text("›") }
+                }
+            },
+            text = {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (1..12).forEach { m ->
+                        val first = LocalDate.of(year, m, 1)
+                        FilterChip(
+                            selected = f.range == "custom" && f.from == first.toString() && f.to == first.plusMonths(1).minusDays(1).toString(),
+                            enabled = first <= LocalDate.now(),
+                            onClick = {
+                                onFilterChange(f.copy(range = "custom", from = first.toString(), to = first.plusMonths(1).minusDays(1).toString()))
+                                pickMonth = false
+                            },
+                            label = { Text("${m}月") }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pickMonth = false }) { Text("取消") } }
+        )
+    }
+}
+
+private fun customText(from: String?, to: String?): String {
+    if (from == null || to == null) return "自定义"
+    val a = LocalDate.parse(from)
+    return if (from == to) {
+        "${a.monthValue}月${a.dayOfMonth}日 " + a.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.CHINA)
+    } else "${a.year}年${a.monthValue}月"
 }
 
 @Composable
