@@ -40,14 +40,22 @@ object ApiClient {
         shared ?: OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .addInterceptor { chain ->
-                // an IPv4-only Wi-Fi cannot resolve the IPv6-only home name: use the mobile network for this app and retry once
+                // the home server only has a public IPv6 address (no IPv4 at all): a network whose own upstream has no
+                // IPv6 route cannot reach it, whichever network that is. If the current one fails, try moving the app's
+                // traffic to the other radio (Wi-Fi <-> mobile data) once; if that fails too, say plainly that neither
+                // path has IPv6 right now, rather than leaking OkHttp's raw English exception.
                 try {
                     chain.proceed(chain.request())
                 } catch (e: java.net.UnknownHostException) {
-                    if (!NetFallback.bindToMobile(context.applicationContext)) {
-                        throw java.io.IOException("当前 Wi-Fi 连不上家里的服务器(它没有 IPv6), 手机流量也不可用。打开手机流量或换个网络试试", e)
+                    val switched = NetFallback.bindToOther(context.applicationContext)
+                    if (!switched) {
+                        throw java.io.IOException("连不上家里的服务器: 家里只有公网 IPv6, 当前网络没有 IPv6 出口, 也没有别的网络可切。开着 Wi-Fi 和流量两个一起试试, 或开一下 Tailscale", e)
                     }
-                    chain.proceed(chain.request())
+                    try {
+                        chain.proceed(chain.request())
+                    } catch (e2: java.net.UnknownHostException) {
+                        throw java.io.IOException("连不上家里的服务器: 家里只有公网 IPv6, 当前这两个网络(Wi-Fi/流量)都没有 IPv6 出口。开一下 Tailscale 试试", e2)
+                    }
                 }
             }
             .addInterceptor { chain ->
