@@ -7,6 +7,7 @@
 
 package com.ledger.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,6 +75,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -567,23 +569,28 @@ internal fun CategoryPickerDialog(
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 androidx.compose.foundation.text.selection.SelectionContainer {
-                    Text(
-                        listOfNotNull(
-                            "¥" + tx.amount,
-                            tx.occurred_at.replace('T', ' ').take(16),
-                            tx.merchant?.takeIf { it.isNotBlank() }?.let { m -> m + (tx.note?.takeIf { it.isNotBlank() && it != tx.merchant }?.let { " ($it)" } ?: "") },
-                            tx.account_hint?.takeIf { it.isNotBlank() }
-                        ).joinToString("\n"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column {
+                        Text("¥" + tx.amount, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            listOfNotNull(
+                                tx.occurred_at.replace('T', ' ').take(16),
+                                tx.merchant?.takeIf { it.isNotBlank() }?.let { m -> m + (tx.note?.takeIf { it.isNotBlank() && it != tx.merchant }?.let { " ($it)" } ?: "") },
+                                tx.account_hint?.takeIf { it.isNotBlank() }
+                            ).joinToString("\n"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                 CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, selCat, tx.tx_type, onPick = { id -> if (id != selCat) { selCat = id; selSub = null } })
                 if (tx.tx_type == "expense" && subs.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        subs.forEach { s -> FilterChip(selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, label = { Text(s) }) }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        subs.forEach { s ->
+                            CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, modifier = Modifier.weight(1f))
+                        }
                     }
                 }
                 if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }
@@ -608,6 +615,28 @@ internal fun CategoryPickerDialog(
                 ) { Text("删除") }
             },
             dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("不删") } }
+        )
+    }
+}
+
+/** A small-category pick: as many as there are (up to 6 for 狗狗), sized to always fit one row without wrapping or
+ *  spilling past the dialog edge - each one takes an even share of the row's width. */
+@Composable
+private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    androidx.compose.material3.Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
         )
     }
 }
