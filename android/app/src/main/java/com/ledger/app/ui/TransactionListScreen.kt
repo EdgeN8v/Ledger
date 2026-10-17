@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
@@ -563,24 +564,25 @@ internal fun CategoryPickerDialog(
     val changed = selCat != tx.category_id || selSub != tx.sub
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("这笔怎么记", maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 androidx.compose.foundation.text.selection.SelectionContainer {
                     Text(
                         listOfNotNull(
-                            (tx.merchant ?: "") + "  ¥" + tx.amount,
-                            tx.note?.takeIf { it.isNotBlank() && it != tx.merchant },
-                            tx.occurred_at.replace('T', ' ').take(16) + (tx.account_hint?.let { "  $it" } ?: "")
+                            "¥" + tx.amount,
+                            tx.occurred_at.replace('T', ' ').take(16),
+                            tx.merchant?.takeIf { it.isNotBlank() }?.let { m -> m + (tx.note?.takeIf { it.isNotBlank() && it != tx.merchant }?.let { " ($it)" } ?: "") },
+                            tx.account_hint?.takeIf { it.isNotBlank() }
                         ).joinToString("\n"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                 CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, selCat, tx.tx_type, onPick = { id -> if (id != selCat) { selCat = id; selSub = null } })
                 if (tx.tx_type == "expense" && subs.isNotEmpty()) {
-                    Text("哪一种?", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         subs.forEach { s -> FilterChip(selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, label = { Text(s) }) }
                     }
                 }

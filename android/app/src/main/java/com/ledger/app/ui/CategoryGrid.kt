@@ -63,7 +63,7 @@ fun CategoryGrid(
     Column {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val cellW = maxWidth / columns
-            val cellH = 74.dp
+            val cellH = 62.dp
             val rows = (order.size + columns - 1) / columns
             val cwPx = with(density) { cellW.toPx() }
             val chPx = with(density) { cellH.toPx() }
@@ -117,10 +117,10 @@ fun CategoryGrid(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            Text(c.icon ?: "•", style = MaterialTheme.typography.titleLarge)
+                            Text(c.icon ?: "•", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                c.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp)
+                                c.name, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp)
                             )
                         }
                     }
