@@ -307,7 +307,7 @@ def restructure_categories(db: Session) -> None:
                 merge(cats["住宿"], travel, "酒店")
         shop = cats.get("购物")
         if cats.get("日用") is not None and shop is not None:
-            merge(cats["日用"], shop, "日用品")
+            merge(cats["日用"], shop, "日用")
         items = load(ledger)
         moved = {old_travel: TRAVEL_NAME, "住宿": TRAVEL_NAME, "日用": "购物"}
         if any(it.get("category") in moved for it in items):
@@ -324,4 +324,14 @@ def flag_family_card(db: Session) -> None:
     (db.query(models.Transaction)
      .filter(models.Transaction.family_card.is_(False), models.Transaction.raw_text.contains("亲情卡消费"))
      .update({models.Transaction.family_card: True}, synchronize_session=False))
+    db.commit()
+
+
+def rename_old_subs(db: Session) -> None:
+    """One-off: shorten/rename sub-category labels (电子产品->数码, 日用品->日用, 砂/尿垫->狗砂); rewrite anywhere they
+    were already stored - transactions and the learned merchant rules. Safe to run every startup."""
+    renames = {"电子产品": "数码", "日用品": "日用", "砂/尿垫": "狗砂", "尿垫": "狗砂"}
+    for old, new in renames.items():
+        db.query(models.Transaction).filter(models.Transaction.sub == old).update({models.Transaction.sub: new}, synchronize_session=False)
+        db.query(models.MerchantRule).filter(models.MerchantRule.sub == old).update({models.MerchantRule.sub: new}, synchronize_session=False)
     db.commit()

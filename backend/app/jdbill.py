@@ -85,13 +85,13 @@ def _target(row: dict) -> tuple[Optional[str], Optional[str]]:
         food = subcats.food_instead_of_shopping(title, None)
         return "餐饮", food or "零食"
     if k in ("美妆个护", "清洁纸品", "日用百货", "家居家装"):
-        return "购物", "日用品"
+        return "购物", "日用"
     if k in ("数码电器", "电脑办公"):
-        return "购物", "电子产品"
+        return "购物", "数码"
     if k == "运动户外":
         return "购物", "服装"
     if k == "医疗保健":
-        return ("医疗", None) if _DRUG.search(title) else ("购物", "日用品")
+        return ("医疗", None) if _DRUG.search(title) else ("购物", "日用")
     if k == "生活服务" and "话费" in title:
         return "通讯", None
     return None, None

@@ -1109,12 +1109,12 @@ def test_sub_categories_are_guessed_learned_and_snacks_leave_shopping(client):
     unknown = pay("支付宝-淘宝-某某贸易有限公司", 14)
     assert unknown["category_id"] == cid["购物"] and unknown["sub"] is None
     # the user decides what that shop is: remembered for its next payment
-    assert client.put(f"/transactions/{unknown['id']}", json={"sub": "日用品"}).json()["sub"] == "日用品"
+    assert client.put(f"/transactions/{unknown['id']}", json={"sub": "日用"}).json()["sub"] == "日用"
     again = pay("支付宝-淘宝-某某贸易有限公司", 15)
-    assert again["sub"] == "日用品"
+    assert again["sub"] == "日用"
     assert client.put(f"/transactions/{again['id']}", json={"sub": "饭店"}).status_code == 400          # not a shopping sub
     got = client.get("/transactions/subs", params={"category_id": cid["购物"]}).json()
-    assert {g["sub"] for g in got} >= {"服装", "日用品"}
+    assert {g["sub"] for g in got} >= {"服装", "日用"}
 
 
 def test_jd_statement_fills_in_what_was_bought(client):
@@ -1133,7 +1133,7 @@ def test_jd_statement_fills_in_what_was_bought(client):
     assert got["matched"] == 2 and got["unmatched"] == 1 and got["unmatched_list"][0]["title"].startswith("没有对上")
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     rows = {t["amount"]: t for t in client.get("/transactions").json()}
-    assert rows["59.90"]["note"].startswith("某某牌洗衣液") and cats[rows["59.90"]["category_id"]] == "购物" and rows["59.90"]["sub"] == "日用品"
+    assert rows["59.90"]["note"].startswith("某某牌洗衣液") and cats[rows["59.90"]["category_id"]] == "购物" and rows["59.90"]["sub"] == "日用"
     assert cats[rows["88.00"]["category_id"]] == "我的车"
 
 
@@ -1149,7 +1149,7 @@ def test_shop_app_notices_are_collected_only_when_they_are_order_news(client):
 
 def test_dog_things_get_their_own_category_and_delivery_platforms_are_always_delivery(client):
     cats = {c["name"]: c for c in client.get("/categories").json()}
-    assert cats["狗狗"]["subs"] == ["狗粮", "砂/尿垫", "零食", "玩具", "医疗", "其他"]
+    assert cats["狗狗"]["subs"] == ["狗粮", "狗砂", "零食", "玩具", "医疗", "其他"]
 
     def pay(shop, h):
         _sms(client, f"【建设银行】您账户1234于10月6日{h}:00向{shop}支出30元,可用余额900元。", h, 0)

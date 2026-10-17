@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 TRAVEL = "交通/酒店"
 SUBS = {
-    "购物": ["电子产品", "日用品", "服装", "其他"],
+    "购物": ["数码", "日用", "服装", "其他"],
     "餐饮": ["饭店", "外卖", "食材", "零食"],
     TRAVEL: ["交通", "酒店"],
-    "狗狗": ["狗粮", "砂/尿垫", "零食", "玩具", "医疗", "其他"],
+    "狗狗": ["狗粮", "狗砂", "零食", "玩具", "医疗", "其他"],
 }
 
 _SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,酸奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
@@ -64,7 +64,7 @@ def is_pet(merchant: Optional[str], note: Optional[str]) -> bool:
 def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> Optional[str]:
     hay = _hay(merchant, note)
     if cat_name == "狗狗":
-        for words, sub in ((_PET_MED, "医疗"), (_PET_PAD, "砂/尿垫"), (_PET_TOY, "玩具"), (_PET_SNACK, "零食"), (_PET_FOOD, "狗粮")):
+        for words, sub in ((_PET_MED, "医疗"), (_PET_PAD, "狗砂"), (_PET_TOY, "玩具"), (_PET_SNACK, "零食"), (_PET_FOOD, "狗粮")):
             if _has(hay, words):
                 return sub
         return "其他"
@@ -82,9 +82,9 @@ def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> 
         if _has(hay, _VIRTUAL):
             return "其他"
         if _has(hay, _ELECTRONICS):
-            return "电子产品"
+            return "数码"
         if _has(hay, _DAILY):
-            return "日用品"
+            return "日用"
         if _has(hay, _CLOTHES):
             return "服装"
         return None
