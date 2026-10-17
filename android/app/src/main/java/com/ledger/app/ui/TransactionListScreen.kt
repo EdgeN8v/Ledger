@@ -589,7 +589,9 @@ internal fun CategoryPickerDialog(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         subs.forEach { s ->
-                            CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, modifier = Modifier.weight(1f))
+                            // a longer label (e.g. "水果/酸奶") needs more of the row than a short one ("零食"); share
+                            // the width by how long the text actually is instead of splitting it evenly
+                            CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, modifier = Modifier.weight(s.length.toFloat().coerceAtLeast(2f)))
                         }
                     }
                 }
@@ -620,7 +622,7 @@ internal fun CategoryPickerDialog(
 }
 
 /** A small-category pick: as many as there are (up to 6 for 狗狗), sized to always fit one row without wrapping or
- *  spilling past the dialog edge - each one takes an even share of the row's width. */
+ *  spilling past the dialog edge - the caller gives each one a width share based on how long its label is. */
 @Composable
 private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     androidx.compose.material3.Surface(
@@ -636,7 +638,7 @@ private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, mo
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
         )
     }
 }
