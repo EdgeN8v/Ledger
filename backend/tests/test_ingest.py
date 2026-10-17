@@ -1090,7 +1090,7 @@ def test_car_upkeep_counts_down_from_the_odometer(client):
 
 def test_sub_categories_are_guessed_learned_and_snacks_leave_shopping(client):
     cats = {c["name"]: c for c in client.get("/categories").json()}
-    assert "住宿" not in cats and "日用" not in cats and cats["餐饮"]["subs"] == ["饭店", "外卖", "食材", "零食", "水果"]
+    assert "住宿" not in cats and "日用" not in cats and cats["餐饮"]["subs"] == ["饭店", "外卖", "食材", "零食", "水果/酸奶"]
     assert cats["交通/酒店"]["subs"] == ["交通", "酒店"]
     cid = {n: c["id"] for n, c in cats.items()}
 
@@ -1261,7 +1261,14 @@ def test_fruit_is_its_own_sub_of_food_not_groceries(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     _sms(client, "【建设银行】您账户1234于10月6日10:00向支付宝-百果园支出38元,可用余额900元。", 10, 0)
     fruit = client.get("/transactions", params={"limit": 1}).json()[0]
-    assert fruit["category_id"] == cats["餐饮"] and fruit["sub"] == "水果"
+    assert fruit["category_id"] == cats["餐饮"] and fruit["sub"] == "水果/酸奶"
     _sms(client, "【建设银行】您账户1234于10月6日11:00向支付宝-永辉超市支出60元,可用余额800元。", 11, 0)
     grocery = client.get("/transactions", params={"limit": 1}).json()[0]
     assert grocery["sub"] == "食材"
+
+
+def test_yogurt_joins_fruit_as_one_sub_not_snacks(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向微信支付-光明酸奶专柜支出12元,可用余额900元。", 10, 0)
+    yogurt = client.get("/transactions", params={"limit": 1}).json()[0]
+    assert yogurt["category_id"] == cats["餐饮"] and yogurt["sub"] == "水果/酸奶"

@@ -14,17 +14,17 @@ from sqlalchemy.orm import Session
 TRAVEL = "交通/酒店"
 SUBS = {
     "购物": ["数码", "日用", "服装", "其他"],
-    "餐饮": ["饭店", "外卖", "食材", "零食", "水果"],
+    "餐饮": ["饭店", "外卖", "食材", "零食", "水果/酸奶"],
     TRAVEL: ["交通", "酒店"],
     "狗狗": ["狗粮", "狗砂", "零食", "玩具", "医疗", "其他"],
 }
 
-_SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,酸奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
+_SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
           "好想来,零食很忙,蜜雪冰城,茶百道,古茗,喜茶,奈雪,霸王茶姬,沪上阿姨,瑞幸,星巴克,库迪,冰淇淋,甜品,冷饮,饮品,面包,蛋糕,烘焙,好利来,糕点,零嘴,"
           "便利店,全家,便利蜂,罗森,7-ELEVEN,711,雪糕,冰棍,果汁,可乐,啤酒").split(",")
 _GROCERY = ("超市,买菜,菜市场,菜场,农贸,生鲜,盒马,叮咚,小象,永辉,沃尔玛,山姆,大润发,物美,家乐福,联华,华润万家,百联,每日优鲜,蔬菜,肉铺,"
             "粮油,大米,面条,食用油,调料,酱油,牛排,海鲜,鸡蛋,卖场").split(",")
-_FRUIT = ("水果,果切,百果园,鲜丰水果,果多美,甘源,苹果,香蕉,橙子,脐橙,西瓜,葡萄,草莓,车厘子,榴莲,芒果,橘子,"
+_FRUIT = ("水果,果切,百果园,鲜丰水果,果多美,甘源,苹果,香蕉,橙子,脐橙,西瓜,葡萄,草莓,车厘子,榴莲,芒果,橘子,酸奶,"
           "柑橘,柚子,水蜜桃,猕猴桃,哈密瓜,荔枝,石榴,甘蔗,樱桃,梨,柿子,枣,山竹,释迦,菠萝,椰子,火龙果,百香果").split(",")
 _DELIVERY = "外卖,饿了么,拉扎斯,美团外卖,三快在线".split(",")
 _RESTAURANT = ("麦当劳,肯德基,KFC,必胜客,汉堡王,海底捞,火锅,烧烤,面馆,饺子,米线,麻辣烫,小吃,餐厅,饭店,食堂,快餐,拉面,披萨,寿司,串串,粥,沙县,黄焖鸡,老乡鸡,"
@@ -74,7 +74,7 @@ def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> 
         if _has(hay, ("饿了么", "拉扎斯", "美团外卖", "京东外卖", "外卖")):
             return "外卖"                                # a delivery platform is delivery, whatever was in the bag
         if _has(hay, _FRUIT):
-            return "水果"
+            return "水果/酸奶"
         if _has(hay, _GROCERY):
             return "食材"
         if _has(hay, _SNACK):
@@ -101,7 +101,7 @@ def food_instead_of_shopping(merchant: Optional[str], note: Optional[str]) -> Op
     """A 'shopping' payment whose text is plainly food: the food sub it belongs to, else None."""
     hay = _hay(merchant, note)
     if _has(hay, _FRUIT):
-        return "水果"
+        return "水果/酸奶"
     if _has(hay, _FOOD_ITEM_SNACK):
         return "零食"
     if _has(hay, _FOOD_ITEM_GROCERY):

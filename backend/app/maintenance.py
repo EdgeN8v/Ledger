@@ -338,17 +338,22 @@ def rename_old_subs(db: Session) -> None:
 
 
 def reclassify_fruit(db: Session) -> None:
-    """One-off: 水果 split out of 食材 as its own sub-category of 餐饮. Move transactions (and learned merchant rules)
-    that are plainly fruit and still carry the old sub over to the new one. Never touches a locked transaction."""
+    """One-off: 水果/酸奶 split out of 食材 and 零食 as its own 餐饮 sub-category (also covers the earlier, narrower "水果"
+    label). Move transactions and learned merchant rules that are plainly fruit or yogurt over to it. Never touches a
+    locked transaction."""
     from app.subcats import _FRUIT, _hay
     for ledger in db.query(models.Ledger).all():
+        (db.query(models.Transaction).filter(models.Transaction.ledger_id == ledger.id, models.Transaction.sub == "水果")
+         .update({models.Transaction.sub: "水果/酸奶"}, synchronize_session=False))
+        (db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger.id, models.MerchantRule.sub == "水果")
+         .update({models.MerchantRule.sub: "水果/酸奶"}, synchronize_session=False))
         for t in (db.query(models.Transaction)
                   .join(models.Category, models.Category.id == models.Transaction.category_id)
                   .filter(models.Transaction.ledger_id == ledger.id, models.Category.name == "餐饮",
-                          models.Transaction.sub.in_(["食材", None]), models.Transaction.category_locked.is_(False))):
+                          models.Transaction.sub.in_(["食材", "零食", None]), models.Transaction.category_locked.is_(False))):
             if any(w and w in _hay(t.merchant, t.note) for w in _FRUIT):
-                t.sub = "水果"
-        for r in db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger.id, models.MerchantRule.sub == "食材"):
+                t.sub = "水果/酸奶"
+        for r in db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger.id, models.MerchantRule.sub.in_(["食材", "零食"])):
             if any(w and w in (r.pattern or "") for w in _FRUIT):
-                r.sub = "水果"
+                r.sub = "水果/酸奶"
     db.commit()
