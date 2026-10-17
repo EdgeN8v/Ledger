@@ -225,7 +225,7 @@ fun LedgerApp() {
                     DetailScreen(
                         state = detailState, onBack = { detailViewModel.close() }, onSort = detailViewModel::setSort,
                         onLoadMore = detailViewModel::loadMore, onSetCategory = detailViewModel::setCategory,
-                        onSubFilter = detailViewModel::setSubFilter
+                        onSubFilter = detailViewModel::setSubFilter, onDeleteTransaction = detailViewModel::deleteTransaction
                     )
                     return@composable
                 }
@@ -278,6 +278,7 @@ fun LedgerApp() {
                                 onSetTrip = { tx, tripId -> transactionViewModel.setBusinessTrip(tx, tripId) },
                                 onNewBusinessTrip = { tx, name, start, end, daily, commute, autoTag -> transactionViewModel.newBusinessTripWith(tx, name, start, end, daily, commute, autoTag) },
                                 onEditTransaction = { tx -> editingTransaction = tx; navController.navigate("add") },
+                                onDeleteTransaction = { id -> transactionViewModel.deleteTransaction(id) },
                                 isListening = isListening
                             )
                             1 -> {

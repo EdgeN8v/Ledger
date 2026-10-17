@@ -127,10 +127,5 @@ fun CategoryGrid(
                 }
             }
         }
-        Text(
-            "长按一个类别, 拖动就能调整顺序",
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp)
-        )
     }
 }

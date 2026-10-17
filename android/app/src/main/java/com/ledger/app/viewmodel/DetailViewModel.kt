@@ -156,6 +156,19 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Long-press delete, same as on the main list. */
+    fun deleteTransaction(id: Int) {
+        viewModelScope.launch {
+            try {
+                api().deleteTransaction(id)
+                _state.value = _state.value.copy(items = _state.value.items.filter { it.id != id })
+                loadSubs()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "删除失败")
+            }
+        }
+    }
+
     /** Long-press fix, same as on the main list. */
     fun setCategory(id: Int, categoryId: Int, sub: String? = null) {
         viewModelScope.launch {

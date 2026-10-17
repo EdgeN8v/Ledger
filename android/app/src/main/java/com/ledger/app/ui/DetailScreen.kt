@@ -47,7 +47,8 @@ fun DetailScreen(
     onSort: (String) -> Unit,
     onLoadMore: () -> Unit,
     onSetCategory: (txId: Int, categoryId: Int, sub: String?) -> Unit,
-    onSubFilter: (String?) -> Unit = {}
+    onSubFilter: (String?) -> Unit = {},
+    onDeleteTransaction: (txId: Int) -> Unit = {}
 ) {
     val req = state.request ?: return
     val listState = rememberLazyListState()
@@ -128,7 +129,8 @@ fun DetailScreen(
     pickFor?.let { tx ->
         CategoryPickerDialog(
             tx = tx, categories = state.categories, onDismiss = { pickFor = null },
-            onConfirm = { c, sub -> pickFor = null; onSetCategory(tx.id, c, sub) }
+            onConfirm = { c, sub -> pickFor = null; onSetCategory(tx.id, c, sub) },
+            onDelete = { pickFor = null; onDeleteTransaction(tx.id) }
         )
     }
 }

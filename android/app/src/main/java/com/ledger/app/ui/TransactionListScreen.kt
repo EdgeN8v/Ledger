@@ -45,6 +45,7 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -102,6 +103,7 @@ fun TransactionListScreen(
     onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
     onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
+    onDeleteTransaction: (txId: Int) -> Unit = {},
     isListening: Boolean
 ) {
     var pickFor by remember { mutableStateOf<TransactionDto?>(null) }
@@ -243,7 +245,8 @@ fun TransactionListScreen(
             categories = state.categories,
             onDismiss = { pickFor = null },
             onConfirm = { catId, sub -> pickFor = null; onSetCategory(tx.id, catId, sub) },
-            onEdit = { pickFor = null; onEditTransaction(tx) }
+            onEdit = { pickFor = null; onEditTransaction(tx) },
+            onDelete = { pickFor = null; onDeleteTransaction(tx.id) }
         )
     }
 }
@@ -550,10 +553,12 @@ internal fun CategoryPickerDialog(
     categories: List<CategoryDto>,
     onDismiss: () -> Unit,
     onConfirm: (categoryId: Int, sub: String?) -> Unit,
-    onEdit: (() -> Unit)? = null
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     var selCat by remember { mutableStateOf(tx.category_id) }
     var selSub by remember { mutableStateOf(tx.sub) }
+    var confirmingDelete by remember { mutableStateOf(false) }
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
     val changed = selCat != tx.category_id || selSub != tx.sub
     AlertDialog(
@@ -572,11 +577,6 @@ internal fun CategoryPickerDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text(
-                    "选好类别(和下面的小类), 再点「确认」才生效; 这家商户以后自动按这个分",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
                 CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, selCat, tx.tx_type, onPick = { id -> if (id != selCat) { selCat = id; selSub = null } })
                 if (tx.tx_type == "expense" && subs.isNotEmpty()) {
                     Text("哪一种?", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
@@ -585,11 +585,29 @@ internal fun CategoryPickerDialog(
                     }
                 }
                 if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }
+                if (onDelete != null) TextButton(
+                    onClick = { confirmingDelete = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("删除这一笔") }
             }
         },
         confirmButton = { Button(enabled = changed && selCat != null, onClick = { onConfirm(selCat!!, selSub) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("删除这一笔?") },
+            text = { Text((tx.merchant ?: tx.note ?: "") + "  ¥" + tx.amount + "\n删掉之后找不回来了。") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    onClick = { confirmingDelete = false; onDelete?.invoke() }
+                ) { Text("删除") }
+            },
+            dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("不删") } }
+        )
+    }
 }
 
 @Composable
