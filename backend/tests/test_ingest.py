@@ -1247,3 +1247,11 @@ def test_family_card_payment_announced_twice_by_alipay_stays_one_record_even_aft
     ali("交易提醒", "你有一笔8.80元的支出，点此查看详情。", 11)
     rows = [x for x in client.get("/transactions", params={"limit": 20}).json() if x["amount"] == "8.80"]
     assert len(rows) == 1
+
+
+def test_family_card_spending_is_flagged_from_alipays_own_wording(client):
+    _sms(client, "【建设银行】您账户1234于10月6日21:29向支付宝外部商户-某某网络科技有限公司支出14.9元,可用余额900元。", 21, 29)
+    ali = lambda title, text, m: client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": title, "text": text, "posted_at_ms": ms(2026, 10, 6, 21, m)}).json()
+    ali("你的亲情卡剩余8645.32元", "M***Y（**怡）使用你赠送的亲情卡消费14.90元", 29)
+    t = [x for x in client.get("/transactions").json() if x["amount"] == "14.90"][0]
+    assert t["family_card"] is True

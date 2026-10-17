@@ -22,6 +22,7 @@ from app.flights import MILEAGE, looks_like_ticket, note_return_ticket, parse_fl
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 MERGE_WINDOW = timedelta(minutes=10)
+_FAMILY_CARD = re.compile(r"亲情卡消费")              # Alipay: "M***Y（**怡）使用你赠送的亲情卡消费X元" - someone else's spending, not the user's own
 SOURCE_MAP = {
     "com.tencent.mm": "wechat",
     "com.eg.android.AlipayGphone": "alipay",
@@ -290,6 +291,8 @@ def ingest(
             if parsed.account_hint and not target.account_hint:
                 target.account_hint = parsed.account_hint
             target.raw_text = f"{target.raw_text or ''}\n---\n{text}".strip()
+            if _FAMILY_CARD.search(text):
+                target.family_card = True                    # Alipay says someone else spent from the shared balance
             if (target.needs_review or was_unnamed) and target.merchant and not target.category_locked:
                 # the first report (a wallet notification) often has no shop name; now it has one: look again
                 cat, guessed = _pick_category(db, user.ledger_id, target.tx_type.value, target.merchant, target.raw_text, target.amount, target.occurred_at)
@@ -314,6 +317,7 @@ def ingest(
                 needs_review=False if (parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant)) else ((guessed or (not parsed.merchant and not (is_unnamed_deduction(parsed.merchant, text) and not guessed))) if not parsed.is_refund else True),
                 is_transfer=parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant),
                 is_refund=parsed.is_refund,
+                family_card=bool(_FAMILY_CARD.search(text)),
                 occurred_at=when,
             )
             db.add(tx)

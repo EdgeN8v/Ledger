@@ -315,3 +315,13 @@ def restructure_categories(db: Session) -> None:
                 it["category"] = moved.get(it.get("category"), it.get("category"))
             ledger.fixed_items = _json.dumps(items, ensure_ascii=False)
     db.commit()
+
+
+def flag_family_card(db: Session) -> None:
+    """One-off backfill: existing transactions whose raw text already says Alipay's family-card phrase were created
+    before that detection existed and were never marked. Safe to run every startup (idempotent)."""
+    from app.routers.ingest import _FAMILY_CARD
+    (db.query(models.Transaction)
+     .filter(models.Transaction.family_card.is_(False), models.Transaction.raw_text.contains("亲情卡消费"))
+     .update({models.Transaction.family_card: True}, synchronize_session=False))
+    db.commit()
