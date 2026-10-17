@@ -335,3 +335,20 @@ def rename_old_subs(db: Session) -> None:
         db.query(models.Transaction).filter(models.Transaction.sub == old).update({models.Transaction.sub: new}, synchronize_session=False)
         db.query(models.MerchantRule).filter(models.MerchantRule.sub == old).update({models.MerchantRule.sub: new}, synchronize_session=False)
     db.commit()
+
+
+def reclassify_fruit(db: Session) -> None:
+    """One-off: 水果 split out of 食材 as its own sub-category of 餐饮. Move transactions (and learned merchant rules)
+    that are plainly fruit and still carry the old sub over to the new one. Never touches a locked transaction."""
+    from app.subcats import _FRUIT, _hay
+    for ledger in db.query(models.Ledger).all():
+        for t in (db.query(models.Transaction)
+                  .join(models.Category, models.Category.id == models.Transaction.category_id)
+                  .filter(models.Transaction.ledger_id == ledger.id, models.Category.name == "餐饮",
+                          models.Transaction.sub.in_(["食材", None]), models.Transaction.category_locked.is_(False))):
+            if any(w and w in _hay(t.merchant, t.note) for w in _FRUIT):
+                t.sub = "水果"
+        for r in db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger.id, models.MerchantRule.sub == "食材"):
+            if any(w and w in (r.pattern or "") for w in _FRUIT):
+                r.sub = "水果"
+    db.commit()

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.database import Base, SessionLocal, engine
-from app.maintenance import flag_family_card, rename_old_subs, restructure_categories, split_car_costs, sweep_wallet_only, ensure_columns, ignore_mileage_notes, fix_keyword_conflicts, normalise_merchant_rules, apply_fixed_items, merge_car_and_transport, backfill_balances, flag_existing_refunds, recategorize_uncategorized, relink_orphan_refunds, sync_default_categories, sync_refund_categories
+from app.maintenance import flag_family_card, reclassify_fruit, rename_old_subs, restructure_categories, split_car_costs, sweep_wallet_only, ensure_columns, ignore_mileage_notes, fix_keyword_conflicts, normalise_merchant_rules, apply_fixed_items, merge_car_and_transport, backfill_balances, flag_existing_refunds, recategorize_uncategorized, relink_orphan_refunds, sync_default_categories, sync_refund_categories
 from app.config import settings
 from app.reports import start_scheduler
 from app.routers import accounts, analysis, auth, categories, reports, transactions, ingest, plan, trips, updates, carcare, imports
@@ -32,6 +32,7 @@ with SessionLocal() as _db:
     classify_all(_db)
     flag_family_card(_db)
     rename_old_subs(_db)
+    reclassify_fruit(_db)
 
 app = FastAPI(title="Ledger API")
 
