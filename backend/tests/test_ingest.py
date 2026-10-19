@@ -1272,3 +1272,21 @@ def test_yogurt_joins_fruit_as_one_sub_not_snacks(client):
     _sms(client, "【建设银行】您账户1234于10月6日10:00向微信支付-光明酸奶专柜支出12元,可用余额900元。", 10, 0)
     yogurt = client.get("/transactions", params={"limit": 1}).json()[0]
     assert yogurt["category_id"] == cats["餐饮"] and yogurt["sub"] == "水果/酸奶"
+
+
+def test_a_nameless_refund_matches_the_one_family_card_purchase_among_tied_amounts(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    old = _sms(client, "【建设银行】您账户1234于7月15日10:00向京东支付-京东商城-某某自营旗舰店支出10.9元,可用余额900元。", 10, 0, day=15)
+    fam = _sms(client, "【建设银行】您账户1234于10月3日22:34向支付宝-拼多多平台商户支出10.9元,可用余额800元。", 22, 34, day=3)
+    client.put(f"/transactions/{fam['transaction']['id']}", json={}) if False else None
+    # mark the pdd purchase as a family-card buy, the way the Alipay bill importer does
+    import sys
+    sys.path.insert(0, ".")
+    from app.database import SessionLocal
+    from app import models
+    with SessionLocal() as db:
+        t = db.query(models.Transaction).filter(models.Transaction.id == fam["transaction"]["id"]).first()
+        t.family_card = True
+        db.commit()
+    r = _sms(client, "【建设银行】支付宝于10月18日19:09向您账户1234消费退货存入10.9元,可用余额810.9元。", 19, 9, day=18)
+    assert r["transaction"]["refund_of_id"] == fam["transaction"]["id"]

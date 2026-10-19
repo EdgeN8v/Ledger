@@ -14,6 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
+from app.merchants import is_generic, shop_core
 
 WINDOW = timedelta(days=120)
 _GENERIC = {"支付宝", "支付宝外部商户", "微信支付", "财付通", "京东支付", "京东商城", "天猫", "淘宝", "抖音支付",
@@ -63,10 +64,14 @@ def link_refund(db: Session, refund: models.Transaction, refunded: Optional[dict
     room = [(e, e.amount - (refunded.get(e.id, 0) if refunded is not None else refunded_amount(db, e.id))) for e in candidates]
     room = [(e, left) for e, left in room if left >= refund.amount]
     exact = [e for e, left in room if e.amount == refund.amount and left == e.amount]   # untouched, same amount
+    # a nameless refund ("你收到一笔退款") is how Alipay reports money coming back on a family-card purchase someone
+    # else made - if exactly one same-amount candidate is a family-card buy, that is almost certainly the one
+    family_only = [e for e in exact if e.family_card]
     target = None
     for pool in (
         [e for e in exact if same_shop(refund.merchant, e.merchant)],
         [e for e in exact if timedelta(0) <= refund.occurred_at - e.occurred_at <= timedelta(hours=12)],   # a payee-less refund ("财付通"): the same amount paid hours ago
+        family_only if is_generic(shop_core(refund.merchant)) and len(family_only) == 1 else [],
         exact if len(exact) == 1 else [],
         [e for e, _ in room if same_shop(refund.merchant, e.merchant)],     # partial refund: shop must match
     ):
