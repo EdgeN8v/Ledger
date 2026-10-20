@@ -3,6 +3,7 @@ place that parses it, so parser fixes take effect without shipping a new app bui
 import hashlib
 import re
 from datetime import timedelta
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -97,6 +98,25 @@ def _pick_category(db: Session, ledger_id: int, tx_type: str, merchant: Optional
     if best is None:
         return _fallback_category(cats, tx_type, merchant), True
     return best, False
+
+
+def _confident_salary(db: Session, ledger_id: int, cat: Optional[models.Category], text: str, amount) -> bool:
+    """A bank deposit with no payer name (every payday SMS looks like this - the bank never names the employer)
+    can skip the usual review when its memo says "工资" and the amount is in line with recent real salaries."""
+    if not cat or cat.name != "工资" or "工资" not in text:
+        return False
+    recent = (
+        db.query(models.Transaction.amount)
+        .filter(models.Transaction.ledger_id == ledger_id, models.Transaction.category_id == cat.id,
+                models.Transaction.tx_type == models.TxType.income, models.Transaction.raw_text.contains("工资"))
+        .order_by(models.Transaction.occurred_at.desc())
+        .limit(3)
+        .all()
+    )
+    amounts = [r[0] for r in recent]
+    if not amounts:
+        return False
+    return min(amounts) * Decimal("0.5") <= amount <= max(amounts) * Decimal("1.5")
 
 
 _NAME_ONLY = re.compile(r"^(?:支付宝外部商户-|支付宝-|微信支付-|商户_)?[一-鿿]{2,4}$")
@@ -301,6 +321,7 @@ def ingest(
             tx, status = target, "merged"
         else:
             cat, guessed = _pick_category(db, user.ledger_id, parsed.tx_type, parsed.merchant, text, parsed.amount, when)
+            confident_salary = not parsed.merchant and not parsed.is_refund and _confident_salary(db, user.ledger_id, cat, text, parsed.amount)
             tx = models.Transaction(
                 ledger_id=user.ledger_id,
                 user_id=user.id,
@@ -314,7 +335,7 @@ def ingest(
                 sources=parsed.origin,
                 source=models.TxSource.sms if source == "sms" else models.TxSource.notification,
                 raw_text=text,
-                needs_review=False if (parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant)) else ((guessed or (not parsed.merchant and not (is_unnamed_deduction(parsed.merchant, text) and not guessed))) if not parsed.is_refund else True),
+                needs_review=False if (parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant) or confident_salary) else ((guessed or (not parsed.merchant and not (is_unnamed_deduction(parsed.merchant, text) and not guessed))) if not parsed.is_refund else True),
                 is_transfer=parsed.is_transfer or _is_own_name(db, user.ledger_id, parsed.merchant),
                 is_refund=parsed.is_refund,
                 family_card=bool(_FAMILY_CARD.search(text)),

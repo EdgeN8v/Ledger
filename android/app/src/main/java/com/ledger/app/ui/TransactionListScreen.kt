@@ -602,7 +602,9 @@ internal fun CategoryPickerDialog(
                 ) { Text("删除这一笔") }
             }
         },
-        confirmButton = { Button(enabled = changed && selCat != null, onClick = { onConfirm(selCat!!, selSub) }) { Text("确认") } },
+        // a transaction already flagged "待确认" must stay tappable even when the guessed category was right all
+        // along and the user changes nothing - only require a real edit for one that wasn't flagged
+        confirmButton = { Button(enabled = selCat != null && (changed || tx.needs_review), onClick = { onConfirm(selCat!!, selSub) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
     if (confirmingDelete) {

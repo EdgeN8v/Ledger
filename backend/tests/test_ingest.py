@@ -275,12 +275,28 @@ def test_payday_cycle_summary_and_salary_category(client):
     sal = _sms(client, "【建设银行】您账户1234于9月20日09:19存入10674.84元,可用余额16686.56元。附言：工资。", 9, 19, day=19)
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     assert cats[sal["transaction"]["category_id"]] == "工资"
+    assert sal["transaction"]["needs_review"] is True   # no prior salary to compare against yet
     _sms(client, "【建设银行】您账户1234于10月6日12:00向美团外卖-老王面馆支出25元,可用余额900元。", 12, 0)
     s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
     assert float(s["total_income"]) == 10674.84 and float(s["total_expense"]) == 25.0
     assert s["period_start"] == "2026-09-20" and s["period_end"] == "2026-10-19"
     s2 = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
     assert float(s2["total_income"]) == 0.0 and float(s2["total_expense"]) == 0.0
+
+
+def test_unnamed_salary_skips_review_once_recent_pay_establishes_the_range(client):
+    # the bank SMS never names the employer, so the first payday has nothing to compare against
+    first = _sms(client, "【建设银行】您账户1234于8月20日09:19存入10500.00元,可用余额20000元。附言：工资。", 9, 19, day=1)
+    assert first["transaction"]["needs_review"] is True
+    # a second, similar deposit in range of the first: confident enough to skip the manual confirm
+    second = _sms(client, "【建设银行】您账户1234于9月20日09:19存入10600.00元,可用余额30000元。附言：工资。", 9, 19, day=2)
+    assert second["transaction"]["needs_review"] is False
+    third = _sms(client, "【建设银行】您账户1234于10月20日09:19存入10550.00元,可用余额40000元。附言：工资。", 9, 19, day=20)
+    assert third["transaction"]["needs_review"] is False
+    # wildly off from recent pay (e.g. a year-end bonus, or an unrelated deposit that happens to say "工资"
+    # in its memo): still flagged so the user checks it
+    odd = _sms(client, "【建设银行】您账户1234于11月5日09:19存入50000.00元,可用余额90000元。附言：工资。", 9, 19, day=21)
+    assert odd["transaction"]["needs_review"] is True
 
 
 def test_long_digit_runs_are_masked_before_storage(client):
