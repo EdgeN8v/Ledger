@@ -153,6 +153,18 @@ def update_transaction(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "transaction not found")
 
     changes = payload.model_dump(exclude_unset=True)
+    if "refund_of_id" in changes and changes["refund_of_id"]:
+        target = (
+            db.query(models.Transaction)
+            .filter(models.Transaction.id == changes["refund_of_id"], models.Transaction.ledger_id == user.ledger_id,
+                    models.Transaction.tx_type == models.TxType.expense)
+            .first()
+        )
+        if not target:
+            raise HTTPException(400, "that transaction isn't a matching expense in this ledger")
+        tx.is_refund = True
+        changes.setdefault("category_id", target.category_id)
+        changes.setdefault("needs_review", False)
     for field, value in changes.items():
         setattr(tx, field, value)
     if changes.get("category_id"):

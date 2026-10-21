@@ -82,6 +82,7 @@ class TransactionUpdate(BaseModel):
     needs_review: Optional[bool] = None
     car_bucket: Optional[str] = None
     sub: Optional[str] = None
+    refund_of_id: Optional[int] = None   # the purchase this income cancels - for a refund the parser missed (no "退" in the SMS)
 
 
 class TransactionOut(BaseModel):

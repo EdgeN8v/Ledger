@@ -166,6 +166,21 @@ def test_refund_cancels_the_expense_in_summary(client):
     assert float(by["建设银行1234"]["balance"]) == 3812.0
 
 
+def test_unflagged_deposit_can_be_manually_linked_as_a_refund(client):
+    # a generic "存入...附言:他行代发" SMS has no "退" keyword, so the parser never tries to pair it - the
+    # user still has to be able to say "this income is actually the refund of that purchase"
+    buy = _sms(client, "【建设银行】您账户1234于9月22日15:46向易宝支付-浦发银行信用卡还款支出360元,可用余额900元。", 15, 46, day=22)
+    dep = _sms(client, "【建设银行】您账户1234于10月21日16:46存入360元,可用余额1260元。附言：他行代发。", 16, 46, day=21)
+    assert dep["transaction"]["refund_of_id"] is None and dep["transaction"]["needs_review"] is True
+    r = client.put(f"/transactions/{dep['transaction']['id']}", json={"refund_of_id": buy["transaction"]["id"]}).json()
+    assert r["refund_of_id"] == buy["transaction"]["id"] and r["needs_review"] is False
+    assert r["category_id"] == buy["transaction"]["category_id"]
+    s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
+    assert float(s["total_expense"]) == 0.0 and float(s["total_income"]) == 0.0   # netted off, like any other refund
+    assert client.put(f"/transactions/{dep['transaction']['id']}",
+                       json={"refund_of_id": 999999}).status_code == 400
+
+
 def test_partial_refund_leaves_the_rest_as_expense(client):
     _sms(client, "【建设银行】您账户1234于10月6日12:00向京东商城支出100元,可用余额900元。", 12, 0)
     _sms(client, "【建设银行】您账户1234于10月7日12:00京东商城退款收入40元,可用余额940元。", 12, 0, day=7)
