@@ -125,10 +125,10 @@ fun PlanScreen(
                         color = color,
                         modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
                     )
-                    Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("自由花销已用 ${money(st.spent)}", style = MaterialTheme.typography.bodyMedium)
-                        Text("自由预算 ${money(st.budget)}", style = MaterialTheme.typography.bodyMedium)
-                    }
+                    Text(
+                        "已用 ${money(st.spent)} / 预算 ${money(st.budget)}",
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)
+                    )
 
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.clickable { breakdown = true }) {
@@ -137,15 +137,9 @@ fun PlanScreen(
                         Metric("剩 ${st.days_left} 天, 每天可花", money(st.daily_allowance), MaterialTheme.colorScheme.onSurface)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Metric("预计月底能存", money(st.projected_saving), if ((st.projected_saving.toDoubleOrNull() ?: 0.0) >= (st.savings_target.toDoubleOrNull() ?: 0.0)) IncomeColor else ExpenseColor)
+                        Metric("已存", money(st.saved_so_far), if ((st.saved_so_far.toDoubleOrNull() ?: 0.0) >= (st.savings_target.toDoubleOrNull() ?: 0.0)) IncomeColor else MaterialTheme.colorScheme.onSurface)
                         Metric("目标存款", money(st.savings_target), MaterialTheme.colorScheme.onSurface)
                     }
-                    Text(
-                        "照现在的速度预计花 ${money(st.projected_spend)}" +
-                            (if ((st.trip_total.toDoubleOrNull() ?: 0.0) > 0) " · 出行 ${money(st.trip_total)} 不计入速度" else ""),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
                 }
             }
         }
