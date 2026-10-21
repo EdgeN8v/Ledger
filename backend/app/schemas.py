@@ -83,6 +83,7 @@ class TransactionUpdate(BaseModel):
     car_bucket: Optional[str] = None
     sub: Optional[str] = None
     refund_of_id: Optional[int] = None   # the purchase this income cancels - for a refund the parser missed (no "退" in the SMS)
+    is_treat: Optional[bool] = None
 
 
 class TransactionOut(BaseModel):
@@ -107,6 +108,7 @@ class TransactionOut(BaseModel):
     family_card: bool = False
     car_bucket: Optional[str] = None
     sub: Optional[str] = None
+    is_treat: bool = False
     source: TxSource
     raw_text: Optional[str]
     needs_review: bool
@@ -234,6 +236,7 @@ class PlanIn(BaseModel):
     savings_target: Optional[Decimal] = None
     fixed_expenses: Optional[Decimal] = None
     fixed_items: Optional[list[dict]] = None
+    treat_budget: Optional[Decimal] = None
 
 
 class PlanOut(BaseModel):
@@ -242,6 +245,7 @@ class PlanOut(BaseModel):
     fixed_expenses: Optional[Decimal]
     estimated_income: Decimal            # average of the last salaries, used when expected_income is blank
     fixed_items: list[dict] = []
+    treat_budget: Optional[Decimal] = None
 
 
 class BillReminder(BaseModel):
@@ -299,6 +303,9 @@ class PlanStatus(BaseModel):
     fixed_items: list[FixedItemStatus] = []
     spent_total: Decimal = Decimal(0)    # everything spent, fixed items included
     trip_total: Decimal = Decimal(0)     # trips: really spent, but not extrapolated into the pace forecast
+    treat_budget: Optional[Decimal] = None
+    treat_spent: Decimal = Decimal(0)
+    treat_remaining: Optional[Decimal] = None
 
 
 class CategoryStat(BaseModel):

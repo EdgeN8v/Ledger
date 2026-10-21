@@ -102,7 +102,7 @@ fun TransactionListScreen(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onFilterChange: (TxFilter) -> Unit,
-    onSetCategory: (txId: Int, categoryId: Int, sub: String?) -> Unit,
+    onSetCategory: (txId: Int, categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
     onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
     onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
@@ -247,7 +247,7 @@ fun TransactionListScreen(
             tx = tx,
             categories = state.categories,
             onDismiss = { pickFor = null },
-            onConfirm = { catId, sub -> pickFor = null; onSetCategory(tx.id, catId, sub) },
+            onConfirm = { catId, sub, isTreat -> pickFor = null; onSetCategory(tx.id, catId, sub, isTreat) },
             onEdit = { pickFor = null; onEditTransaction(tx) },
             onDelete = { pickFor = null; onDeleteTransaction(tx.id) }
         )
@@ -555,15 +555,16 @@ internal fun CategoryPickerDialog(
     tx: TransactionDto,
     categories: List<CategoryDto>,
     onDismiss: () -> Unit,
-    onConfirm: (categoryId: Int, sub: String?) -> Unit,
+    onConfirm: (categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null
 ) {
     var selCat by remember { mutableStateOf(tx.category_id) }
     var selSub by remember { mutableStateOf(tx.sub) }
+    var selTreat by remember { mutableStateOf(tx.is_treat) }
     var confirmingDelete by remember { mutableStateOf(false) }
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
-    val changed = selCat != tx.category_id || selSub != tx.sub
+    val changed = selCat != tx.category_id || selSub != tx.sub || selTreat != tx.is_treat
     AlertDialog(
         onDismissRequest = onDismiss,
         text = {
@@ -595,6 +596,12 @@ internal fun CategoryPickerDialog(
                         }
                     }
                 }
+                if (tx.tx_type == "expense") {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                        androidx.compose.material3.Checkbox(checked = selTreat, onCheckedChange = { selTreat = it })
+                        Text("算进「吃好吃的」额度", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }
                 if (onDelete != null) TextButton(
                     onClick = { confirmingDelete = true },
@@ -604,7 +611,7 @@ internal fun CategoryPickerDialog(
         },
         // a transaction already flagged "待确认" must stay tappable even when the guessed category was right all
         // along and the user changes nothing - only require a real edit for one that wasn't flagged
-        confirmButton = { Button(enabled = selCat != null && (changed || tx.needs_review), onClick = { onConfirm(selCat!!, selSub) }) { Text("确认") } },
+        confirmButton = { Button(enabled = selCat != null && (changed || tx.needs_review), onClick = { onConfirm(selCat!!, selSub, selTreat) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
     if (confirmingDelete) {

@@ -104,6 +104,7 @@ data class TransactionDto(
     val is_transfer: Boolean = false,
     val family_card: Boolean = false,
     val sub: String? = null,
+    val is_treat: Boolean = false,
     val source: String,
     val raw_text: String?,
     val needs_review: Boolean,
@@ -150,13 +151,15 @@ data class PlanDto(
     val expected_income: String?,
     val savings_target: String?,
     val fixed_expenses: String?,
-    val estimated_income: String
+    val estimated_income: String,
+    val treat_budget: String? = null
 )
 
 data class PlanInRequest(
     val expected_income: String?,
     val savings_target: String?,
-    val fixed_expenses: String?
+    val fixed_expenses: String?,
+    val treat_budget: String? = null
 )
 
 data class PlanStatusDto(
@@ -182,7 +185,10 @@ data class PlanStatusDto(
     val projected_spend: String,
     val projected_saving: String,
     val saved_so_far: String,
-    val state: String
+    val state: String,
+    val treat_budget: String? = null,
+    val treat_spent: String = "0",
+    val treat_remaining: String? = null
 )
 
 data class TripBriefDto(val id: Int, val name: String, val total: String)

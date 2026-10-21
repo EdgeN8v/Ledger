@@ -62,10 +62,10 @@ class PlanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun save(expectedIncome: String?, savingsTarget: String?, fixedExpenses: String?) {
+    fun save(expectedIncome: String?, savingsTarget: String?, fixedExpenses: String?, treatBudget: String?) {
         viewModelScope.launch {
             try {
-                api().setPlan(PlanInRequest(expectedIncome, savingsTarget, fixedExpenses))
+                api().setPlan(PlanInRequest(expectedIncome, savingsTarget, fixedExpenses, treatBudget))
                 _state.value = _state.value.copy(plan = api().getPlan(), status = api().planStatus())
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "保存失败")

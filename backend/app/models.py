@@ -41,6 +41,7 @@ class Ledger(Base):
     home_city = Column(String, nullable=True)      # where business trips start and end (default 上海)
     trips_enabled = Column(Boolean, nullable=False, default=True)   # False: flight SMS no longer open new business trips
     owner_names = Column(String, nullable=True)    # comma-separated names of the account holders: money from/to them is a transfer
+    treat_budget = Column(Numeric(14, 2), nullable=True)   # monthly "eat something nice" allowance, tracked separately from the regular budget
     created_at = Column(DateTime, default=now_local)
 
     members = relationship("User", back_populates="ledger")
@@ -113,6 +114,7 @@ class Transaction(Base):
     car_bucket = Column(String, nullable=True)                         # the user's own choice of car-cost kind (fuel, repair...)
     sub = Column(String, nullable=True)                                # the kind inside the category (snacks, clothes, hotel...)
     family_card = Column(Boolean, nullable=False, default=False)       # paid by someone else with the user's card (the family card)
+    is_treat = Column(Boolean, nullable=False, default=False)          # the user tagged this as "eating something nice", drawn from treat_budget
 
     source = Column(Enum(TxSource), nullable=False, default=TxSource.manual)
     raw_text = Column(Text, nullable=True)  # original voice transcript / notification / sms text

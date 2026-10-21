@@ -467,6 +467,23 @@ def test_fixed_items_file_payments_and_reserve_budget(client):
     assert by["妈妈生活费"]["state"] == "paid" and by["房租"]["state"] == "paid"
 
 
+def test_treat_budget_is_a_separate_hand_tagged_allowance(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    p = client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "treat_budget": 300}).json()
+    assert float(p["treat_budget"]) == 300.0
+    burger = _sms(client, "【建设银行】您账户1234于9月23日12:00向魏斯理支出80元,可用余额900元。", 12, 0, day=23)
+    _sms(client, "【建设银行】您账户1234于9月24日12:00向超市支出50元,可用余额850元。", 12, 0, day=24)      # not tagged, doesn't touch the treat budget
+    st = client.get("/plan/status", params={"year": 2026, "month": 9}).json()
+    assert float(st["treat_spent"]) == 0.0 and float(st["treat_remaining"]) == 300.0   # nothing tagged yet
+    client.put(f"/transactions/{burger['transaction']['id']}", json={"is_treat": True})
+    st = client.get("/plan/status", params={"year": 2026, "month": 9}).json()
+    assert float(st["treat_spent"]) == 80.0 and float(st["treat_remaining"]) == 220.0
+    # untag it again
+    client.put(f"/transactions/{burger['transaction']['id']}", json={"is_treat": False})
+    st = client.get("/plan/status", params={"year": 2026, "month": 9}).json()
+    assert float(st["treat_spent"]) == 0.0 and float(st["treat_remaining"]) == 300.0
+
+
 def test_unknown_fixed_item_uses_the_latest_cycle_not_an_average(client):
     client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
     client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [

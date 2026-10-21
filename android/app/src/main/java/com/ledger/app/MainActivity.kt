@@ -274,7 +274,7 @@ fun LedgerApp() {
                                 onRefresh = { transactionViewModel.syncAndRefresh() },
                                 onLoadMore = { transactionViewModel.loadMore() },
                                 onFilterChange = { transactionViewModel.setFilter(it) },
-                                onSetCategory = { id, cat, sub -> transactionViewModel.setCategory(id, cat, sub) },
+                                onSetCategory = { id, cat, sub, isTreat -> transactionViewModel.setCategory(id, cat, sub, isTreat) },
                                 onSetTrip = { tx, tripId -> transactionViewModel.setBusinessTrip(tx, tripId) },
                                 onNewBusinessTrip = { tx, name, start, end, daily, commute, autoTag -> transactionViewModel.newBusinessTripWith(tx, name, start, end, daily, commute, autoTag) },
                                 onEditTransaction = { tx -> editingTransaction = tx; navController.navigate("add") },

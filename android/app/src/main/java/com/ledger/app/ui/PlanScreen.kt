@@ -48,7 +48,7 @@ internal fun money(v: String?, signed: Boolean = false): String {
 
 @Composable
 fun PlanScreen(
-    state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?, String?) -> Unit,
+    state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?, String?, String?) -> Unit,
     onMark: (name: String, paid: Boolean?, paidUntil: String?) -> Unit
 ) {
     var editing by remember { mutableStateOf(false) }
@@ -144,7 +144,12 @@ fun PlanScreen(
                         Column(modifier = Modifier.clickable { breakdown = true }) {
                             Metric("还能花 ⓘ", money(st.remaining), if ((st.remaining.toDoubleOrNull() ?: 0.0) < 0) ExpenseColor else IncomeColor)
                         }
-                        Metric("剩 ${st.days_left} 天, 每天可花", money(st.daily_allowance), MaterialTheme.colorScheme.onSurface)
+                        if (st.treat_budget != null) {
+                            Metric("吃好吃的还剩", money(st.treat_remaining),
+                                if ((st.treat_remaining?.toDoubleOrNull() ?: 0.0) < 0) ExpenseColor else MaterialTheme.colorScheme.onSurface)
+                        } else {
+                            Metric("剩 ${st.days_left} 天, 每天可花", money(st.daily_allowance), MaterialTheme.colorScheme.onSurface)
+                        }
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Metric("已存", money(st.saved_so_far), MaterialTheme.colorScheme.onSurface)
@@ -276,6 +281,7 @@ fun PlanScreen(
         var income by remember { mutableStateOf(plan?.expected_income ?: "") }
         var fixed by remember { mutableStateOf(plan?.fixed_expenses ?: "") }
         var target by remember { mutableStateOf(plan?.savings_target ?: "") }
+        var treat by remember { mutableStateOf(plan?.treat_budget ?: "") }
         AlertDialog(
             onDismissRequest = { editing = false },
             title = { Text("修改计划") },
@@ -287,12 +293,14 @@ fun PlanScreen(
                         label = { Text("固定支出, 如房租") })
                     OutlinedTextField(target, { target = it }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         label = { Text("每月要存多少") })
+                    OutlinedTextField(treat, { treat = it }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        label = { Text("每月吃好吃的额度 (空白=不开启)") })
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     editing = false
-                    onSave(income.trim().ifEmpty { null }, target.trim().ifEmpty { null }, fixed.trim().ifEmpty { null })
+                    onSave(income.trim().ifEmpty { null }, target.trim().ifEmpty { null }, fixed.trim().ifEmpty { null }, treat.trim().ifEmpty { null })
                 }) { Text("保存") }
             },
             dismissButton = { TextButton(onClick = { editing = false }) { Text("取消") } }

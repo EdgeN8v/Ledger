@@ -42,9 +42,9 @@ def ensure_columns(db: Session) -> None:
     """create_all adds tables but never columns: add the ones introduced later (additive only)."""
     from sqlalchemy import inspect, text
     wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL"), ("return_booked_on", "VARCHAR")],
-              "ledgers": [("home_city", "VARCHAR"), ("family_names", "VARCHAR"), ("trips_enabled", "BOOLEAN DEFAULT TRUE NOT NULL")],
+              "ledgers": [("home_city", "VARCHAR"), ("family_names", "VARCHAR"), ("trips_enabled", "BOOLEAN DEFAULT TRUE NOT NULL"), ("treat_budget", "NUMERIC(14,2)")],
               "categories": [("sort_order", "INTEGER")],
-              "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("family_card", "BOOLEAN DEFAULT FALSE NOT NULL"), ("car_bucket", "VARCHAR"), ("sub", "VARCHAR")],
+              "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("family_card", "BOOLEAN DEFAULT FALSE NOT NULL"), ("car_bucket", "VARCHAR"), ("sub", "VARCHAR"), ("is_treat", "BOOLEAN DEFAULT FALSE NOT NULL")],
               "merchant_rules": [("sub", "VARCHAR")]}
     insp = inspect(db.get_bind())
     for table, cols in wanted.items():

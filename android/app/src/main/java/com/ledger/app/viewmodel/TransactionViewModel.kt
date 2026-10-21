@@ -197,10 +197,10 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
 
     /** Long-press category change: the server also fixes the same merchant's other unconfirmed records and
      *  remembers the choice for future imports. */
-    fun setCategory(id: Int, categoryId: Int, sub: String? = null) {
+    fun setCategory(id: Int, categoryId: Int, sub: String? = null, isTreat: Boolean = false) {
         viewModelScope.launch {
             try {
-                val body = mutableMapOf<String, Any?>("category_id" to categoryId, "needs_review" to false)
+                val body = mutableMapOf<String, Any?>("category_id" to categoryId, "needs_review" to false, "is_treat" to isTreat)
                 if (sub != null) body["sub"] = sub
                 api().updateTransaction(id, body)
                 reloadLoaded()

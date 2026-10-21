@@ -42,7 +42,7 @@ def get_plan(db: Session = Depends(get_db), user: models.User = Depends(get_curr
     est = _salary_estimate(db, l)
     return schemas.PlanOut(
         expected_income=l.expected_income, savings_target=l.savings_target, fixed_expenses=l.fixed_expenses,
-        estimated_income=est, fixed_items=load(l),
+        estimated_income=est, fixed_items=load(l), treat_budget=l.treat_budget,
     )
 
 
@@ -220,6 +220,11 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
     else:
         state = "on_track"
 
+    # a separate little allowance for "go eat something nice" - not folded into the daily pace, just a running
+    # total against a fixed monthly number, tagged by hand (is_treat) rather than guessed from the category
+    treat_spent = sum((eff for t, eff in data.expenses if t.is_treat), ZERO)
+    treat_remaining = (l.treat_budget - treat_spent) if l.treat_budget is not None else None
+
     return schemas.PlanStatus(
         year=year, month=month, period_start=start.strftime("%Y-%m-%d"),
         period_end=(end - timedelta(days=1)).strftime("%Y-%m-%d"),
@@ -228,4 +233,5 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         budget=budget, spent=spent, remaining=remaining, daily_allowance=allowance.quantize(Decimal("0.01")),
         projected_spend=pace.quantize(Decimal("0.01")), projected_saving=projected_save.quantize(Decimal("0.01")),
         saved_so_far=saved_so_far, state=state, fixed_total=fixed_total, fixed_items=fixed_rows, spent_total=data.expense, trip_total=trip_total,
+        treat_budget=l.treat_budget, treat_spent=treat_spent, treat_remaining=treat_remaining,
     )
