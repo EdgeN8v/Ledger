@@ -132,12 +132,12 @@ fun PlanScreen(
 
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.clickable { breakdown = true }) {
-                            Metric("还能花 ⓘ", money(st.remaining), if ((st.remaining.toDoubleOrNull() ?: 0.0) < 0) ExpenseColor else MaterialTheme.colorScheme.onSurface)
+                            Metric("还能花 ⓘ", money(st.remaining), if ((st.remaining.toDoubleOrNull() ?: 0.0) < 0) ExpenseColor else IncomeColor)
                         }
                         Metric("剩 ${st.days_left} 天, 每天可花", money(st.daily_allowance), MaterialTheme.colorScheme.onSurface)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Metric("已存", money(st.saved_so_far), if ((st.saved_so_far.toDoubleOrNull() ?: 0.0) >= (st.savings_target.toDoubleOrNull() ?: 0.0)) IncomeColor else MaterialTheme.colorScheme.onSurface)
+                        Metric("已存", money(st.saved_so_far), MaterialTheme.colorScheme.onSurface)
                         Metric("目标存款", money(st.savings_target), MaterialTheme.colorScheme.onSurface)
                     }
                 }
