@@ -211,12 +211,12 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
     saved_so_far = income_basis - fixed_total - spent
     allowance = (remaining / left) if left > 0 and remaining > 0 else ZERO
 
+    # real numbers only, no extrapolation: a couple of days of spending used to also flag "at_risk" off the
+    # projected pace, which just meant an early, noisy guess scared the user before there was enough data to trust
     if not l.savings_target:
         state = "no_plan"
     elif spent > budget:
         state = "over"
-    elif pace > budget:
-        state = "at_risk"
     else:
         state = "on_track"
 

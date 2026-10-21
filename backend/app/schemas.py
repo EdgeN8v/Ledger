@@ -298,7 +298,7 @@ class PlanStatus(BaseModel):
     projected_spend: Decimal
     projected_saving: Decimal
     saved_so_far: Decimal
-    state: str                           # no_plan / on_track / at_risk / over
+    state: str                           # no_plan / on_track / over
     fixed_total: Decimal = Decimal(0)
     fixed_items: list[FixedItemStatus] = []
     spent_total: Decimal = Decimal(0)    # everything spent, fixed items included

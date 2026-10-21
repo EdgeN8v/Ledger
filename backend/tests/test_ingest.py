@@ -410,7 +410,7 @@ def test_plan_status_and_analysis(client):
     client.put("/plan", json={"savings_target": 3000, "fixed_expenses": 2000})
     st = client.get("/plan/status", params={"year": 2026, "month": 9}).json()
     assert float(st["income_basis"]) >= 10000 and float(st["budget"]) == 5000.0     # 10000 - 2000 - 3000
-    assert float(st["spent"]) == 450.0 and float(st["remaining"]) == 4550.0 and st["state"] in ("on_track", "at_risk")
+    assert float(st["spent"]) == 450.0 and float(st["remaining"]) == 4550.0 and st["state"] == "on_track"
     a = client.get("/analysis/cycle", params={"year": 2026, "month": 9}).json()
     assert float(a["total_expense"]) == 450.0 and a["categories"][0]["name"] == "餐饮" and a["top_shops"][0]["count"] == 3
     y = client.get("/analysis/year", params={"year": 2026}).json()
@@ -465,6 +465,18 @@ def test_fixed_items_file_payments_and_reserve_budget(client):
     assert float(st["spent"]) == 200.0
     by = {i["name"]: i for i in st["fixed_items"]}
     assert by["妈妈生活费"]["state"] == "paid" and by["房租"]["state"] == "paid"
+
+
+def test_heavy_early_spending_does_not_falsely_flag_at_risk(client):
+    # two days into a 31-day cycle, spending fast enough that naive extrapolation would blow the budget - but the
+    # actual money spent so far is still well under it, so the state must stay on_track, not a scary early guess
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 11000, "expected_income": 14000})   # budget = 3000, well under the naive pace
+    _sms(client, "【建设银行】您账户1234于10月21日12:00向京东商城支出370元,可用余额9000元。", 12, 0, day=21)
+    st = client.get("/plan/status", params={"year": 2026, "month": 10}).json()
+    assert float(st["spent"]) == 370.0 and float(st["spent"]) < float(st["budget"])
+    assert float(st["projected_spend"]) > float(st["budget"])      # the naive extrapolation really would look scary
+    assert st["state"] == "on_track"                               # but the state no longer reacts to it
 
 
 def test_treat_budget_is_a_separate_hand_tagged_allowance(client):

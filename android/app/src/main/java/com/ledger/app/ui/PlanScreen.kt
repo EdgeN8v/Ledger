@@ -110,8 +110,7 @@ fun PlanScreen(
 
         if (st != null) {
             val (title, color) = when (st.state) {
-                "on_track" -> "✅ 在计划内, 照这个节奏能存下" to IncomeColor
-                "at_risk" -> "⚠️ 照这个花法会超预算" to Color(0xFFE08A00)
+                "on_track" -> "✅ 在预算内" to IncomeColor
                 "over" -> "❌ 本账期已超预算" to ExpenseColor
                 else -> "还没有存钱目标, 先定一个" to MaterialTheme.colorScheme.onSurfaceVariant
             }
