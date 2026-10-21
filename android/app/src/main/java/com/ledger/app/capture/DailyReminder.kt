@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.ledger.app.MainActivity
 import com.ledger.app.R
 import com.ledger.app.data.ApiClient
+import com.ledger.app.data.AppUpdater
 import com.ledger.app.data.Prefs
 import java.time.LocalDate
 import java.time.LocalTime
@@ -95,5 +96,32 @@ object DailyReminder {
             .build()
         NotificationManagerCompat.from(c).notify(7001, n)
         prefs.edit().putString(KEY_LAST, today).apply()
+    }
+
+    /** A new build is sitting on the server (published with publish.py): tell the user instead of hoping they
+     *  remember to open "我的→检查更新" themselves. Fires once per version - no daily nagging once seen. */
+    suspend fun maybeNotifyUpdate(c: Context) {
+        if (!Prefs.isLoggedIn(c) || !canNotify(c)) return
+        val info = try { AppUpdater.check(c) } catch (_: Exception) { return } ?: return
+        val prefs = c.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        if (prefs.getInt("last_update_notified_code", 0) >= info.versionCode) return
+
+        val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= 26) {
+            nm.createNotificationChannel(NotificationChannel("app_update", "新版本提醒", NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val open = PendingIntent.getActivity(
+            c, 2, Intent(c, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = NotificationCompat.Builder(c, "app_update")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("记账有新版本 ${info.versionName}")
+            .setContentText(info.notes.ifBlank { "点击打开更新" })
+            .setStyle(NotificationCompat.BigTextStyle().bigText(info.notes.ifBlank { "点击打开更新" }))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(c).notify(7003, n)
+        prefs.edit().putInt("last_update_notified_code", info.versionCode).apply()
     }
 }

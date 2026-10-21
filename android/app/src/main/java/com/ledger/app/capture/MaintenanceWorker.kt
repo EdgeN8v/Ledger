@@ -23,6 +23,7 @@ class MaintenanceWorker(ctx: Context, params: WorkerParameters) : CoroutineWorke
         if (CaptureQueue.size(applicationContext) > 0) UploadWorker.enqueue(applicationContext)
         DailyReminder.maybeNotify(applicationContext)
         DailyReminder.maybeRemind(applicationContext)
+        DailyReminder.maybeNotifyUpdate(applicationContext)
         return Result.success()
     }
 
