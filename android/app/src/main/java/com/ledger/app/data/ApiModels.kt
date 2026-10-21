@@ -232,6 +232,8 @@ data class FixedItemDto(
 
 data class FixedMarkRequest(val name: String, val paid: Boolean? = null, val paid_until: String? = null)
 
+data class FixedHistoryEntryDto(val period_start: String, val period_end: String, val amount: String)
+
 data class WeekStatDto(val start: String, val end: String, val total: String)
 
 data class CategoryStatDto(

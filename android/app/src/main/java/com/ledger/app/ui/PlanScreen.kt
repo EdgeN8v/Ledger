@@ -24,15 +24,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ledger.app.data.ApiClient
+import com.ledger.app.data.FixedHistoryEntryDto
 import com.ledger.app.ui.theme.ExpenseColor
 import com.ledger.app.ui.theme.IncomeColor
 import com.ledger.app.viewmodel.PlanUiState
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 internal fun money(v: String?, signed: Boolean = false): String {
@@ -49,6 +54,11 @@ fun PlanScreen(
     var editing by remember { mutableStateOf(false) }
     var marking by remember { mutableStateOf<com.ledger.app.data.FixedItemDto?>(null) }
     var breakdown by remember { mutableStateOf(false) }
+    var historyFor by remember { mutableStateOf<String?>(null) }
+    var historyRows by remember { mutableStateOf<List<FixedHistoryEntryDto>?>(null) }
+    var historyError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { onLoad() }
     val st = state.status
     val plan = state.plan
@@ -155,6 +165,16 @@ fun PlanScreen(
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { marking = f }, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(f.name + (f.due_day?.let { "  (每月${it}号)" } ?: ""), style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "历史", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable {
+                                        historyFor = f.name; historyRows = null; historyError = null
+                                        scope.launch {
+                                            try { historyRows = ApiClient.create(context).fixedHistory(f.name) }
+                                            catch (e: Exception) { historyError = e.message ?: "加载失败" }
+                                        }
+                                    }
+                                )
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(money(f.reserve), fontWeight = FontWeight.Medium, maxLines = 1)
@@ -181,6 +201,32 @@ fun PlanScreen(
             }
         }
         if (state.error != null) Text(state.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+    }
+
+    historyFor?.let { name ->
+        AlertDialog(
+            onDismissRequest = { historyFor = null },
+            confirmButton = { TextButton(onClick = { historyFor = null }) { Text("知道了") } },
+            title = { Text("$name 历史") },
+            text = {
+                Column {
+                    when {
+                        historyError != null -> Text(historyError!!, color = MaterialTheme.colorScheme.error)
+                        historyRows == null -> Text("加载中…")
+                        historyRows!!.all { it.amount.toDoubleOrNull() == 0.0 } -> Text("还没有记录")
+                        else -> historyRows!!.forEach { h ->
+                            if (h.amount.toDoubleOrNull() != 0.0) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(h.period_start.substring(5).replace('-', '月') + "日 – " + h.period_end.substring(5).replace('-', '月') + "日",
+                                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(money(h.amount), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     if (breakdown && st != null) {

@@ -66,6 +66,32 @@ def bill_reminders(db: Session = Depends(get_db), user: models.User = Depends(ge
     return reminders(load(l), today, paid, cycle_key(y, m))
 
 
+@router.get("/fixed-history", response_model=list[schemas.FixedHistoryEntry])
+def fixed_history(name: str, cycles: int = 6, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """What a named fixed commitment (e.g. a utility bill with no fixed amount) actually cost over its last few
+    cycles, oldest first - so the user can see the swings behind a reserve figure that is "the latest cycle", not
+    a single confirmed number."""
+    l = user.ledger
+    items = load(l)
+    it = next((i for i in items if i["name"] == name), None)
+    if it is None:
+        raise HTTPException(404, "no such fixed item")
+    start_day = l.cycle_start_day or 1
+    year, month = current_cycle(start_day)
+    cycles = min(max(cycles, 1), 12)
+    out = []
+    for _ in range(cycles):
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+        start, end = cycle_bounds(start_day, year, month)
+        d = period_data(db, l.id, start, end)
+        got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at) or {}).get("name") == name), ZERO)
+        out.append(schemas.FixedHistoryEntry(
+            period_start=start.strftime("%Y-%m-%d"), period_end=(end - timedelta(days=1)).strftime("%Y-%m-%d"), amount=got,
+        ))
+    out.reverse()
+    return out
+
+
 @router.put("", response_model=schemas.PlanOut)
 def set_plan(
     payload: schemas.PlanIn,
@@ -140,17 +166,18 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
     def reserve(it) -> Decimal:
         if it.get("monthly"):
             return Decimal(str(it["monthly"]))
-        # amount unknown (utilities): the average of the last three cycles
+        # amount unknown (utilities): use the last cycle that actually had a bill, so a sudden jump this winter
+        # shows up right away instead of being smoothed out by older, cheaper cycles - fall further back only
+        # if the most recent cycles are missing a bill entirely (e.g. not imported yet)
         py, pm = year, month
-        total, n = ZERO, 0
-        for _ in range(3):
+        for _ in range(6):
             py, pm = (py - 1, 12) if pm == 1 else (py, pm - 1)
             ps, pe = cycle_bounds(start_day, py, pm)
             d = period_data(db, l.id, ps, pe)
             got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at) or {}).get("name") == it["name"]), ZERO)
             if got:
-                total, n = total + got, n + 1
-        return (total / n).quantize(Decimal("0.01")) if n else ZERO
+                return got.quantize(Decimal("0.01"))
+        return ZERO
 
     fixed_rows, fixed_total, matched_total = [], ZERO, ZERO
     for it in items:

@@ -257,6 +257,12 @@ class FixedMark(BaseModel):
     paid_until: Optional[str] = None       # YYYY-MM-DD paid in advance up to; "" clears it
 
 
+class FixedHistoryEntry(BaseModel):
+    period_start: str
+    period_end: str
+    amount: Decimal             # 0 when nothing matched that cycle
+
+
 class FixedItemStatus(BaseModel):
     name: str
     reserve: Decimal            # set aside every cycle

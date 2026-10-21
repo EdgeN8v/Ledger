@@ -452,6 +452,32 @@ def test_fixed_items_file_payments_and_reserve_budget(client):
     assert by["妈妈生活费"]["state"] == "paid" and by["房租"]["state"] == "paid"
 
 
+def test_unknown_fixed_item_uses_the_latest_cycle_not_an_average(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [
+        {"name": "水电燃气", "monthly": 0, "tracked": True, "category": "居住", "match_text": ["生活缴费"]},
+    ]})
+    for m, amt in ((7, 100), (8, 200), (9, 900)):
+        client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, m, 25, 9, 0),
+            "text": f"【建设银行】您账户1234于{m}月25日09:00向微信支付-生活缴费支出{amt}元,可用余额900元。"})
+    st = client.get("/plan/status", params={"year": 2026, "month": 10}).json()   # cycle 10/20-11/19 looks back first to 9/20-10/19
+    by = {i["name"]: i for i in st["fixed_items"]}
+    assert float(by["水电燃气"]["reserve"]) == 900.0   # the most recent cycle (Sep's bill), not the 3-cycle average (400)
+
+
+def test_fixed_history_lists_past_cycles_oldest_first(client):
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [
+        {"name": "水电燃气", "monthly": 0, "tracked": True, "category": "居住", "match_text": ["生活缴费"]},
+    ]})
+    for m, amt in ((7, 100), (8, 200), (9, 900)):
+        client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, m, 25, 9, 0),
+            "text": f"【建设银行】您账户1234于{m}月25日09:00向微信支付-生活缴费支出{amt}元,可用余额900元。"})
+    hist = client.get("/plan/fixed-history", params={"name": "水电燃气", "cycles": 4}).json()
+    assert [float(h["amount"]) for h in hist] == [0.0, 100.0, 200.0, 900.0]           # oldest first, June had nothing
+    assert client.get("/plan/fixed-history", params={"name": "没有这项"}).status_code == 404
+
+
 def test_car_and_transport_are_one_category(client):
     names = [c["name"] for c in client.get("/categories").json()]
     assert "交通/酒店" in names and "交通" not in names and "车辆" not in names and "家人" in names

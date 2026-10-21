@@ -109,6 +109,9 @@ interface ApiService {
     @GET("plan/status")
     suspend fun planStatus(): PlanStatusDto
 
+    @GET("plan/fixed-history")
+    suspend fun fixedHistory(@Query("name") name: String, @Query("cycles") cycles: Int = 6): List<FixedHistoryEntryDto>
+
     @GET("analysis/cycle")
     suspend fun analysisCycle(@Query("year") year: Int?, @Query("month") month: Int?, @Query("include_business") includeBusiness: Boolean = false): CycleAnalysisDto
 
