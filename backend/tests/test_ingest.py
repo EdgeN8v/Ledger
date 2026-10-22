@@ -218,6 +218,18 @@ def test_refund_candidates_also_finds_the_purchase_of_a_partial_refund(client):
     assert cands2[0]["id"] == exact["transaction"]["id"]   # the exact-amount match is listed first
 
 
+def test_refund_candidates_can_be_narrowed_to_a_date_the_user_remembers(client):
+    # a small refund amount can match a lot of purchases - the user can narrow by a day they checked in the
+    # shopping app instead of scrolling a long list
+    for d, h in ((3, 9), (10, 10), (17, 11)):
+        _sms(client, f"【建设银行】您账户1234于10月{d}日{h}:00向京东商城支出30元,可用余额900元。", h, 0, day=d)
+    dep = _sms(client, "【建设银行】您账户1234于10月21日16:46存入10元,可用余额1260元。附言：他行代发。", 16, 46, day=21)
+    assert len(client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates").json()) == 3
+    narrowed = client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates",
+                           params={"date_from": "2026-10-10", "date_to": "2026-10-10"}).json()
+    assert len(narrowed) == 1 and narrowed[0]["occurred_at"].startswith("2026-10-10")
+
+
 def test_partial_refund_leaves_the_rest_as_expense(client):
     _sms(client, "【建设银行】您账户1234于10月6日12:00向京东商城支出100元,可用余额900元。", 12, 0)
     _sms(client, "【建设银行】您账户1234于10月7日12:00京东商城退款收入40元,可用余额940元。", 12, 0, day=7)

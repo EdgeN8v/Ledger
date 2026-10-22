@@ -160,7 +160,11 @@ interface ApiService {
     suspend fun updateTransaction(@Path("id") id: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): TransactionDto
 
     @GET("transactions/{id}/refund-candidates")
-    suspend fun refundCandidates(@Path("id") id: Int): List<TransactionDto>
+    suspend fun refundCandidates(
+        @Path("id") id: Int,
+        @Query("date_from") dateFrom: String? = null,
+        @Query("date_to") dateTo: String? = null
+    ): List<TransactionDto>
 
     @DELETE("transactions/{id}")
     suspend fun deleteTransaction(@Path("id") id: Int)

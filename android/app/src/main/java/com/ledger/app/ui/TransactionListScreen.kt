@@ -572,6 +572,7 @@ internal fun CategoryPickerDialog(
     var confirmingDelete by remember { mutableStateOf(false) }
     var refundSearch by remember { mutableStateOf(false) }         // null = not searched, empty = searched and found nothing
     var refundCandidates by remember { mutableStateOf<List<TransactionDto>?>(null) }
+    var refundTooMany by remember { mutableStateOf(0) }            // > 0: narrow by date instead of dumping a long list
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
@@ -598,16 +599,31 @@ internal fun CategoryPickerDialog(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                 CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, selCat, tx.tx_type, onPick = { id -> if (id != selCat) { selCat = id; selSub = null } })
                 if (tx.tx_type == "income" && onLinkRefund != null && tx.refund_of_id == null) {
-                    TextButton(onClick = {
-                        refundSearch = true
+                    fun searchRefund(date: String? = null) {
+                        refundSearch = true; refundTooMany = 0
                         scope.launch {
-                            val found = try { ApiClient.create(context).refundCandidates(tx.id) } catch (_: Exception) { emptyList() }
-                            if (found.size == 1) { onLinkRefund(tx.id, found[0].id); refundSearch = false }
-                            else refundCandidates = found
+                            val found = try { ApiClient.create(context).refundCandidates(tx.id, date, date) } catch (_: Exception) { emptyList() }
+                            when {
+                                found.size == 1 -> { onLinkRefund(tx.id, found[0].id); refundSearch = false }
+                                found.size > 6 && date == null -> { refundTooMany = found.size; refundSearch = false }   // a small amount matches too much: ask for a day instead
+                                else -> refundCandidates = found
+                            }
                         }
-                    }, modifier = Modifier.padding(top = 4.dp)) { Text("🔎 找原消费") }
-                    if (refundSearch && refundCandidates == null) Text("搜索中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = { searchRefund() }, modifier = Modifier.padding(top = 4.dp)) { Text("🔎 找原消费") }
+                    if (refundSearch && refundCandidates == null && refundTooMany == 0) Text("搜索中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (refundCandidates?.isEmpty() == true) Text("没找到金额一致的消费记录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (refundTooMany > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                            Text("匹配太多(共${refundTooMany}条)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                val d = LocalDate.now()
+                                android.app.DatePickerDialog(context, { _, y, m, day ->
+                                    searchRefund(LocalDate.of(y, m + 1, day).toString())
+                                }, d.year, d.monthValue - 1, d.dayOfMonth).show()
+                            }) { Text("选大概哪天买的") }
+                        }
+                    }
                 }
                 if (tx.tx_type == "expense" && subs.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))

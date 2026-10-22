@@ -138,10 +138,17 @@ def list_transactions(
 
 
 @router.get("/{tx_id}/refund-candidates", response_model=list[schemas.TransactionOut])
-def refund_candidates(tx_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def refund_candidates(
+    tx_id: int,
+    date_from: Optional[str] = None,     # YYYY-MM-DD, inclusive - narrows the 120-day window to a day the user remembers
+    date_to: Optional[str] = None,       # (e.g. checked in the shopping app) when a small refund matches too many purchases
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
     """Past purchases this income could be the refund of: at least this amount still unrefunded (a full match or
     the still-open remainder of a partial refund), paid before this income arrived. Lets the user pair up a refund
-    the parser missed (no "退" keyword) by hand."""
+    the parser missed (no "退" keyword) by hand. A small refund amount alone can match a lot of purchases, so the
+    caller can narrow by date once that happens."""
     tx = (
         db.query(models.Transaction)
         .filter(models.Transaction.id == tx_id, models.Transaction.ledger_id == user.ledger_id)
@@ -151,11 +158,13 @@ def refund_candidates(tx_id: int, db: Session = Depends(get_db), user: models.Us
         raise HTTPException(status.HTTP_404_NOT_FOUND, "transaction not found")
     if tx.tx_type != models.TxType.income:
         raise HTTPException(400, "only an income transaction can look for the purchase it refunds")
+    earliest = max(tx.occurred_at - WINDOW, datetime.strptime(date_from, "%Y-%m-%d")) if date_from else tx.occurred_at - WINDOW
+    latest = min(tx.occurred_at, datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)) if date_to else tx.occurred_at
     candidates = (
         db.query(models.Transaction)
         .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.tx_type == models.TxType.expense,
                 models.Transaction.is_transfer.is_(False), models.Transaction.amount >= tx.amount,
-                models.Transaction.occurred_at <= tx.occurred_at, models.Transaction.occurred_at >= tx.occurred_at - WINDOW)
+                models.Transaction.occurred_at <= latest, models.Transaction.occurred_at >= earliest)
         .order_by(models.Transaction.occurred_at.desc())
         .all()
     )
