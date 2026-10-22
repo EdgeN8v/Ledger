@@ -605,7 +605,7 @@ internal fun CategoryPickerDialog(
                             if (found.size == 1) { onLinkRefund(tx.id, found[0].id); refundSearch = false }
                             else refundCandidates = found
                         }
-                    }, modifier = Modifier.padding(top = 4.dp)) { Text("🔎 这是某笔消费的退款? 帮我找一下") }
+                    }, modifier = Modifier.padding(top = 4.dp)) { Text("🔎 找原消费") }
                     if (refundSearch && refundCandidates == null) Text("搜索中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (refundCandidates?.isEmpty() == true) Text("没找到金额一致的消费记录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

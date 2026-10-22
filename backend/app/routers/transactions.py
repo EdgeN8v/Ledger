@@ -139,8 +139,9 @@ def list_transactions(
 
 @router.get("/{tx_id}/refund-candidates", response_model=list[schemas.TransactionOut])
 def refund_candidates(tx_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """Past purchases this income could be the refund of: same amount, not already fully refunded, paid before
-    this income arrived. Lets the user pair up a refund the parser missed (no "退" keyword) by hand."""
+    """Past purchases this income could be the refund of: at least this amount still unrefunded (a full match or
+    the still-open remainder of a partial refund), paid before this income arrived. Lets the user pair up a refund
+    the parser missed (no "退" keyword) by hand."""
     tx = (
         db.query(models.Transaction)
         .filter(models.Transaction.id == tx_id, models.Transaction.ledger_id == user.ledger_id)
@@ -153,7 +154,7 @@ def refund_candidates(tx_id: int, db: Session = Depends(get_db), user: models.Us
     candidates = (
         db.query(models.Transaction)
         .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.tx_type == models.TxType.expense,
-                models.Transaction.is_transfer.is_(False), models.Transaction.amount == tx.amount,
+                models.Transaction.is_transfer.is_(False), models.Transaction.amount >= tx.amount,
                 models.Transaction.occurred_at <= tx.occurred_at, models.Transaction.occurred_at >= tx.occurred_at - WINDOW)
         .order_by(models.Transaction.occurred_at.desc())
         .all()
@@ -161,6 +162,8 @@ def refund_candidates(tx_id: int, db: Session = Depends(get_db), user: models.Us
     out = [e for e in candidates if e.amount - refunded_amount(db, e.id) >= tx.amount]
     for e in out:
         e.refunded_amount = refunded_amount(db, e.id)
+    # an exact-amount match is almost always the right one: put those first, partial-refund candidates after
+    out.sort(key=lambda e: e.amount != tx.amount)
     return out[:20]
 
 

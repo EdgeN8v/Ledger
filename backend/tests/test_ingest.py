@@ -201,6 +201,23 @@ def test_refund_candidates_lists_matching_purchases_by_amount(client):
     assert client.get(f"/transactions/{only['transaction']['id']}/refund-candidates").status_code == 400   # it's an expense, not an income
 
 
+def test_refund_candidates_also_finds_the_purchase_of_a_partial_refund(client):
+    # a 50 refund on a 163.80 purchase is NOT an exact-amount match, but it's still the right candidate -
+    # this is exactly the case the user hit: "没搜到" because the old search only matched the exact amount
+    buy = _sms(client, "【建设银行】您账户1234于10月6日12:00向京东商城支出163.80元,可用余额900元。", 12, 0)
+    dep = _sms(client, "【建设银行】您账户1234于10月21日16:46存入50元,可用余额1260元。附言：他行代发。", 16, 46, day=21)
+    cands = client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates").json()
+    assert len(cands) == 1 and cands[0]["id"] == buy["transaction"]["id"]
+    client.put(f"/transactions/{dep['transaction']['id']}", json={"refund_of_id": buy["transaction"]["id"]})
+    # the purchase still has 113.80 of room left for a further (even exact-amount) refund candidate search
+    exact = _sms(client, "【建设银行】您账户1234于10月6日13:00向京东商城支出20元,可用余额880元。", 13, 0)
+    dep2 = _sms(client, "【建设银行】您账户1234于10月22日09:00存入20元,可用余额1280元。附言：他行代发。", 9, 0, day=22)
+    cands2 = client.get(f"/transactions/{dep2['transaction']['id']}/refund-candidates").json()
+    ids = {c["id"] for c in cands2}
+    assert exact["transaction"]["id"] in ids and buy["transaction"]["id"] in ids
+    assert cands2[0]["id"] == exact["transaction"]["id"]   # the exact-amount match is listed first
+
+
 def test_partial_refund_leaves_the_rest_as_expense(client):
     _sms(client, "【建设银行】您账户1234于10月6日12:00向京东商城支出100元,可用余额900元。", 12, 0)
     _sms(client, "【建设银行】您账户1234于10月7日12:00京东商城退款收入40元,可用余额940元。", 12, 0, day=7)
