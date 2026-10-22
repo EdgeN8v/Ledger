@@ -70,15 +70,18 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ledger.app.data.ApiClient
 import com.ledger.app.data.CategoryDto
 import com.ledger.app.data.TransactionDto
 import com.ledger.app.ui.theme.CategoryBadgeColors
@@ -86,6 +89,7 @@ import com.ledger.app.ui.theme.ExpenseColor
 import com.ledger.app.ui.theme.IncomeColor
 import com.ledger.app.viewmodel.TransactionUiState
 import com.ledger.app.viewmodel.TxFilter
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
@@ -103,6 +107,7 @@ fun TransactionListScreen(
     onLoadMore: () -> Unit,
     onFilterChange: (TxFilter) -> Unit,
     onSetCategory: (txId: Int, categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
+    onLinkRefund: (incomeId: Int, purchaseId: Int) -> Unit = { _, _ -> },
     onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
     onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
@@ -249,7 +254,8 @@ fun TransactionListScreen(
             onDismiss = { pickFor = null },
             onConfirm = { catId, sub, isTreat -> pickFor = null; onSetCategory(tx.id, catId, sub, isTreat) },
             onEdit = { pickFor = null; onEditTransaction(tx) },
-            onDelete = { pickFor = null; onDeleteTransaction(tx.id) }
+            onDelete = { pickFor = null; onDeleteTransaction(tx.id) },
+            onLinkRefund = { incomeId, purchaseId -> pickFor = null; onLinkRefund(incomeId, purchaseId) }
         )
     }
 }
@@ -557,12 +563,17 @@ internal fun CategoryPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
     onEdit: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onLinkRefund: ((incomeId: Int, purchaseId: Int) -> Unit)? = null
 ) {
     var selCat by remember { mutableStateOf(tx.category_id) }
     var selSub by remember { mutableStateOf(tx.sub) }
     var selTreat by remember { mutableStateOf(tx.is_treat) }
     var confirmingDelete by remember { mutableStateOf(false) }
+    var refundSearch by remember { mutableStateOf(false) }         // null = not searched, empty = searched and found nothing
+    var refundCandidates by remember { mutableStateOf<List<TransactionDto>?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
     val changed = selCat != tx.category_id || selSub != tx.sub || selTreat != tx.is_treat
     AlertDialog(
@@ -586,6 +597,18 @@ internal fun CategoryPickerDialog(
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                 CategoryGrid(categories.filter { it.tx_type == tx.tx_type }, selCat, tx.tx_type, onPick = { id -> if (id != selCat) { selCat = id; selSub = null } })
+                if (tx.tx_type == "income" && onLinkRefund != null && tx.refund_of_id == null) {
+                    TextButton(onClick = {
+                        refundSearch = true
+                        scope.launch {
+                            val found = try { ApiClient.create(context).refundCandidates(tx.id) } catch (_: Exception) { emptyList() }
+                            if (found.size == 1) { onLinkRefund(tx.id, found[0].id); refundSearch = false }
+                            else refundCandidates = found
+                        }
+                    }, modifier = Modifier.padding(top = 4.dp)) { Text("🔎 这是某笔消费的退款? 帮我找一下") }
+                    if (refundSearch && refundCandidates == null) Text("搜索中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (refundCandidates?.isEmpty() == true) Text("没找到金额一致的消费记录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (tx.tx_type == "expense" && subs.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -626,6 +649,31 @@ internal fun CategoryPickerDialog(
                 ) { Text("删除") }
             },
             dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("不删") } }
+        )
+    }
+    val multiple = refundCandidates
+    if (multiple != null && multiple.size > 1) {
+        AlertDialog(
+            onDismissRequest = { refundCandidates = null; refundSearch = false },
+            title = { Text("是哪一笔的退款?") },
+            text = {
+                Column {
+                    multiple.forEach { c ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                .clickable { onLinkRefund?.invoke(tx.id, c.id); refundCandidates = null; refundSearch = false },
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                (c.merchant?.takeIf { it.isNotBlank() } ?: c.note ?: "") + "\n" + c.occurred_at.replace('T', ' ').take(16),
+                                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f)
+                            )
+                            Text("¥" + c.amount, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { refundCandidates = null; refundSearch = false }) { Text("取消") } }
         )
     }
 }

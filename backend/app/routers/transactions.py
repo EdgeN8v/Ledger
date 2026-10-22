@@ -11,7 +11,7 @@ from app.database import get_db
 from app.clock import now_local
 from app.deps import get_current_user
 from app.merchants import UNNAMED_DEDUCTION, is_generic, is_unnamed_deduction, shop_core
-from app.refunds import refunded_amount
+from app.refunds import WINDOW, refunded_amount
 from app.stats import cycle_bounds, period_data
 from app.parsing import parse_transaction, ParseError
 from app import subcats
@@ -135,6 +135,33 @@ def list_transactions(
         t.refunded_amount = refunded_amount(db, t.id) if t.tx_type == models.TxType.expense else Decimal(0)
         t.trip_kind, t.trip_name = trip_info.get(t.trip_id, (None, None))
     return rows
+
+
+@router.get("/{tx_id}/refund-candidates", response_model=list[schemas.TransactionOut])
+def refund_candidates(tx_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Past purchases this income could be the refund of: same amount, not already fully refunded, paid before
+    this income arrived. Lets the user pair up a refund the parser missed (no "退" keyword) by hand."""
+    tx = (
+        db.query(models.Transaction)
+        .filter(models.Transaction.id == tx_id, models.Transaction.ledger_id == user.ledger_id)
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "transaction not found")
+    if tx.tx_type != models.TxType.income:
+        raise HTTPException(400, "only an income transaction can look for the purchase it refunds")
+    candidates = (
+        db.query(models.Transaction)
+        .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.tx_type == models.TxType.expense,
+                models.Transaction.is_transfer.is_(False), models.Transaction.amount == tx.amount,
+                models.Transaction.occurred_at <= tx.occurred_at, models.Transaction.occurred_at >= tx.occurred_at - WINDOW)
+        .order_by(models.Transaction.occurred_at.desc())
+        .all()
+    )
+    out = [e for e in candidates if e.amount - refunded_amount(db, e.id) >= tx.amount]
+    for e in out:
+        e.refunded_amount = refunded_amount(db, e.id)
+    return out[:20]
 
 
 @router.put("/{tx_id}", response_model=schemas.TransactionOut)

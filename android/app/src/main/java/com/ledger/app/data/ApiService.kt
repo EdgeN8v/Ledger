@@ -159,6 +159,9 @@ interface ApiService {
     @PUT("transactions/{id}")
     suspend fun updateTransaction(@Path("id") id: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): TransactionDto
 
+    @GET("transactions/{id}/refund-candidates")
+    suspend fun refundCandidates(@Path("id") id: Int): List<TransactionDto>
+
     @DELETE("transactions/{id}")
     suspend fun deleteTransaction(@Path("id") id: Int)
 

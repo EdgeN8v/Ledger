@@ -211,6 +211,20 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /** The income the parser never flagged as a refund (no "退" in the SMS) is actually paired by hand with the
+     *  purchase it cancels. */
+    fun linkRefund(incomeId: Int, purchaseId: Int) {
+        viewModelScope.launch {
+            try {
+                api().updateTransaction(incomeId, mapOf("refund_of_id" to purchaseId))
+                reloadLoaded()
+                _state.value = _state.value.copy(message = "已关联,这笔退款不再算收入")
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "关联失败")
+            }
+        }
+    }
+
     /** The kind inside the category (clothes, snacks, hotel...). */
     fun setSub(id: Int, sub: String?) {
         viewModelScope.launch {

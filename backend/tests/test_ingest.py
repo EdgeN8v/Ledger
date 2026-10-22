@@ -181,6 +181,26 @@ def test_unflagged_deposit_can_be_manually_linked_as_a_refund(client):
                        json={"refund_of_id": 999999}).status_code == 400
 
 
+def test_refund_candidates_lists_matching_purchases_by_amount(client):
+    dep = _sms(client, "【建设银行】您账户1234于10月21日16:46存入50元,可用余额1260元。附言：他行代发。", 16, 46, day=21)
+    cands = client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates").json()
+    assert cands == []    # nothing to match yet
+
+    only = _sms(client, "【建设银行】您账户1234于10月6日12:00向京东商城支出50元,可用余额900元。", 12, 0)
+    cands = client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates").json()
+    assert len(cands) == 1 and cands[0]["id"] == only["transaction"]["id"]
+
+    _sms(client, "【建设银行】您账户1234于10月7日12:00向超市支出50元,可用余额850元。", 12, 0, day=7)
+    cands = client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates").json()
+    assert len(cands) == 2    # now the user has to pick
+
+    # a purchase after the income arrived can't be what it refunds
+    later = _sms(client, "【建设银行】您账户1234于10月22日12:00向沃尔玛支出50元,可用余额800元。", 12, 0, day=22)
+    assert later["transaction"]["id"] not in [c["id"] for c in client.get(f"/transactions/{dep['transaction']['id']}/refund-candidates").json()]
+
+    assert client.get(f"/transactions/{only['transaction']['id']}/refund-candidates").status_code == 400   # it's an expense, not an income
+
+
 def test_partial_refund_leaves_the_rest_as_expense(client):
     _sms(client, "【建设银行】您账户1234于10月6日12:00向京东商城支出100元,可用余额900元。", 12, 0)
     _sms(client, "【建设银行】您账户1234于10月7日12:00京东商城退款收入40元,可用余额940元。", 12, 0, day=7)

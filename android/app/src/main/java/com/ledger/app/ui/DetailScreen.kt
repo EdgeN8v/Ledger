@@ -47,6 +47,7 @@ fun DetailScreen(
     onSort: (String) -> Unit,
     onLoadMore: () -> Unit,
     onSetCategory: (txId: Int, categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
+    onLinkRefund: (incomeId: Int, purchaseId: Int) -> Unit = { _, _ -> },
     onSubFilter: (String?) -> Unit = {},
     onDeleteTransaction: (txId: Int) -> Unit = {}
 ) {
@@ -130,7 +131,8 @@ fun DetailScreen(
         CategoryPickerDialog(
             tx = tx, categories = state.categories, onDismiss = { pickFor = null },
             onConfirm = { c, sub, isTreat -> pickFor = null; onSetCategory(tx.id, c, sub, isTreat) },
-            onDelete = { pickFor = null; onDeleteTransaction(tx.id) }
+            onDelete = { pickFor = null; onDeleteTransaction(tx.id) },
+            onLinkRefund = { incomeId, purchaseId -> pickFor = null; onLinkRefund(incomeId, purchaseId) }
         )
     }
 }

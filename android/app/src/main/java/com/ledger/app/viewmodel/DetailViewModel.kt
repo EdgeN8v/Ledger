@@ -183,6 +183,18 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
+    /** Same manual refund pairing as on the main list. */
+    fun linkRefund(incomeId: Int, purchaseId: Int) {
+        viewModelScope.launch {
+            try {
+                api().updateTransaction(incomeId, mapOf("refund_of_id" to purchaseId))
+                reload()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "关联失败")
+            }
+        }
+    }
 }
 
 data class ReportUiState(val loading: Boolean = false, val report: ReportDto? = null, val error: String? = null)
