@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 from app import models
 from app.merchants import is_generic, shop_core
 
-_AMOUNT = re.compile(r"^[¥￥]?\s*([0-9][0-9,]*\.[0-9]{2})$")
-_SKIP = {"支付成功", "付款成功", "微信支付", "完成", "返回", "详情", "账单详情", "查看账单", "支付方式", "优惠", "收款方", "商品", "交易对象", "零钱", "零钱通", "关闭", "确定"}
+_AMOUNT = re.compile(r"^-?[¥￥]?\s*([0-9][0-9,]*\.[0-9]{2})$")   # Alipay's own bill list shows a deduction as "-10.90"
+_SKIP = {"支付成功", "付款成功", "扣款成功", "自动扣款成功", "微信支付", "完成", "返回", "详情", "账单详情", "查看账单", "支付方式",
+         "优惠", "收款方", "商品", "交易对象", "零钱", "零钱通", "关闭", "确定", "全部账单", "管理免密支付"}
 WINDOW = timedelta(minutes=20)
 SOURCES = {"screen:wechat": "微信支付", "screen:alipay": "支付宝"}     # which app the page was read in -> how its payments are named
 

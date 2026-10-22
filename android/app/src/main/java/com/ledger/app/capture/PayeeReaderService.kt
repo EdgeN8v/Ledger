@@ -40,7 +40,9 @@ class PayeeReaderService : AccessibilityService() {
         collect(root, lines, 0)
         root.recycle()
         if (lines.any { it.contains("支付") }) android.util.Log.d("PayeeReader", pkg + " " + lines.take(24).toString())   // temporary, read over adb
-        if (lines.none { it.contains("支付成功") || it.contains("付款成功") }) return
+        // 自动扣款成功 (免密支付/自动续费) shows no live "支付成功" screen at all - the bill-detail page you open
+        // afterward (in Alipay's own 账单 list) is the only place it ever appears, so that counts too
+        if (lines.none { it.contains("支付成功") || it.contains("付款成功") || it.contains("扣款成功") }) return
         if (lines.none { AMOUNT.matches(it) }) return
         val key = lines.joinToString("|")
         if (key == lastKey && now - lastAt < 60_000) return
@@ -109,6 +111,6 @@ class PayeeReaderService : AccessibilityService() {
 
     companion object {
         private val SOURCES = mapOf("com.tencent.mm" to "screen:wechat", "com.eg.android.AlipayGphone" to "screen:alipay")
-        private val AMOUNT = Regex("^[¥￥]?\\s*[0-9][0-9,]*\\.[0-9]{2}$")
+        private val AMOUNT = Regex("^-?[¥￥]?\\s*[0-9][0-9,]*\\.[0-9]{2}$")   // Alipay's own bill list shows a deduction as "-10.90"
     }
 }
