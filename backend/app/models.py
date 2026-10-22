@@ -144,6 +144,8 @@ class RawEvent(Base):
     status = Column(String, nullable=False)        # created / merged / ignored / failed
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     created_at = Column(DateTime, default=now_local)
+    pref_category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)   # category chosen on the payment-page popup, before the bank SMS creates the transaction
+    pref_sub = Column(String, nullable=True)
 
     __table_args__ = (Index("ix_raw_events_ledger_fp", "ledger_id", "fingerprint", unique=True),)
 

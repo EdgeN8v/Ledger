@@ -1331,6 +1331,33 @@ def test_shop_name_read_from_the_wechat_payment_page_is_put_on_the_scan_code_pay
     assert client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": "某某面馆\n￥36.00\n支付成功\n完成", "posted_at_ms": ms(2026, 10, 7, 12, 1)}).json()["status"] == "duplicate"
 
 
+def test_payment_page_popup_category_choice_is_applied_when_the_sms_lands(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    # the popup appears right when the screen says "支付成功", before the bank SMS exists yet
+    page = "某某超市\n￥19.50\n支付成功\n完成"
+    got = client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": page, "posted_at_ms": ms(2026, 10, 6, 18, 31)}).json()
+    assert got["status"] == "hint" and got["transaction"] is None and got["event_id"] is not None
+    assert float(got["amount"]) == 19.50 and got["payee"] == "某某超市"   # the popup shows these immediately, before anything is matched
+    r = client.put("/ingest/pending-category", json={"event_id": got["event_id"], "category_id": cats["狗狗"], "sub": "狗粮"})
+    assert r.status_code == 200
+    _sms(client, "【建设银行】您账户1234于10月6日18:31向微信支付-扫二维码付款充值支出19.5元,可用余额900元。", 18, 31)
+    t = client.get("/transactions").json()[0]
+    assert t["merchant"] == "微信支付-某某超市" and t["category_id"] == cats["狗狗"] and t["sub"] == "狗粮"
+    assert t["needs_review"] is False
+    # a stale / unmatched event id can't be used to inject a category into someone else's event
+    assert client.put("/ingest/pending-category", json={"event_id": 999999, "category_id": cats["狗狗"]}).status_code == 404
+
+
+def test_payment_page_popup_gets_the_transaction_back_when_the_sms_already_landed(client):
+    _sms(client, "【建设银行】您账户1234于10月6日18:31向微信支付-扫二维码付款充值支出50元,可用余额900元。", 18, 31)
+    got = client.post("/ingest", json={"source": "screen:wechat", "title": "",
+                                        "text": "某某书店\n￥50.00\n支付成功\n完成", "posted_at_ms": ms(2026, 10, 6, 18, 32)}).json()
+    assert got["status"] == "applied" and got["transaction"] is not None
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    r = client.put(f"/transactions/{got['transaction']['id']}", json={"category_id": cats["教育"], "needs_review": False})
+    assert r.status_code == 200 and r.json()["category_id"] == cats["教育"]
+
+
 def test_changing_category_and_sub_in_one_request_for_a_new_shop(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     _sms(client, "【建设银行】您账户1234于10月6日10:00向微信支付-某某宠物用品店支出88元,可用余额900元。", 10, 0)

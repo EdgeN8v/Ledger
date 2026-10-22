@@ -57,24 +57,41 @@ def apply_to(db: Session, tx: models.Transaction, payee: str, prefix: str = "微
     return True
 
 
-def store_and_apply(db: Session, ledger_id: int, user_id: int, posted, lines: list[str], source: str = "screen:wechat") -> str:
+def store_and_apply(db: Session, ledger_id: int, user_id: int, posted, lines: list[str], source: str = "screen:wechat"):
+    """Returns (status, transaction_or_None, event_id_or_None, amount_or_None, payee_or_None). The caller (the
+    phone's payment-page popup) uses the transaction when one already exists (bank SMS beat the screen read), or
+    the event id to attach a category choice to once the SMS lands later (set_pending_category + apply_pending);
+    amount/payee are what this page's own text said, for the popup to show right away."""
     amount, payee = parse(lines)
     if amount is None or amount <= 0 or not payee:
-        return "ignored"
+        return "ignored", None, None, None, None
     from app.routers.ingest import _fingerprint
     fp = _fingerprint(source, payee, f"{amount:.2f}", posted.strftime("%Y%m%d%H%M"))
-    if db.query(models.RawEvent).filter(models.RawEvent.ledger_id == ledger_id, models.RawEvent.fingerprint == fp).first():
-        return "duplicate"
+    dup = db.query(models.RawEvent).filter(models.RawEvent.ledger_id == ledger_id, models.RawEvent.fingerprint == fp).first()
+    if dup:
+        return "duplicate", (db.get(models.Transaction, dup.transaction_id) if dup.transaction_id else None), dup.id, amount, payee
     T = models.Transaction
     tx = (db.query(T).filter(T.ledger_id == ledger_id, T.tx_type == models.TxType.expense, T.amount == amount,
                              T.occurred_at >= posted - WINDOW, T.occurred_at <= posted + WINDOW)
           .order_by(T.occurred_at.desc()).all())
     tx = next((t for t in tx if _generic(t)), None)
     applied = bool(tx) and apply_to(db, tx, payee, SOURCES[source])
-    db.add(models.RawEvent(ledger_id=ledger_id, user_id=user_id, fingerprint=fp, source=source, title=payee, text=f"{amount:.2f}", posted_at=posted,
-                           status="applied" if applied else "hint", transaction_id=tx.id if applied else None))
+    ev = models.RawEvent(ledger_id=ledger_id, user_id=user_id, fingerprint=fp, source=source, title=payee, text=f"{amount:.2f}", posted_at=posted,
+                         status="applied" if applied else "hint", transaction_id=tx.id if applied else None)
+    db.add(ev)
     db.commit()
-    return "applied" if applied else "hint"
+    return ("applied" if applied else "hint"), (tx if applied else None), ev.id, amount, payee
+
+
+def set_pending_category(db: Session, ledger_id: int, event_id: int, category_id: int, sub: Optional[str]) -> bool:
+    """The user picked a category on the payment-page popup before the bank SMS arrived: remember it so
+    apply_pending can use it (instead of a keyword guess) once the real transaction shows up."""
+    ev = db.query(models.RawEvent).filter(models.RawEvent.id == event_id, models.RawEvent.ledger_id == ledger_id).first()
+    if not ev or ev.status != "hint":
+        return False
+    ev.pref_category_id, ev.pref_sub = category_id, sub
+    db.commit()
+    return True
 
 
 def apply_pending(db: Session, tx: models.Transaction) -> None:
@@ -85,5 +102,8 @@ def apply_pending(db: Session, tx: models.Transaction) -> None:
     ev = (db.query(E).filter(E.ledger_id == tx.ledger_id, E.source.in_(list(SOURCES)), E.status == "hint", E.text == f"{Decimal(tx.amount):.2f}",
                              E.posted_at >= tx.occurred_at - WINDOW, E.posted_at <= tx.occurred_at + WINDOW)
           .order_by(E.posted_at.desc()).first())
-    if ev and ev.title and apply_to(db, tx, ev.title, SOURCES[ev.source]):
-        ev.status, ev.transaction_id = "applied", tx.id
+    if not ev or not ev.title or not apply_to(db, tx, ev.title, SOURCES[ev.source]):
+        return
+    ev.status, ev.transaction_id = "applied", tx.id
+    if ev.pref_category_id:
+        tx.category_id, tx.sub, tx.needs_review, tx.category_locked = ev.pref_category_id, ev.pref_sub, False, True

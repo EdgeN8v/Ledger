@@ -28,6 +28,9 @@ interface ApiService {
     @POST("ingest")
     suspend fun ingest(@Body body: IngestRequest): IngestResult
 
+    @PUT("ingest/pending-category")
+    suspend fun setPendingCategory(@Body body: PendingCategoryRequest): IngestResult
+
     @GET("accounts")
     suspend fun listAccounts(): AccountsOverviewDto
 

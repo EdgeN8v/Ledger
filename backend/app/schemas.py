@@ -157,10 +157,18 @@ class IngestRequest(BaseModel):
     posted_at_ms: int          # when the phone received it (epoch ms)
 
 
+class PendingCategoryIn(BaseModel):
+    event_id: int
+    category_id: int
+    sub: Optional[str] = None
+
+
 class IngestResult(BaseModel):
     status: str                # created / merged / duplicate / ignored / failed
     event_id: Optional[int] = None
     transaction: Optional[TransactionOut] = None
+    amount: Optional[Decimal] = None    # screen:* sources only: what the payment page's own parse found, for the popup to show immediately
+    payee: Optional[str] = None
 
 
 class RawEventOut(BaseModel):

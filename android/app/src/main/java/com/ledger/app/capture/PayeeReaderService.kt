@@ -3,7 +3,17 @@ package com.ledger.app.capture
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.ledger.app.data.ApiClient
+import com.ledger.app.data.CategoryDto
+import com.ledger.app.data.DiskCache
+import com.ledger.app.data.IngestRequest
+import com.ledger.app.data.PendingCategoryRequest
 import com.ledger.app.data.Prefs
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Reads the shop name off WeChat's payment-success page, because the notification and the bank SMS of a scan-to-pay
@@ -17,6 +27,7 @@ import com.ledger.app.data.Prefs
 class PayeeReaderService : AccessibilityService() {
     private var lastKey = ""
     private var lastAt = 0L
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString()
@@ -35,8 +46,44 @@ class PayeeReaderService : AccessibilityService() {
         if (key == lastKey && now - lastAt < 60_000) return
         lastKey = key
         lastAt = now
-        CaptureQueue.add(this, CaptureQueue.Item(source, null, lines.take(14).joinToString("\n"), now))
-        UploadWorker.enqueue(this)
+        val text = lines.take(14).joinToString("\n")
+        // sent right away (not through the queued UploadWorker) so the popup can show while the receipt is
+        // still on screen; falls back to the queue only if the immediate send itself fails
+        scope.launch { sendAndMaybePopup(source, text, now) }
+    }
+
+    private suspend fun sendAndMaybePopup(source: String, text: String, now: Long) {
+        val primary = ApiClient.create(applicationContext)
+        val result = try {
+            try {
+                primary.ingest(IngestRequest(source, null, text, now))
+            } catch (e: java.io.IOException) {
+                if (Prefs.LAN_URL.isBlank()) throw e
+                ApiClient.create(applicationContext, Prefs.LAN_URL).ingest(IngestRequest(source, null, text, now))
+            }
+        } catch (_: Exception) {
+            CaptureQueue.add(this, CaptureQueue.Item(source, null, text, now))
+            UploadWorker.enqueue(this)
+            return
+        }
+        val amount = result.amount ?: return
+        if (!PaymentPopup.canShow(applicationContext)) return
+        val categories = DiskCache.get<List<CategoryDto>>(applicationContext, "categories")
+            ?: try { primary.listCategories().also { DiskCache.put(applicationContext, "categories", it) } } catch (_: Exception) { return }
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            PaymentPopup.show(applicationContext, amount, result.payee ?: "", categories) { categoryId, sub ->
+                scope.launch {
+                    try {
+                        if (result.transaction != null) {
+                            primary.updateTransaction(result.transaction.id, mapOf("category_id" to categoryId, "sub" to sub, "needs_review" to false))
+                        } else if (result.event_id != null) {
+                            primary.setPendingCategory(PendingCategoryRequest(result.event_id, categoryId, sub))
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        }
     }
 
     private fun collect(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
@@ -53,6 +100,12 @@ class PayeeReaderService : AccessibilityService() {
     override fun onServiceConnected() { android.util.Log.d("PayeeReader", "connected") }
 
     override fun onInterrupt() {}
+
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.cancel()
+        PaymentPopup.dismiss()
+    }
 
     companion object {
         private val SOURCES = mapOf("com.tencent.mm" to "screen:wechat", "com.eg.android.AlipayGphone" to "screen:alipay")

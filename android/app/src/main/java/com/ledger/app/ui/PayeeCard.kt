@@ -24,8 +24,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.ledger.app.capture.PayeeReaderService
+import com.ledger.app.capture.PaymentPopup
 
-/** Switch for reading the shop name off WeChat's payment page (扫码付款 shows no shop name anywhere else). */
+/** Switch for reading the shop name off WeChat's payment page (扫码付款 shows no shop name anywhere else), and
+ *  for the popup that lets you pick a category right there on that page. */
 @Composable
 fun PayeeCard() {
     val context = LocalContext.current
@@ -40,6 +42,7 @@ fun PayeeCard() {
         val me = ComponentName(context, PayeeReaderService::class.java).flattenToString()
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)?.split(':')?.any { it.equals(me, true) } == true
     }
+    val popupOn = remember(tick) { PaymentPopup.canShow(context) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
@@ -47,7 +50,7 @@ fun PayeeCard() {
         Column(modifier = Modifier.padding(20.dp)) {
             Text("识别微信/支付宝付款的商家名", style = MaterialTheme.typography.titleSmall)
             Text(
-                (if (on) "✅ 已开启" else "⚠️ 未开启") + "\n微信扫码付款的短信和通知里没有商家名。开启后, 付款成功页出现时, 只读取页面上的商家名和金额(只在微信和支付宝里、只在出现「支付成功」时), 不弹窗, 不读聊天。",
+                (if (on) "✅ 已开启" else "⚠️ 未开启") + "\n微信扫码付款的短信和通知里没有商家名。开启后, 付款成功页出现时, 只读取页面上的商家名和金额(只在微信和支付宝里、只在出现「支付成功」时), 不读聊天。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
             )
             Button(
@@ -58,6 +61,16 @@ fun PayeeCard() {
                 "小米手机若提示「受限制的设置」: 系统设置 → 应用 → 记账 → 右上角 ⋮ → 允许受限制的设置, 再回来开启。",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
             )
+            androidx.compose.material3.HorizontalDivider(modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
+            Text("付款成功后弹窗选类别", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                (if (popupOn) "✅ 已开启" else "⚠️ 未开启") + "\n上面那项开着的话, 付款成功的瞬间会在屏幕上弹一个小框, 当场选类别(跟长按一笔账单改类别一样), 不用回头再分类。需要「显示在其他应用上层」权限。",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
+            )
+            if (!popupOn) Button(
+                onClick = { PaymentPopup.requestPermission(context) },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            ) { Text("去开启(显示在其他应用上层)") }
         }
     }
 }

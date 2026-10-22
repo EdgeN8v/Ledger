@@ -121,8 +121,13 @@ data class IngestRequest(
 
 data class IngestResult(
     val status: String,
-    val event_id: Int? = null
+    val event_id: Int? = null,
+    val transaction: TransactionDto? = null,
+    val amount: String? = null,
+    val payee: String? = null
 )
+
+data class PendingCategoryRequest(val event_id: Int, val category_id: Int, val sub: String? = null)
 
 data class AccountDto(
     val id: Int,

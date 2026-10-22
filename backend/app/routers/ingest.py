@@ -6,7 +6,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas, screenpay
@@ -216,6 +216,19 @@ def _pair_transfer(db: Session, ledger_id: int, tx: models.Transaction) -> None:
         tx.needs_review = other.needs_review = False
 
 
+@router.put("/pending-category", response_model=schemas.IngestResult)
+def set_pending_category(
+    payload: schemas.PendingCategoryIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """The payment-page popup got a category tap before the bank SMS created the transaction: remember the
+    choice (screenpay.apply_pending applies it once the SMS lands)."""
+    if not screenpay.set_pending_category(db, user.ledger_id, payload.event_id, payload.category_id, payload.sub):
+        raise HTTPException(404, "no matching pending event")
+    return schemas.IngestResult(status="pending", event_id=payload.event_id)
+
+
 @router.post("", response_model=schemas.IngestResult)
 def ingest(
     payload: schemas.IngestRequest,
@@ -226,7 +239,8 @@ def ingest(
         return _store_order_hint(db, user, payload)
     if payload.source in screenpay.SOURCES:
         lines = [l for l in (payload.text or "").splitlines()][:30]
-        return schemas.IngestResult(status=screenpay.store_and_apply(db, user.ledger_id, user.id, from_epoch_ms(payload.posted_at_ms), lines, payload.source))
+        status, tx, event_id, amount, payee = screenpay.store_and_apply(db, user.ledger_id, user.id, from_epoch_ms(payload.posted_at_ms), lines, payload.source)
+        return schemas.IngestResult(status=status, event_id=event_id, transaction=tx, amount=amount, payee=payee)
     source = SOURCE_MAP.get(payload.source)
     if source is None:
         return schemas.IngestResult(status="ignored")
