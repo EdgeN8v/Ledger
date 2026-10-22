@@ -603,10 +603,12 @@ internal fun CategoryPickerDialog(
                         refundSearch = true; refundTooMany = 0
                         scope.launch {
                             val found = try { ApiClient.create(context).refundCandidates(tx.id, date, date) } catch (_: Exception) { emptyList() }
-                            when {
-                                found.size == 1 -> { onLinkRefund(tx.id, found[0].id); refundSearch = false }
-                                found.size > 6 && date == null -> { refundTooMany = found.size; refundSearch = false }   // a small amount matches too much: ask for a day instead
-                                else -> refundCandidates = found
+                            if (found.size > 6 && date == null) {
+                                refundTooMany = found.size; refundSearch = false   // a small amount matches too much: ask for a day instead
+                            } else {
+                                // even a single match is shown for a tap-to-confirm, not linked silently -
+                                // auto-linking with no visible result was confusing (the dialog just closed)
+                                refundCandidates = found
                             }
                         }
                     }
@@ -668,10 +670,10 @@ internal fun CategoryPickerDialog(
         )
     }
     val multiple = refundCandidates
-    if (multiple != null && multiple.size > 1) {
+    if (multiple != null && multiple.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { refundCandidates = null; refundSearch = false },
-            title = { Text("是哪一笔的退款?") },
+            title = { Text(if (multiple.size == 1) "是这一笔吗?" else "是哪一笔的退款?") },
             text = {
                 Column {
                     multiple.forEach { c ->
