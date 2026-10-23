@@ -124,7 +124,9 @@ data class IngestResult(
     val event_id: Int? = null,
     val transaction: TransactionDto? = null,
     val amount: String? = null,
-    val payee: String? = null
+    val payee: String? = null,
+    val suggested_category_id: Int? = null,
+    val suggested_sub: String? = null
 )
 
 data class PendingCategoryRequest(val event_id: Int, val category_id: Int, val sub: String? = null)

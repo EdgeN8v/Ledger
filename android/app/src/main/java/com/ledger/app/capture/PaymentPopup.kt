@@ -98,8 +98,14 @@ object PaymentPopup {
         wm = null
     }
 
-    /** onPick fires once, with the category (and sub, if any) the user tapped; the popup then closes itself. */
-    fun show(c: Context, amount: String, shop: String, categories: List<CategoryDto>, onPick: (categoryId: Int, sub: String?) -> Unit) {
+    /** onPick fires once, with the category (and sub, if any) the user tapped; the popup then closes itself.
+     *  suggestedCategoryId/suggestedSub (a learned shop rule, see screenpay.suggest_category) pre-select the
+     *  grid so a known shop needs only one tap - the one on "确认" - instead of hunting the category out. */
+    fun show(
+        c: Context, amount: String, shop: String, categories: List<CategoryDto>,
+        suggestedCategoryId: Int? = null, suggestedSub: String? = null,
+        onPick: (categoryId: Int, sub: String?) -> Unit
+    ) {
         dismiss()
         if (!canShow(c)) return
         val appCtx = c.applicationContext
@@ -120,6 +126,7 @@ object PaymentPopup {
             MaterialTheme {
                 PaymentPopupCard(
                     amount = amount, shop = shop, categories = categories,
+                    initialCategoryId = suggestedCategoryId, initialSub = suggestedSub,
                     onPick = { catId, sub -> onPick(catId, sub); dismiss() },
                     onDismiss = { dismiss() }
                 )
@@ -140,10 +147,13 @@ private fun PaymentPopupCard(
     amount: String,
     shop: String,
     categories: List<CategoryDto>,
+    initialCategoryId: Int?,
+    initialSub: String?,
     onPick: (categoryId: Int, sub: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selCat by remember { mutableStateOf<Int?>(null) }
+    var selCat by remember { mutableStateOf(initialCategoryId) }
+    var selSub by remember { mutableStateOf(initialSub) }
     val selected = categories.find { it.id == selCat }
     val subs = selected?.subs.orEmpty()
     Surface(
@@ -158,25 +168,27 @@ private fun PaymentPopupCard(
                     Text("¥$amount", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     if (shop.isNotBlank()) Text(shop, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                // a known shop arrives pre-selected: one tap on "确认" and you're done. An unfamiliar one starts
+                // blank, so "关闭" just dismisses without guessing at something uncertain.
+                if (selCat != null) {
+                    Button(onClick = { onPick(selCat!!, selSub) }) { Text("确认") }
+                } else {
+                    TextButton(onClick = onDismiss) { Text("关闭") }
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             CategoryGrid(
                 items = categories.filter { it.tx_type == "expense" },
                 selectedId = selCat, txType = "expense",
-                onPick = { id ->
-                    val cat = categories.find { it.id == id }
-                    if (cat != null && cat.subs.isNullOrEmpty()) onPick(id, null) else selCat = id
-                }
+                onPick = { id -> if (id != selCat) { selCat = id; selSub = null } }
             )
             if (subs.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     subs.forEach { s ->
-                        FilterChip(selected = false, onClick = { onPick(selCat!!, s) }, label = { Text(s) })
+                        FilterChip(selected = s == selSub, onClick = { selSub = if (selSub == s) null else s }, label = { Text(s) })
                     }
                 }
-                TextButton(onClick = { onPick(selCat!!, null) }, modifier = Modifier.padding(top = 4.dp)) { Text("不选细分, 就这个类别") }
             }
         }
     }

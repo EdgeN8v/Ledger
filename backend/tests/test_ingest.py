@@ -264,6 +264,22 @@ def test_real_alipay_notifications(client):
     assert float(s["total_expense"]) == 0.0
 
 
+def test_payment_page_popup_suggests_a_learned_shop_rule(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    # unknown payee: nothing to suggest yet
+    fresh = client.post("/ingest", json={"source": "screen:alipay", "title": "",
+                                         "text": "艾享**店\n支出10.9元\n自动扣款成功", "posted_at_ms": ms(2026, 10, 23, 12, 8)}).json()
+    assert fresh["suggested_category_id"] is None and fresh["suggested_sub"] is None
+    # teach the shop a category + sub, the way confirming it in the app would
+    _sms(client, "【建设银行】您账户1234于10月6日10:00向支付宝-天猫-艾享**店支出10.9元,可用余额900元。", 10, 0)
+    t = client.get("/transactions").json()[0]
+    assert client.put(f"/transactions/{t['id']}", json={"category_id": cats["购物"], "sub": "日用"}).status_code == 200
+    # the next time this shop's page is read, the popup gets back the learned category + sub to pre-select
+    again = client.post("/ingest", json={"source": "screen:alipay", "title": "",
+                                         "text": "艾享**店\n支出5.0元\n自动扣款成功", "posted_at_ms": ms(2026, 10, 24, 9, 0)}).json()
+    assert again["suggested_category_id"] == cats["购物"] and again["suggested_sub"] == "日用"
+
+
 def test_reward_cta_text_does_not_hijack_the_category(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     # the exact bug the user hit: a generic Alipay wallet notice whose reward plug happens to contain a category

@@ -74,7 +74,10 @@ class PayeeReaderService : AccessibilityService() {
         val categories = DiskCache.get<List<CategoryDto>>(applicationContext, "categories")
             ?: try { primary.listCategories().also { DiskCache.put(applicationContext, "categories", it) } } catch (_: Exception) { return }
         kotlinx.coroutines.withContext(Dispatchers.Main) {
-            PaymentPopup.show(applicationContext, amount, result.payee ?: "", categories) { categoryId, sub ->
+            PaymentPopup.show(
+                applicationContext, amount, result.payee ?: "", categories,
+                suggestedCategoryId = result.suggested_category_id, suggestedSub = result.suggested_sub
+            ) { categoryId, sub ->
                 scope.launch {
                     try {
                         if (result.transaction != null) {

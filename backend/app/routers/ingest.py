@@ -244,7 +244,10 @@ def ingest(
     if payload.source in screenpay.SOURCES:
         lines = [l for l in (payload.text or "").splitlines()][:30]
         status, tx, event_id, amount, payee = screenpay.store_and_apply(db, user.ledger_id, user.id, from_epoch_ms(payload.posted_at_ms), lines, payload.source)
-        return schemas.IngestResult(status=status, event_id=event_id, transaction=tx, amount=amount, payee=payee)
+        sug_cat, sug_sub = (screenpay.suggest_category(db, user.ledger_id, f"{screenpay.SOURCES[payload.source]}-{payee}")
+                            if payee else (None, None))
+        return schemas.IngestResult(status=status, event_id=event_id, transaction=tx, amount=amount, payee=payee,
+                                    suggested_category_id=sug_cat, suggested_sub=sug_sub)
     source = SOURCE_MAP.get(payload.source)
     if source is None:
         return schemas.IngestResult(status="ignored")

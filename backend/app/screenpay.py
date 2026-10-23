@@ -13,7 +13,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app import models
-from app.merchants import is_generic, shop_core
+from app.merchants import is_generic, rule_applies, shop_core
 
 _AMOUNT = re.compile(r"^(?:支出|收入|退款)?\s*-?[¥￥]?\s*([0-9][0-9,]*\.[0-9]{1,2})\s*元?$")
 # Alipay's own bill list shows a deduction as "-10.90" in some places and as the accessibility-tree text "支出10.9元"
@@ -44,6 +44,20 @@ def parse(lines: list[str]) -> tuple[Optional[Decimal], Optional[str]]:
 def _generic(tx: models.Transaction) -> bool:
     core = shop_core(tx.merchant)
     return not core or is_generic(core) or "扫二维码付款" in core
+
+
+def suggest_category(db: Session, ledger_id: int, merchant: str):
+    """A learned shop rule for this payee, if there is one - deliberately NOT a keyword guess (too easy to be
+    wrong on a shop seen for the first time): what the popup pre-selects so a known shop needs just one tap to
+    confirm, while an unfamiliar one still starts blank."""
+    core = shop_core(merchant)
+    if not core or is_generic(core):
+        return None, None
+    rules = sorted(db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger_id), key=lambda r: -len(r.pattern or ""))
+    for rule in rules:
+        if rule_applies(rule.pattern, merchant):
+            return rule.category_id, rule.sub
+    return None, None
 
 
 def apply_to(db: Session, tx: models.Transaction, payee: str, prefix: str = "微信支付") -> bool:
