@@ -46,6 +46,7 @@ fun PayeeCard() {
         val me = ComponentName(context, PayeeReaderService::class.java).flattenToString()
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)?.split(':')?.any { it.equals(me, true) } == true
     }
+    val dead = remember(tick) { com.ledger.app.capture.ReaderHealth.state(context) == com.ledger.app.capture.ReaderHealth.State.DEAD }
     val popupOn = remember(tick) { PaymentPopup.canShow(context) }
     var info by remember { mutableStateOf(false) }
     Card(
@@ -58,7 +59,7 @@ fun PayeeCard() {
                 InfoDot { info = true }
             }
             Text(
-                "读取商家名: " + (if (on) "✅" else "⚠️") + "    弹窗选类别: " + (if (popupOn) "✅" else "⚠️"),
+                "读取商家名: " + (if (dead) "⚠️已停止" else if (on) "✅" else "⚠️") + "    弹窗选类别: " + (if (popupOn) "✅" else "⚠️"),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
             )
             if (!on) Button(

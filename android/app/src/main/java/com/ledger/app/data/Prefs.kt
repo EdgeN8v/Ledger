@@ -64,6 +64,13 @@ object Prefs {
         prefs(context).edit().putString("theme_mode", mode).apply()
     }
 
+    /** The one-time "lock the app in recents / allow autostart" guide for vivo/OPPO/Xiaomi/Huawei. */
+    fun getVendorGuideShown(context: Context): Boolean = prefs(context).getBoolean("vendor_guide_shown", false)
+
+    fun setVendorGuideShown(context: Context) {
+        prefs(context).edit().putBoolean("vendor_guide_shown", true).apply()
+    }
+
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun logout(context: Context) { setToken(context, null); DiskCache.clear(context) }

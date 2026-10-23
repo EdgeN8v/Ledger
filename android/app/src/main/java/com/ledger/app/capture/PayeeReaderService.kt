@@ -4,11 +4,9 @@ import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.ledger.app.data.ApiClient
-import com.ledger.app.data.CategoryDto
-import com.ledger.app.data.DiskCache
 import com.ledger.app.data.IngestRequest
-import com.ledger.app.data.PendingCategoryRequest
 import com.ledger.app.data.Prefs
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,7 +26,9 @@ import kotlinx.coroutines.launch
 class PayeeReaderService : AccessibilityService() {
     private var lastKey = ""
     private var lastAt = 0L
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // a failure in one send/popup must never take the process (and so the service) down with it
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO +
+        CoroutineExceptionHandler { _, e -> android.util.Log.w("PayeeReader", "send failed", e) })
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString()
@@ -69,27 +69,8 @@ class PayeeReaderService : AccessibilityService() {
             UploadWorker.enqueue(this)
             return
         }
-        val amount = result.amount ?: return
-        if (!PaymentPopup.canShow(applicationContext)) return
-        val categories = DiskCache.get<List<CategoryDto>>(applicationContext, "categories")
-            ?: try { primary.listCategories().also { DiskCache.put(applicationContext, "categories", it) } } catch (_: Exception) { return }
-        kotlinx.coroutines.withContext(Dispatchers.Main) {
-            PaymentPopup.show(
-                applicationContext, amount, result.payee ?: "", categories,
-                suggestedCategoryId = result.suggested_category_id, suggestedSub = result.suggested_sub
-            ) { categoryId, sub ->
-                scope.launch {
-                    try {
-                        if (result.transaction != null) {
-                            primary.updateTransaction(result.transaction.id, mapOf("category_id" to categoryId, "sub" to sub, "needs_review" to false))
-                        } else if (result.event_id != null) {
-                            primary.setPendingCategory(PendingCategoryRequest(result.event_id, categoryId, sub))
-                        }
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-        }
+        // one popup per payment: skipped if the Alipay/WeChat notification already popped for it (PopupOffer)
+        PopupOffer.offer(applicationContext, scope, primary, result, "")
     }
 
     private fun collect(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
@@ -103,11 +84,22 @@ class PayeeReaderService : AccessibilityService() {
         }
     }
 
-    override fun onServiceConnected() { android.util.Log.d("PayeeReader", "connected") }
+    override fun onServiceConnected() {
+        ReaderHealth.connected = true
+        ReaderHealth.setWanted(this, true)
+        android.util.Log.d("PayeeReader", "connected")
+    }
+
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        ReaderHealth.connected = false
+        ReaderHealth.setWanted(this, false)   // only a graceful unbind gets here: switched off on purpose
+        return super.onUnbind(intent)
+    }
 
     override fun onInterrupt() {}
 
     override fun onDestroy() {
+        ReaderHealth.connected = false
         super.onDestroy()
         scope.cancel()
         PaymentPopup.dismiss()

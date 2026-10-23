@@ -5,7 +5,11 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.net.Uri
 import android.provider.Settings
+import android.graphics.Canvas
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.widget.FrameLayout
 import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,13 +28,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.doOnAttach
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -46,10 +53,12 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.ledger.app.data.CategoryDto
 import com.ledger.app.ui.CategoryGrid
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -84,10 +93,12 @@ object PaymentPopup {
     }
 
     private var owner: Owner? = null
-    private var view: ComposeView? = null
+    private var view: View? = null
+    private var rScope: CoroutineScope? = null
     private var wm: WindowManager? = null
     private var timeoutJob: Job? = null
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main +
+        CoroutineExceptionHandler { _, e -> android.util.Log.w("PaymentPopup", "popup job failed", e) })
 
     fun dismiss() {
         timeoutJob?.cancel(); timeoutJob = null
@@ -95,7 +106,20 @@ object PaymentPopup {
         view = null
         if (v != null) try { wm?.removeView(v) } catch (_: Exception) {}
         owner?.stop(); owner = null
+        rScope?.cancel(); rScope = null
         wm = null
+    }
+
+    /** Catches whatever the popup's views throw while measuring, laying out, drawing or handling a touch. */
+    private class Guard(c: Context, val fail: (Throwable) -> Unit) : FrameLayout(c) {
+        private var broken = false
+        private inline fun <T> guard(fallback: T, block: () -> T): T =
+            if (broken) fallback else try { block() } catch (e: Throwable) { broken = true; fail(e); fallback }
+        override fun onMeasure(w: Int, h: Int) =
+            guard(Unit) { super.onMeasure(w, h) }.also { if (broken) setMeasuredDimension(0, 0) }
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) = guard(Unit) { super.onLayout(changed, l, t, r, b) }
+        override fun dispatchDraw(canvas: Canvas) = guard(Unit) { super.dispatchDraw(canvas) }
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean = guard(false) { super.dispatchTouchEvent(ev) }
     }
 
     /** onPick fires once, with the category (and sub, if any) the user tapped; the popup then closes itself.
@@ -118,23 +142,44 @@ object PaymentPopup {
         ).apply { gravity = Gravity.BOTTOM }
 
         val o = Owner().also { it.start() }
+        // the popup runs inside the accessibility service's process: a bug in it must close the popup, never
+        // crash the process (that would unbind the service and stop capture). Recomposition and effects run on
+        // our own Recomposer whose errors land in a handler; measure/layout/draw/touch go through Guard below;
+        // the first composition is done by hand inside a try once the view is attached.
+        val fail = { e: Throwable ->
+            android.util.Log.w("PaymentPopup", "popup failed, closing it", e)
+            android.os.Handler(android.os.Looper.getMainLooper()).post { dismiss() }
+            Unit
+        }
+        val rScope = CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob() + CoroutineExceptionHandler { _, e -> fail(e) })
+        val recomposer = Recomposer(rScope.coroutineContext)
+        rScope.launch { recomposer.runRecomposeAndApplyChanges() }
         val composeView = ComposeView(appCtx)
-        composeView.setViewTreeLifecycleOwner(o)
-        composeView.setViewTreeViewModelStoreOwner(o)
-        composeView.setViewTreeSavedStateRegistryOwner(o)
-        composeView.setContent {
-            MaterialTheme {
-                PaymentPopupCard(
-                    amount = amount, shop = shop, categories = categories,
-                    initialCategoryId = suggestedCategoryId, initialSub = suggestedSub,
-                    onPick = { catId, sub -> onPick(catId, sub); dismiss() },
-                    onDismiss = { dismiss() }
-                )
+        composeView.setParentCompositionContext(recomposer)
+        val frame = Guard(appCtx, fail)
+        frame.addView(composeView)
+        frame.setViewTreeLifecycleOwner(o)
+        frame.setViewTreeViewModelStoreOwner(o)
+        frame.setViewTreeSavedStateRegistryOwner(o)
+        composeView.doOnAttach {
+            try {
+                composeView.setContent {
+                    MaterialTheme {
+                        PaymentPopupCard(
+                            amount = amount, shop = shop, categories = categories,
+                            initialCategoryId = suggestedCategoryId, initialSub = suggestedSub,
+                            onPick = { catId, sub -> onPick(catId, sub); dismiss() },
+                            onDismiss = { dismiss() }
+                        )
+                    }
+                }
+            } catch (e: Throwable) {
+                fail(e)
             }
         }
-        owner = o; view = composeView; wm = windowManager
+        owner = o; view = frame; wm = windowManager; this.rScope = rScope
         try {
-            windowManager.addView(composeView, lp)
+            windowManager.addView(frame, lp)
         } catch (_: Exception) {
             dismiss(); return
         }

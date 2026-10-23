@@ -38,7 +38,14 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.runtime.LaunchedEffect
+import com.ledger.app.capture.Background
 import com.ledger.app.capture.CaptureQueue
+import com.ledger.app.capture.ReaderHealth
+import com.ledger.app.data.Prefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import com.ledger.app.capture.MaintenanceWorker
 import com.ledger.app.capture.SyncNow
 import com.ledger.app.capture.SmsInboxScanner
@@ -139,6 +146,21 @@ private fun CaptureCard() {
     val lastErr = remember(tick) { CaptureQueue.lastError(context) }
     val smsOk = remember(tick) { SmsInboxScanner.hasPermission(context) }
     val noticeOk = remember(tick) { com.ledger.app.capture.DailyReminder.canNotify(context) }
+    val reader = remember(tick) { ReaderHealth.state(context) }
+    val canHeal = remember(tick) { ReaderHealth.canSelfHeal(context) }
+    val readerTicked = remember(tick) { ReaderHealth.ticked(context) }
+    var healTried by remember { mutableStateOf(false) }
+    // with the adb-granted permission, fix it right here instead of only warning (once per visit, so a heal
+    // that does not take cannot loop)
+    LaunchedEffect(reader) {
+        if (reader == ReaderHealth.State.DEAD && canHeal && !healTried) {
+            healTried = true
+            val healed = withContext(Dispatchers.IO) { try { ReaderHealth.healIfDead(context) } catch (_: Exception) { false } }
+            if (healed) { delay(2_500); tick++ }
+        }
+    }
+    val vendor = remember { Background.vendor() }
+    var guide by remember { mutableStateOf(vendor != null && !Prefs.getVendorGuideShown(context)) }
     val noticeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick++ }
     val smsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) MaintenanceWorker.runNow(context)
@@ -162,6 +184,22 @@ private fun CaptureCard() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
+            if (reader == ReaderHealth.State.DEAD) {
+                Text(
+                    "自动记账已停止（被系统清理了）",
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp)
+                )
+                Text(
+                    (if (canHeal) "正在自动恢复… 没好的话: " else "") + (if (readerTicked) "关掉再打开「记账」" else "在无障碍里重新打开「记账」"),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) { Text("去无障碍设置") }
+            }
             Button(
                 onClick = { SyncNow.run(context); tick++ },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
@@ -178,7 +216,7 @@ private fun CaptureCard() {
                 ) { Text("去开启通知使用权") }
             }
             OutlinedButton(
-                onClick = { com.ledger.app.capture.Background.openSettings(context) },
+                onClick = { if (vendor != null) guide = true else Background.openSettings(context) },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) { Text("后台运行 / 自启动设置") }
             if (!noticeOk) {
@@ -194,6 +232,22 @@ private fun CaptureCard() {
                 ) { Text("允许读取短信") }
             }
         }
+    }
+    if (guide && vendor != null) {
+        val close = { guide = false; Prefs.setVendorGuideShown(context) }
+        AlertDialog(
+            onDismissRequest = close,
+            confirmButton = { TextButton(onClick = { close(); Background.openVendorSettings(context) }) { Text("去设置") } },
+            dismissButton = { TextButton(onClick = close) { Text("知道了") } },
+            title = { Text("别让手机把记账清理掉") },
+            text = {
+                Text(
+                    "这台手机会在后台清理 App, 清理后自动记账就停了。做一次这几步:\n\n" + Background.guideSteps(vendor) +
+                        "\n\n之后若还被清理, 这里会提示, 按提示把无障碍里的「记账」关掉再打开即可。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        )
     }
     if (info) {
         AlertDialog(

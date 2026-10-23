@@ -392,7 +392,23 @@ def ingest(
         sync_flight_trips(db, user.ledger_id)
     if tx:
         db.refresh(tx)
-    return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx)
+    return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx, **_popup_fields(db, source, status, tx))
+
+
+def _popup_fields(db: Session, source: str, status: str, tx) -> dict:
+    """A WeChat/Alipay payment notice ("交易提醒: 你有一笔4.70元的支出") is usually the first sign of a payment -
+    the payment page itself often cannot be read (Taobao's 免密支付 page shows only "免密支付中"). So like the
+    screen:* path, hand the phone what its category popup needs. Only for a real purchase seen for the first
+    time: not a re-post, an income, a refund or a transfer between own accounts."""
+    if source not in ("wechat", "alipay") or status not in ("created", "merged") or tx is None:
+        return {}
+    if tx.tx_type != models.TxType.expense or tx.is_transfer or tx.is_refund or tx.refund_of_id:
+        return {}
+    if tx.category_id and not tx.needs_review:
+        cat, sub = tx.category_id, tx.sub          # already settled (a shop rule, or a choice made on the page popup)
+    else:
+        cat, sub = screenpay.suggest_category(db, tx.ledger_id, tx.merchant) if tx.merchant else (None, None)
+    return {"amount": tx.amount, "payee": tx.merchant or "", "suggested_category_id": cat, "suggested_sub": sub}
 
 
 @router.get("/failed", response_model=list[schemas.RawEventOut])

@@ -280,6 +280,43 @@ def test_payment_page_popup_suggests_a_learned_shop_rule(client):
     assert again["suggested_category_id"] == cats["购物"] and again["suggested_sub"] == "日用"
 
 
+def test_alipay_payment_notice_carries_what_the_popup_needs(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    # the real 免密支付 case: Taobao's page only said "免密支付中", the Alipay notice is the first sign of the payment
+    pay = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                       "text": "你有一笔4.70元的支出，点击领取2个支付宝积分。",
+                                       "posted_at_ms": ms(2026, 10, 23, 23, 26)}).json()
+    assert pay["status"] == "created" and float(pay["amount"]) == 4.7 and pay["payee"] == ""
+    # the popup's pick lands on the transaction; the bank SMS then merges in with the payee, category kept
+    tid = pay["transaction"]["id"]
+    assert client.put(f"/transactions/{tid}", json={"category_id": cats["购物"], "needs_review": False}).status_code == 200
+    sms = _sms(client, "【建设银行】您账户1234于10月23日23:26向支付宝-张三支出4.7元,可用余额900元。", 23, 26)
+    assert sms["status"] == "merged" and sms["transaction"]["id"] == tid
+    assert sms.get("amount") is None                      # an SMS never asks for a popup
+    assert client.get("/transactions").json()[0]["category_id"] == cats["购物"]
+    # the same notice posted again is a duplicate: no second popup
+    again = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                         "text": "你有一笔4.70元的支出，点击领取2个支付宝积分。",
+                                         "posted_at_ms": ms(2026, 10, 23, 23, 26)}).json()
+    assert again["status"] == "duplicate" and again.get("amount") is None
+    # income / refunds never pop
+    ref = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "退款提醒",
+                                       "text": "你收到一笔4.70元退款，点此查看账单详情！",
+                                       "posted_at_ms": ms(2026, 10, 23, 23, 40)}).json()
+    assert ref.get("amount") is None
+
+
+def test_wechat_payment_notice_carries_a_learned_suggestion(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    first = client.post("/ingest", json={"source": "com.tencent.mm", "title": "微信支付",
+                                         "text": "微信支付: 已支付¥12.00 向老王面馆付款", "posted_at_ms": ms(2026, 10, 23, 12, 0)}).json()
+    assert first["status"] == "created" and float(first["amount"]) == 12
+    assert client.put(f"/transactions/{first['transaction']['id']}", json={"category_id": cats["餐饮"]}).status_code == 200
+    nxt = client.post("/ingest", json={"source": "com.tencent.mm", "title": "微信支付",
+                                       "text": "微信支付: 已支付¥15.00 向老王面馆付款", "posted_at_ms": ms(2026, 10, 24, 12, 0)}).json()
+    assert float(nxt["amount"]) == 15 and nxt["suggested_category_id"] == cats["餐饮"]
+
+
 def test_reward_cta_text_does_not_hijack_the_category(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     # the exact bug the user hit: a generic Alipay wallet notice whose reward plug happens to contain a category

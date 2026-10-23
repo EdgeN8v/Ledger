@@ -167,7 +167,7 @@ class IngestResult(BaseModel):
     status: str                # created / merged / duplicate / ignored / failed
     event_id: Optional[int] = None
     transaction: Optional[TransactionOut] = None
-    amount: Optional[Decimal] = None    # screen:* sources only: what the payment page's own parse found, for the popup to show immediately
+    amount: Optional[Decimal] = None    # set only when the phone should show its category popup: screen:* pages, and WeChat/Alipay payment notices (_popup_fields)
     payee: Optional[str] = None
     suggested_category_id: Optional[int] = None   # a learned shop rule for this payee, if there is one - the popup pre-selects it
     suggested_sub: Optional[str] = None
