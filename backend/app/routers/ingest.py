@@ -39,6 +39,10 @@ SOURCE_MAP = {
 SHOP_APPS = {"com.jingdong.app.mall": "jd", "com.xunmeng.pinduoduo": "pdd", "com.taobao.taobao": "taobao", "com.tmall.wireless": "tmall", "com.jd.jrapp": "jdfinance"}
 _ORDER_NOTICE = re.compile(r"已发货|已签收|已出库|待收货|已揽收|派送|取件|包裹|订单|已下单|已支付|退款|退货|售后|换货")
 _PROMO = re.compile(r"优惠|红包|秒杀|领券|降价|会员日|猜你喜欢|直播|签到|福利|限时|抢购|折扣|满\d+减|活动|立减|补贴|大促|爆款")
+# a reward plug like "点击领取2元流量红包" / "立即领取2积分" rides along on almost every Alipay/WeChat notice; its
+# wording (红包/积分/优惠券, and whatever random word sits before it - "流量", "停车"...) has nothing to do with
+# what was bought, but can still land a false keyword hit (e.g. "流量" -> 通讯), so it never enters category matching
+_REWARD_CTA = re.compile(r"[，,]?\s*(?:点击|立即)?领取[^\n，,。.！!]{0,12}(?:红包|积分|优惠券)[！!。.]?")
 
 
 def _store_order_hint(db: Session, user, payload) -> "schemas.IngestResult":
@@ -64,7 +68,7 @@ def _fingerprint(source: str, title: str, text: str, posted_minute: str) -> str:
 def _pick_category(db: Session, ledger_id: int, tx_type: str, merchant: Optional[str], text: str, amount=None, when=None):
     """Returns (category, guessed). Learned merchant rules win; then the per-category keyword lists; the last
     resort is a guess (flagged so the user can long-press to change it)."""
-    hay = f"{merchant or ''} {text}"
+    hay = _REWARD_CTA.sub("", f"{merchant or ''} {text}")
     if amount is not None:
         ledger = db.get(models.Ledger, ledger_id)
         fixed_cat = category_name_for(load(ledger), tx_type, amount, merchant, text, when) if ledger else None
@@ -327,8 +331,10 @@ def ingest(
             target.raw_text = f"{target.raw_text or ''}\n---\n{text}".strip()
             if _FAMILY_CARD.search(text):
                 target.family_card = True                    # Alipay says someone else spent from the shared balance
-            if (target.needs_review or was_unnamed) and target.merchant and not target.category_locked:
-                # the first report (a wallet notification) often has no shop name; now it has one: look again
+            if (target.needs_review or was_unnamed) and target.merchant and not target.category_locked and not target.refund_of_id:
+                # the first report (a wallet notification) often has no shop name; now it has one: look again.
+                # skip this for a refund already paired with its purchase (refund.category_id above) - its own
+                # text usually says "退款", which would otherwise win the keyword match and undo the inheritance
                 cat, guessed = _pick_category(db, user.ledger_id, target.tx_type.value, target.merchant, target.raw_text, target.amount, target.occurred_at)
                 if cat and not guessed:
                     target.category_id, target.needs_review = cat.id, False

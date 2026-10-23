@@ -264,6 +264,33 @@ def test_real_alipay_notifications(client):
     assert float(s["total_expense"]) == 0.0
 
 
+def test_reward_cta_text_does_not_hijack_the_category(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    # the exact bug the user hit: a generic Alipay wallet notice whose reward plug happens to contain a category
+    # keyword ("流量" -> 通讯) creates the record; the payment-page popup (screen:alipay) then names the shop from
+    # a short, masked payee before the bank SMS (which carries the real, specific merchant) arrives - none of
+    # that should let "流量红包" decide the category instead of "天猫"
+    pay = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                       "text": "你有一笔10.90元的支出，点击领取2元流量红包。",
+                                       "posted_at_ms": ms(2026, 10, 23, 12, 8)}).json()
+    assert pay["status"] == "created"
+    page = client.post("/ingest", json={"source": "screen:alipay", "title": "",
+                                        "text": "艾享**店\n支出10.9元\n自动扣款成功", "posted_at_ms": ms(2026, 10, 23, 12, 8)}).json()
+    assert page["status"] == "applied"
+    sms = _sms(client, "【建设银行】您账户8714于10月23日12:08向支付宝-天猫-上海玖和健康管理有限公司支出10.9元,可用余额900元。", 12, 8)
+    assert sms["status"] == "merged"
+    t = client.get("/transactions").json()[0]
+    assert t["category_id"] == cats["购物"] and t["needs_review"] is False
+    # the refund side (also seen in the real data) only inherits the purchase's category correctly once the
+    # purchase itself is no longer mis-filed - same fix, no separate change needed
+    ref = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "退款提醒",
+                                       "text": "你收到一笔10.90元退款，点此查看账单详情！",
+                                       "posted_at_ms": ms(2026, 10, 23, 12, 9)}).json()
+    _sms(client, "【建设银行】支付宝-上海玖和健康管理有限公司于10月23日12:09向您账户8714消费退货存入10.9元,可用余额900元。", 12, 9)
+    refund = client.get("/transactions").json()[0]
+    assert refund["refund_of_id"] == t["id"] and refund["category_id"] == cats["购物"]
+
+
 def test_transfer_between_own_cards_is_not_spending(client):
     _sms(client, "【交通银行】您尾号5678的储蓄卡于10月6日23:30转出人民币0.01元。", 23, 30)
     r = _sms(client, "【建设银行】您账户1234于10月6日23:31收入0.01元,可用余额3750.00元。", 23, 31)
