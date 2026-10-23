@@ -50,7 +50,7 @@ fun PayeeCard() {
         Column(modifier = Modifier.padding(20.dp)) {
             Text("识别微信/支付宝付款的商家名", style = MaterialTheme.typography.titleSmall)
             Text(
-                (if (on) "✅ 已开启" else "⚠️ 未开启") + "\n微信扫码付款的短信和通知里没有商家名。开启后, 付款成功页出现时, 只读取页面上的商家名和金额(只在微信和支付宝里、只在出现「支付成功」时), 不读聊天。",
+                (if (on) "✅ 已开启" else "⚠️ 未开启") + "\n微信扫码付款的短信和通知里没有商家名。开启后, 付款成功页出现时, 只读取页面上的商家名和金额(只在微信、支付宝、淘宝、天猫里, 只在出现「支付成功」「扣款成功」时), 不读聊天、不读浏览商品的页面。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
             )
             Button(

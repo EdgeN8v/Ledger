@@ -21,7 +21,7 @@ _AMOUNT = re.compile(r"^(?:支出|收入|退款)?\s*-?[¥￥]?\s*([0-9][0-9,]*\.
 _SKIP = {"支付成功", "付款成功", "扣款成功", "自动扣款成功", "微信支付", "完成", "返回", "详情", "账单详情", "查看账单", "支付方式",
          "优惠", "收款方", "商品", "交易对象", "零钱", "零钱通", "关闭", "确定", "全部账单", "管理免密支付"}
 WINDOW = timedelta(minutes=20)
-SOURCES = {"screen:wechat": "微信支付", "screen:alipay": "支付宝"}     # which app the page was read in -> how its payments are named
+SOURCES = {"screen:wechat": "微信支付", "screen:alipay": "支付宝", "screen:taobao": "淘宝"}     # which app the page was read in -> how its payments are named
 
 
 def parse(lines: list[str]) -> tuple[Optional[Decimal], Optional[str]]:

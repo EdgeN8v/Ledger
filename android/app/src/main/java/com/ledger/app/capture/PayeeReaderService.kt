@@ -16,13 +16,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * Reads the shop name off WeChat's payment-success page, because the notification and the bank SMS of a scan-to-pay
- * payment do not name the shop. Deliberately narrow:
- *  - it is only ever connected to WeChat (see res/xml/payee_accessibility.xml);
- *  - nothing leaves the phone unless the screen says 支付成功 AND shows an amount, and then only the handful of short
- *    lines of that page (shop, amount) - never a chat, a list or a long text;
- *  - nothing is shown on screen. The server finds the shop in the lines (screenpay.py), so a layout change in WeChat
- *    does not need a new app.
+ * Reads the shop name off a payment-success/bill-detail page, because the notification and the bank SMS of a
+ * scan-to-pay or auto-deduct payment do not name the shop. Also drives PaymentPopup so a category can be picked
+ * right there. Deliberately narrow:
+ *  - only ever connected to WeChat, Alipay, Taobao and Tmall (see res/xml/payee_accessibility.xml);
+ *  - nothing leaves the phone unless the screen says 支付成功/付款成功/扣款成功 AND shows an amount, and then only
+ *    the handful of short lines of that page (shop, amount) - never a chat, a product listing or a long text;
+ *  - nothing is shown on screen by this service itself (the popup is its own separate opt-in). The server finds
+ *    the shop in the lines (screenpay.py), so a layout change in any of these apps does not need a new app build.
  */
 class PayeeReaderService : AccessibilityService() {
     private var lastKey = ""
@@ -110,7 +111,10 @@ class PayeeReaderService : AccessibilityService() {
     }
 
     companion object {
-        private val SOURCES = mapOf("com.tencent.mm" to "screen:wechat", "com.eg.android.AlipayGphone" to "screen:alipay")
+        private val SOURCES = mapOf(
+            "com.tencent.mm" to "screen:wechat", "com.eg.android.AlipayGphone" to "screen:alipay",
+            "com.taobao.taobao" to "screen:taobao", "com.tmall.wireless" to "screen:taobao"
+        )
         // Alipay's own bill list shows a deduction as "-10.90" in some places and as "支出10.9元" (one decimal
         // digit, a word prefix, a 元 suffix) in others - same screen, different accessibility node
         private val AMOUNT = Regex("^(?:支出|收入|退款)?\\s*-?[¥￥]?\\s*[0-9][0-9,]*\\.[0-9]{1,2}\\s*元?$")

@@ -1327,6 +1327,14 @@ def test_alipay_auto_deduct_bill_detail_page_is_also_read(client):
     assert got2["status"] == "hint" and float(got2["amount"]) == 10.9 and got2["payee"] == "艾享**店"
 
 
+def test_taobao_app_payment_page_is_also_read(client):
+    # Taobao/Tmall's own checkout flow can finish the payment entirely inside their app (never opening Alipay),
+    # so their package is read the same way, named "淘宝" rather than "支付宝"
+    _sms(client, "【建设银行】您账户1234于10月6日18:31向支付宝-扫二维码付款充值支出88元,可用余额900元。", 18, 31)
+    got = client.post("/ingest", json={"source": "screen:taobao", "title": "", "text": "某某数码旗舰店\n¥88.00\n支付成功\n查看订单", "posted_at_ms": ms(2026, 10, 6, 18, 32)}).json()
+    assert got["status"] == "applied" and got["transaction"]["merchant"] == "淘宝-某某数码旗舰店"
+
+
 def test_shop_name_read_from_the_wechat_payment_page_is_put_on_the_scan_code_payment(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     names = {c["id"]: c["name"] for c in client.get("/categories").json()}
