@@ -111,6 +111,8 @@ class PayeeReaderService : AccessibilityService() {
 
     companion object {
         private val SOURCES = mapOf("com.tencent.mm" to "screen:wechat", "com.eg.android.AlipayGphone" to "screen:alipay")
-        private val AMOUNT = Regex("^-?[¥￥]?\\s*[0-9][0-9,]*\\.[0-9]{2}$")   // Alipay's own bill list shows a deduction as "-10.90"
+        // Alipay's own bill list shows a deduction as "-10.90" in some places and as "支出10.9元" (one decimal
+        // digit, a word prefix, a 元 suffix) in others - same screen, different accessibility node
+        private val AMOUNT = Regex("^(?:支出|收入|退款)?\\s*-?[¥￥]?\\s*[0-9][0-9,]*\\.[0-9]{1,2}\\s*元?$")
     }
 }

@@ -1314,10 +1314,17 @@ def test_scan_code_payments_are_not_a_shop_zero_payments_are_ignored_and_a_payee
 
 def test_alipay_auto_deduct_bill_detail_page_is_also_read(client):
     # 免密支付/自动续费 shows no live "支付成功" screen at all - the only place it ever appears is the bill-detail
-    # page in Alipay's own 账单 list, which shows the amount as a negative number ("-10.90"), not "¥10.90"
+    # page in Alipay's own 账单 list. Two different real-world node texts for the same amount have been seen:
+    # a bare negative number ("-10.90") and a worded one with a single decimal digit ("支出10.9元") - the exact
+    # text pulled from a real device via adb logcat for the second case.
     page = "账单详情\n全部账单\n艾享**店\n-10.90\n自动扣款成功\n管理免密支付\n淘宝小额免密支付\n付款方式\n建设银行储蓄卡(8714)"
     got = client.post("/ingest", json={"source": "screen:alipay", "title": "", "text": page, "posted_at_ms": ms(2026, 10, 6, 1, 3)}).json()
     assert got["status"] == "hint" and float(got["amount"]) == 10.90 and got["payee"] == "艾享**店"
+
+    page2 = ("艾享**店\n支出10.9元\n自动扣款成功\n管理免密支付\n淘宝小额免密支付\n支付时间\n2026-10-23 01:15:15\n"
+             "2026-10-23 01:15:15\n付款方式\n建设银行储蓄卡(8714)\n支付奖励\n立即领取2积分")
+    got2 = client.post("/ingest", json={"source": "screen:alipay", "title": "", "text": page2, "posted_at_ms": ms(2026, 10, 23, 1, 15)}).json()
+    assert got2["status"] == "hint" and float(got2["amount"]) == 10.9 and got2["payee"] == "艾享**店"
 
 
 def test_shop_name_read_from_the_wechat_payment_page_is_put_on_the_scan_code_payment(client):
