@@ -300,6 +300,20 @@ def ingest(
             )
             .first()
         )
+        echo = None
+        # (the 亲情卡 notice is left out: it carries "this was the family card" and must merge as before)
+        if not same and source in ("wechat", "alipay") and parsed.tx_type == "expense" and not _FAMILY_CARD.search(text):
+            # two phones signed in to the same ledger (and the same Alipay/WeChat) each get their own copy of the
+            # payment notice, worded slightly differently ("点击领取2个支付宝积分" vs "点此查看详情"): the second copy
+            # is the same payment, never a second purchase. A real second purchase of the same amount still gets
+            # its own record from its bank SMS.
+            echo = (db.query(models.Transaction)
+                    .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.amount == parsed.amount,
+                            models.Transaction.tx_type == models.TxType.expense, models.Transaction.sources.contains(parsed.origin),
+                            models.Transaction.occurred_at >= when - timedelta(minutes=2), models.Transaction.occurred_at <= when + timedelta(minutes=2))
+                    .first())
+        if echo:
+            same = echo
         target = None if same else _find_merge_target(db, user.ledger_id, parsed, when, text)
         twin = None
         if not same and not target and not (parsed.merchant or "").strip() and parsed.tx_type == "expense":

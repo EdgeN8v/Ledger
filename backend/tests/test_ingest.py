@@ -306,6 +306,24 @@ def test_alipay_payment_notice_carries_what_the_popup_needs(client):
     assert ref.get("amount") is None
 
 
+def test_two_phones_get_the_same_alipay_notice_one_payment_one_popup(client):
+    # both phones are signed in to the same ledger and receive their own, differently worded copy of the notice
+    first = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                         "text": "你有一笔3.40元的支出，点击领取2个支付宝积分。", "posted_at_ms": ms(2026, 10, 24, 0, 30)}).json()
+    second = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                          "text": "你有一笔3.40元的支出，点此查看详情。", "posted_at_ms": ms(2026, 10, 24, 0, 31)}).json()
+    assert first["status"] == "created" and float(first["amount"]) == 3.4
+    assert second["status"] == "duplicate" and second.get("amount") is None          # no second popup
+    assert second["transaction"]["id"] == first["transaction"]["id"]
+    sms = _sms(client, "【建设银行】您账户1234于10月24日00:30向支付宝-某日用百货支出3.4元,可用余额900元。", 0, 31, day=24)
+    assert sms["status"] == "merged"
+    assert len(client.get("/transactions").json()) == 1
+    # a real second purchase of the same amount minutes later is its own payment
+    later = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                         "text": "你有一笔3.40元的支出，点此查看详情。", "posted_at_ms": ms(2026, 10, 24, 0, 40)}).json()
+    assert later["status"] == "created" and float(later["amount"]) == 3.4
+
+
 def test_wechat_payment_notice_carries_a_learned_suggestion(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     first = client.post("/ingest", json={"source": "com.tencent.mm", "title": "微信支付",
