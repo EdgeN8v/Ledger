@@ -367,6 +367,16 @@ def test_an_old_notice_reread_after_the_app_update_is_still_a_duplicate(client):
     assert len(client.get("/transactions").json()) == 1
 
 
+def test_both_phones_copy_of_one_refund_is_one_refund(client):
+    _ali(client, "你有一笔3.40元的支出，点此查看详情。", 0, 30, 59, device="her", key="p1")
+    a = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "退款提醒", "text": "你收到一笔3.40元退款，点此查看账单详情！",
+                                     "posted_at_ms": ms(2026, 10, 24, 1, 16) + 19000, "device": "his", "notif_key": "r1"}).json()
+    b = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "退款提醒", "text": "你收到一笔3.40元退款，点此查看账单详情！",
+                                     "posted_at_ms": ms(2026, 10, 24, 1, 16) + 19000, "device": "her", "notif_key": "r2"}).json()
+    assert a["status"] == "created" and b["status"] == "duplicate"
+    assert len(client.get("/transactions").json()) == 2       # the purchase and one refund
+
+
 def test_other_phones_copy_first_then_own(client):
     a = _ali(client, "你有一笔12.00元的支出，点此查看详情。", 2, 0, 0, device="his", key="k1")
     b = _ali(client, "你有一笔12.00元的支出，点击领取2个支付宝积分。", 2, 0, 20, device="her", key="k2")

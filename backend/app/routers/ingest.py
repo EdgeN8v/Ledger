@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app import models, schemas, screenpay
@@ -263,6 +264,10 @@ def ingest(
     source = SOURCE_MAP.get(payload.source)
     if source is None:
         return schemas.IngestResult(status="ignored")
+    if db.get_bind().dialect.name == "postgresql":
+        # both phones post their copy of the same notice within milliseconds: one at a time per ledger, or each
+        # request misses the other and the payment (or refund) is recorded twice. Released at commit.
+        db.execute(sql_text("SELECT pg_advisory_xact_lock(:k)"), {"k": 7_340_000 + user.ledger_id})
 
     posted = from_epoch_ms(payload.posted_at_ms)
     # the SMS app prefixes a running "[39条]" counter that changes with every message: not part of the content
@@ -326,15 +331,17 @@ def ingest(
         )
         echo = None
         # (the 亲情卡 notice is left out: it carries "this was the family card" and must merge as before)
-        if not same and source in ("wechat", "alipay") and parsed.tx_type == "expense" and not _FAMILY_CARD.search(text):
+        if (not same and source in ("wechat", "alipay") and (parsed.tx_type == "expense" or parsed.is_refund)
+                and not _FAMILY_CARD.search(text)):
             # two phones signed in to the same ledger (and the same Alipay/WeChat) each get their own copy of the
             # payment notice, worded slightly differently ("点击领取2个支付宝积分" vs "点此查看详情"): the second copy
             # is the same payment, never a second purchase. A real second purchase of the same amount still gets
             # its own record from its bank SMS.
-            echo = (_other_phones_copy(db, user.ledger_id, source, payload.device, parsed.amount, posted) if payload.device else
+            kind = models.TxType(parsed.tx_type)
+            echo = (_other_phones_copy(db, user.ledger_id, source, payload.device, parsed.amount, posted, kind) if payload.device else
                     db.query(models.Transaction)
                     .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.amount == parsed.amount,
-                            models.Transaction.tx_type == models.TxType.expense, models.Transaction.sources.contains(parsed.origin),
+                            models.Transaction.tx_type == kind, models.Transaction.sources.contains(parsed.origin),
                             models.Transaction.occurred_at >= when - timedelta(minutes=2), models.Transaction.occurred_at <= when + timedelta(minutes=2))
                     .first())
         if echo:
@@ -443,7 +450,7 @@ def _same_notice(db: Session, ledger_id: int, payload):
     return db.get(models.Transaction, ev.transaction_id) if ev else None
 
 
-def _other_phones_copy(db: Session, ledger_id: int, source: str, device: str, amount, posted):
+def _other_phones_copy(db: Session, ledger_id: int, source: str, device: str, amount, posted, kind=models.TxType.expense):
     """A payment another phone of this ledger already reported from the same wallet, within 2 minutes, that this
     phone has not reported yet: then this notice is that phone's copy, not a second purchase. A second notice of
     the same amount from the SAME phone is always a new payment."""
@@ -451,7 +458,7 @@ def _other_phones_copy(db: Session, ledger_id: int, source: str, device: str, am
     candidates = (db.query(T).join(E, E.transaction_id == T.id)
                   .filter(E.ledger_id == ledger_id, E.source == source, E.device.isnot(None), E.device != device,
                           E.posted_at >= posted - timedelta(minutes=2), E.posted_at <= posted + timedelta(minutes=2),
-                          T.amount == amount, T.tx_type == models.TxType.expense)
+                          T.amount == amount, T.tx_type == kind)
                   .order_by(E.posted_at.desc()).all())
     for tx in candidates:
         mine = db.query(E).filter(E.transaction_id == tx.id, E.source == source, E.device == device).first()
