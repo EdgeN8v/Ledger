@@ -278,6 +278,14 @@ def ingest(
         .filter(models.RawEvent.ledger_id == user.ledger_id, models.RawEvent.fingerprint == fp)
         .first()
     )
+    if not existing and payload.device and payload.notif_key:
+        # a notice first recorded before phones sent their id (or sent from the queue without it), now re-read
+        # from the shade: same text, same posting minute, no device on file
+        legacy = _fingerprint(source, title, text, posted.strftime("%Y%m%d%H%M"))
+        existing = (db.query(models.RawEvent)
+                    .filter(models.RawEvent.ledger_id == user.ledger_id, models.RawEvent.fingerprint == legacy,
+                            models.RawEvent.device.is_(None))
+                    .first())
     if existing:
         tx = db.get(models.Transaction, existing.transaction_id) if existing.transaction_id else None
         return schemas.IngestResult(status="duplicate", event_id=existing.id, transaction=tx)

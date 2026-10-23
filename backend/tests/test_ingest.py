@@ -358,6 +358,15 @@ def test_the_same_notification_reposted_or_reread_is_a_duplicate(client):
     assert len(client.get("/transactions").json()) == 1
 
 
+def test_an_old_notice_reread_after_the_app_update_is_still_a_duplicate(client):
+    # recorded by the old app (no device id), then re-read from the shade by the new one after an update
+    old = _ali(client, "你在拼多多平台商户有一笔22.80元的免密/自动扣款支付，点击领取3个支付宝积分。", 19, 45, 18, day=23)
+    again = _ali(client, "你在拼多多平台商户有一笔22.80元的免密/自动扣款支付，点击领取3个支付宝积分。", 19, 45, 18,
+                 device="her", key="0|alipay|-29968460", day=23)
+    assert old["status"] == "created" and again["status"] == "duplicate" and again.get("amount") is None
+    assert len(client.get("/transactions").json()) == 1
+
+
 def test_other_phones_copy_first_then_own(client):
     a = _ali(client, "你有一笔12.00元的支出，点此查看详情。", 2, 0, 0, device="his", key="k1")
     b = _ali(client, "你有一笔12.00元的支出，点击领取2个支付宝积分。", 2, 0, 20, device="her", key="k2")
