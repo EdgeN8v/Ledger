@@ -46,6 +46,34 @@ private val LedgerDark = darkColorScheme(
     error = Color(0xFFEF9A9A)
 )
 
+// A softer jade/sage green for the "我的" (Settings) screen only - calmer across a whole screen of stacked
+// buttons than the app's main saturated green, without touching how the rest of the app looks.
+private val SettingsLight = lightColorScheme(
+    primary = Color(0xFF3F8F6F),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFDAF0E6),
+    onPrimaryContainer = Color(0xFF0D4A36),
+    secondary = Color(0xFF7A6657),
+    background = Color(0xFFFAF9F6),
+    surface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFFEFEEE9),
+    error = Color(0xFFC14C4C)
+)
+
+private val SettingsDark = darkColorScheme(
+    primary = Color(0xFF8FD4B5),
+    onPrimary = Color(0xFF00392A),
+    primaryContainer = Color(0xFF28503F),
+    onPrimaryContainer = Color(0xFFD5F0E3),
+    secondary = Color(0xFFC9B8A8),
+    background = Color(0xFF151715),
+    surface = Color(0xFF1F211F),
+    surfaceVariant = Color(0xFF2C2F2C),
+    tertiaryContainer = Color(0xFF4A3B1B),
+    onTertiaryContainer = Color(0xFFFFE0B2),
+    error = Color(0xFFE79999)
+)
+
 private val LocalDark = staticCompositionLocalOf { false }
 
 val IncomeColor: Color @Composable get() = if (LocalDark.current) Color(0xFF66BB6A) else Color(0xFF2E7D32)
@@ -75,4 +103,12 @@ fun LedgerTheme(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalDark provides dark) {
         MaterialTheme(colorScheme = if (dark) LedgerDark else LedgerLight, shapes = LedgerShapes, content = content)
     }
+}
+
+/** Wraps just the "我的" screen in the softer palette - everywhere else keeps LedgerTheme's colors untouched.
+ *  Nests inside LedgerTheme, so it only overrides colorScheme; dark/light mode still follows ThemeState. */
+@Composable
+fun SettingsTheme(content: @Composable () -> Unit) {
+    val dark = LocalDark.current
+    MaterialTheme(colorScheme = if (dark) SettingsDark else SettingsLight, shapes = LedgerShapes, content = content)
 }

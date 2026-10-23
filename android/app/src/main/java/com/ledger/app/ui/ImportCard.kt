@@ -45,19 +45,29 @@ fun ImportCard() {
     var error by remember { mutableStateOf<String?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) { picked = uri; password = "" } }
 
+    var info by remember { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("导入京东账单", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "京东金融 → 我的 → 账单 → 右上角下载账单, 邮箱收到压缩包后保存到手机, 再在这里选这个文件并输入解压密码。会把买的商品名补到对应的付款记录上, 并按商品自动分类。",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)
-            )
-            Button(onClick = { picker.launch("*/*") }, modifier = Modifier.padding(top = 12.dp)) { Text("选择账单压缩包") }
+            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("导入京东账单", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                InfoDot { info = true }
+            }
+            Button(onClick = { picker.launch("*/*") }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("选择账单压缩包") }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
         }
+    }
+    if (info) {
+        AlertDialog(
+            onDismissRequest = { info = false },
+            confirmButton = { TextButton(onClick = { info = false }) { Text("知道了") } },
+            title = { Text("导入京东账单是怎么回事") },
+            text = {
+                Text("京东金融 → 我的 → 账单 → 右上角下载账单, 邮箱收到压缩包后保存到手机, 再在这里选这个文件并输入解压密码。会把买的商品名补到对应的付款记录上, 并按商品自动分类。")
+            }
+        )
     }
 
     if (picked != null) {

@@ -17,6 +17,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,94 +54,69 @@ fun SettingsScreen(
     inviteCode: String?,
     onLogout: () -> Unit
 ) {
-    var showInviteInfo by remember { mutableStateOf(false) }
+    var showAccountInfo by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(16.dp)
-    ) {
-        Text("我的", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
+    com.ledger.app.ui.theme.SettingsTheme {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                .padding(16.dp)
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                SettingRow("服务器地址", baseUrl)
+            Text("我的", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "账本邀请码",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(inviteCode ?: "-", style = MaterialTheme.typography.bodyLarge)
-                    }
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier
-                            .size(22.dp)
-                            .clickable { showInviteInfo = true }
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(
-                                "i",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("服务器地址", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(baseUrl, style = MaterialTheme.typography.bodyMedium)
                         }
+                        InfoDot { showAccountInfo = true }
                     }
                 }
             }
+
+            UpdateCard()
+
+            ImportCard()
+
+            CaptureCard()
+
+            PayeeCard()
+
+            AppearanceCard()
+
+            CacheCard()
+
+            Button(
+                onClick = onLogout,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp)
+            ) {
+                Text("退出登录")
+            }
         }
 
-        UpdateCard()
-
-        ImportCard()
-
-        CaptureCard()
-
-        PayeeCard()
-
-        AppearanceCard()
-
-        CacheCard()
-
-        Button(
-            onClick = onLogout,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp)
-        ) {
-            Text("退出登录")
+        if (showAccountInfo) {
+            AlertDialog(
+                onDismissRequest = { showAccountInfo = false },
+                confirmButton = {
+                    TextButton(onClick = { showAccountInfo = false }) { Text("知道了") }
+                },
+                title = { Text("账本邀请码") },
+                text = {
+                    Text(
+                        "${inviteCode ?: "-"}\n\n把这个号码发给家人,家人在登录页选「加入账本」输入它就能加进同一个账本、共享记录。",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            )
         }
-    }
-
-    if (showInviteInfo) {
-        AlertDialog(
-            onDismissRequest = { showInviteInfo = false },
-            confirmButton = {
-                TextButton(onClick = { showInviteInfo = false }) { Text("知道了") }
-            },
-            title = { Text("账本邀请码是什么") },
-            text = { Text("把这个号码发给家人,家人在登录页选\"加入账本\",输入这个号码就能加入同一个账本,两人的记录会共享。") }
-        )
-    }
-}
-
-@Composable
-private fun SettingRow(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -190,22 +166,29 @@ private fun CaptureCard() {
                 onClick = { SyncNow.run(context); tick++ },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             ) { Text("立即同步") }
-            Button(
-                onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-            ) { Text(if (enabled) "管理通知权限" else "去开启") }
-            Button(
+            if (enabled) {
+                OutlinedButton(
+                    onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) { Text("管理通知权限") }
+            } else {
+                Button(
+                    onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) { Text("去开启通知使用权") }
+            }
+            OutlinedButton(
                 onClick = { com.ledger.app.capture.Background.openSettings(context) },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) { Text("后台运行 / 自启动设置") }
             if (!noticeOk) {
-                Button(
+                OutlinedButton(
                     onClick = { noticeLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) { Text("开启每日分析提醒") }
             }
             if (!smsOk) {
-                Button(
+                OutlinedButton(
                     onClick = { smsLauncher.launch(android.Manifest.permission.READ_SMS) },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) { Text("允许读取短信") }
@@ -233,7 +216,7 @@ private fun CaptureCard() {
 
 /** The small round "i" that opens an explanation instead of printing it on the page. */
 @Composable
-private fun InfoDot(onClick: () -> Unit) {
+internal fun InfoDot(onClick: () -> Unit) {
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primaryContainer,
