@@ -149,13 +149,16 @@ private fun CaptureCard() {
     val reader = remember(tick) { ReaderHealth.state(context) }
     val canHeal = remember(tick) { ReaderHealth.canSelfHeal(context) }
     val readerTicked = remember(tick) { ReaderHealth.ticked(context) }
+    val listenerDead = remember(tick) { ReaderHealth.listenerDead(context) }
+    val stopped = reader == ReaderHealth.State.DEAD || listenerDead
     var healTried by remember { mutableStateOf(false) }
     // with the adb-granted permission, fix it right here instead of only warning (once per visit, so a heal
     // that does not take cannot loop)
-    LaunchedEffect(reader) {
-        if (reader == ReaderHealth.State.DEAD && canHeal && !healTried) {
+    LaunchedEffect(stopped) {
+        // the listener heals without any permission; the accessibility reader needs the adb-granted one
+        if (stopped && (canHeal || listenerDead) && !healTried) {
             healTried = true
-            val healed = withContext(Dispatchers.IO) { try { ReaderHealth.healIfDead(context) } catch (_: Exception) { false } }
+            val healed = withContext(Dispatchers.IO) { ReaderHealth.healAll(context) }
             if (healed) { delay(2_500); tick++ }
         }
     }
@@ -184,21 +187,28 @@ private fun CaptureCard() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
-            if (reader == ReaderHealth.State.DEAD) {
+            if (stopped) {
                 Text(
                     "自动记账已停止（被系统清理了）",
                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp)
                 )
                 Text(
-                    (if (canHeal) "正在自动恢复… 没好的话: " else "") + (if (readerTicked) "关掉再打开「记账」" else "在无障碍里重新打开「记账」"),
+                    (if (canHeal || reader != ReaderHealth.State.DEAD) "正在自动恢复… 没好的话: " else "") + when {
+                        reader != ReaderHealth.State.DEAD -> "在「通知使用权」里关掉再打开「记账」"
+                        readerTicked -> "关掉再打开「记账」"
+                        else -> "在无障碍里重新打开「记账」"
+                    },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
-                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                    onClick = {
+                        val page = if (reader != ReaderHealth.State.DEAD) Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS else Settings.ACTION_ACCESSIBILITY_SETTINGS
+                        context.startActivity(Intent(page).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                ) { Text("去无障碍设置") }
+                ) { Text(if (reader != ReaderHealth.State.DEAD) "去通知使用权设置" else "去无障碍设置") }
             }
             Button(
                 onClick = { SyncNow.run(context); tick++ },

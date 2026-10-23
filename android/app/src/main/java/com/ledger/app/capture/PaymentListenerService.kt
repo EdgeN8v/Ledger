@@ -21,6 +21,7 @@ class PaymentListenerService : NotificationListenerService() {
 
     /** When access is first granted, pick up what is already sitting in the notification shade. */
     override fun onListenerConnected() {
+        ReaderHealth.listenerConnected = true
         ReaderHealth.healInBackground(this)   // bound again after a force stop: the reader may need the same
         try { activeNotifications?.forEach { handle(it) } } catch (_: Exception) {}
     }
@@ -76,7 +77,12 @@ class PaymentListenerService : NotificationListenerService() {
         PopupOffer.offer(applicationContext, scope, primary, result, if (item.source == "com.tencent.mm") "微信支付" else "支付宝付款")
     }
 
+    override fun onListenerDisconnected() {
+        ReaderHealth.listenerConnected = false
+    }
+
     override fun onDestroy() {
+        ReaderHealth.listenerConnected = false
         scope.cancel()
         super.onDestroy()
     }

@@ -19,7 +19,7 @@ class MaintenanceWorker(ctx: Context, params: WorkerParameters) : CoroutineWorke
     override suspend fun doWork(): Result {
         if (!Prefs.isLoggedIn(applicationContext)) return Result.success()
         ensureListenerBound(applicationContext)
-        try { ReaderHealth.healIfDead(applicationContext) } catch (_: Exception) {}
+        try { ReaderHealth.healAll(applicationContext) } catch (_: Exception) {}
         SmsInboxScanner.scan(applicationContext)
         if (CaptureQueue.size(applicationContext) > 0) UploadWorker.enqueue(applicationContext)
         DailyReminder.maybeNotify(applicationContext)

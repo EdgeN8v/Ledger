@@ -4,8 +4,11 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import androidx.core.app.NotificationManagerCompat
 
 /**
  * Is PayeeReaderService actually running, or only ticked in settings? vivo's "single-cleaner" (and Xiaomi's) force
@@ -100,9 +103,53 @@ object ReaderHealth {
         }
     }
 
+    // --- the notification listener (PaymentListenerService) dies the same way: after a force stop vivo keeps it
+    // allowed but never connects it again. requestRebind is a no-op there (it only undoes requestUnbind), and since
+    // Android 9 the system no longer reads enabled_notification_listeners back, so rewriting it does nothing either.
+    // What does work, without any special permission: disable and re-enable our own listener component - the
+    // system sees the package change and binds every allowed listener of it again (verified on the vivo, Android 13).
+
+    /** Set by PaymentListenerService in onListenerConnected / onListenerDisconnected. */
+    @Volatile var listenerConnected = false
+    @Volatile private var lastListenerHealAt = 0L
+
+    /** Allowed in settings but not connected. Only judged once this process has run a few seconds, so a listener
+     *  the system is still connecting right after start-up does not count as dead. */
+    fun listenerDead(c: Context): Boolean =
+        SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime() > 5_000 &&
+            !listenerConnected && NotificationManagerCompat.getEnabledListenerPackages(c).contains(c.packageName)
+
+    /** Blocking - call off the main thread. True = the component was toggled to make the system rebind it. */
+    @Synchronized
+    fun healListenerIfDead(c: Context): Boolean {
+        val sinceStart = SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()
+        if (sinceStart < 5_000) Thread.sleep(5_000 - sinceStart)
+        if (!listenerDead(c)) return false
+        if (System.currentTimeMillis() - lastListenerHealAt < 15_000) return false
+        val me = ComponentName(c, PaymentListenerService::class.java)
+        return try {
+            val pm = c.packageManager
+            pm.setComponentEnabledSetting(me, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+            pm.setComponentEnabledSetting(me, PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP)
+            lastListenerHealAt = System.currentTimeMillis()
+            android.util.Log.i("PaymentListener", "re-registered after being found dead")
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("PaymentListener", "self-heal failed", e)
+            false
+        }
+    }
+
+    /** Both services; used by app start, boot, the workers and the 我的 page. */
+    fun healAll(c: Context): Boolean {
+        val reader = try { healIfDead(c) } catch (_: Exception) { false }
+        val listener = try { healListenerIfDead(c) } catch (_: Exception) { false }
+        return reader || listener
+    }
+
     /** Fire-and-forget version for app start / boot / workers. */
     fun healInBackground(c: Context) {
         val app = c.applicationContext
-        Thread { try { healIfDead(app) } catch (_: Exception) {} }.start()
+        Thread { try { healAll(app) } catch (_: Exception) {} }.start()
     }
 }

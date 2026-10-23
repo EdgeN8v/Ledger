@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result {
-        try { ReaderHealth.healIfDead(applicationContext) } catch (_: Exception) {}
+        try { ReaderHealth.healAll(applicationContext) } catch (_: Exception) {}
         val primary = ApiClient.create(applicationContext)
         val lan = ApiClient.create(applicationContext, com.ledger.app.data.Prefs.LAN_URL)
         suspend fun send(req: IngestRequest) {
