@@ -71,6 +71,13 @@ object Prefs {
         prefs(context).edit().putBoolean("vendor_guide_shown", true).apply()
     }
 
+    /** A random id fixed for this install: the server uses it to tell two phones of one ledger apart. */
+    @Synchronized
+    fun deviceId(context: Context): String =
+        prefs(context).getString("device_id", null) ?: java.util.UUID.randomUUID().toString().also {
+            prefs(context).edit().putString("device_id", it).apply()
+        }
+
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun logout(context: Context) { setToken(context, null); DiskCache.clear(context) }

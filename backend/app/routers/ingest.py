@@ -6,12 +6,12 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas, screenpay
 from app.clock import from_epoch_ms
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.deps import get_current_user
 from app.parsers import Parsed, clean_text, looks_financial, parse_message
 from app.fixed import category_name_for, load
@@ -233,9 +233,21 @@ def set_pending_category(
     return schemas.IngestResult(status="pending", event_id=payload.event_id)
 
 
+def _relink_later(ledger_id: int) -> None:
+    """relink_orphans scans every refund of the ledger (about 3 s on the real data): run it after the response
+    has gone out, so the phone's category popup does not wait for it."""
+    db = SessionLocal()
+    try:
+        relink_orphans(db, ledger_id)
+        db.commit()
+    finally:
+        db.close()
+
+
 @router.post("", response_model=schemas.IngestResult)
 def ingest(
     payload: schemas.IngestRequest,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -256,6 +268,10 @@ def ingest(
     # the SMS app prefixes a running "[39条]" counter that changes with every message: not part of the content
     title, text = payload.title or "", clean_text(payload.text or "")
     fp = _fingerprint(source, title, text, posted.strftime("%Y%m%d%H%M"))
+    if payload.device and payload.notif_key:
+        # the same text twice can be two real payments (same shop, same amount, minutes apart): only the same
+        # notification (same phone, same Android key) is a repeat
+        fp = _fingerprint(source, title, f"{text}|{payload.device}|{payload.notif_key}", posted.strftime("%Y%m%d%H%M"))
 
     existing = (
         db.query(models.RawEvent)
@@ -289,7 +305,7 @@ def ingest(
         status = "failed" if (looks_financial(f"{title} {text}") or looks_like_ticket(text)) else "ignored"
     else:
         when = parsed.occurred_at or posted
-        same = (
+        same = _same_notice(db, user.ledger_id, payload) if (payload.device and payload.notif_key) else (
             db.query(models.Transaction)
             .filter(
                 models.Transaction.ledger_id == user.ledger_id,
@@ -307,7 +323,8 @@ def ingest(
             # payment notice, worded slightly differently ("点击领取2个支付宝积分" vs "点此查看详情"): the second copy
             # is the same payment, never a second purchase. A real second purchase of the same amount still gets
             # its own record from its bank SMS.
-            echo = (db.query(models.Transaction)
+            echo = (_other_phones_copy(db, user.ledger_id, source, payload.device, parsed.amount, posted) if payload.device else
+                    db.query(models.Transaction)
                     .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.amount == parsed.amount,
                             models.Transaction.tx_type == models.TxType.expense, models.Transaction.sources.contains(parsed.origin),
                             models.Transaction.occurred_at >= when - timedelta(minutes=2), models.Transaction.occurred_at <= when + timedelta(minutes=2))
@@ -390,14 +407,14 @@ def ingest(
             if parsed.is_refund:
                 link_refund(db, tx)        # a refund cancels the purchase it belongs to
             db.flush()
-            relink_orphans(db, user.ledger_id)   # ...and a purchase may complete an earlier-arrived refund
+            background.add_task(_relink_later, user.ledger_id)   # ...and a purchase may complete an earlier-arrived refund
 
     # what is not a payment is nobody's business (chat messages, codes, ads): keep only the fingerprint that stops repeats
     keep = status != "ignored"
     ev = models.RawEvent(
         ledger_id=user.ledger_id, user_id=user.id, fingerprint=fp, source=source,
         title=title if keep else "", text=text if keep else "", posted_at=posted, status=status,
-        transaction_id=tx.id if tx else None,
+        transaction_id=tx.id if tx else None, device=payload.device, notif_key=payload.notif_key,
     )
     db.add(ev)
     db.commit()
@@ -407,6 +424,32 @@ def ingest(
     if tx:
         db.refresh(tx)
     return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx, **_popup_fields(db, source, status, tx))
+
+
+def _same_notice(db: Session, ledger_id: int, payload):
+    """The transaction this very notification (same phone, same Android key) already went into, if any: a
+    notification updated or re-read from the shade, never a new payment."""
+    E = models.RawEvent
+    ev = (db.query(E).filter(E.ledger_id == ledger_id, E.device == payload.device, E.notif_key == payload.notif_key,
+                             E.transaction_id.isnot(None)).first())
+    return db.get(models.Transaction, ev.transaction_id) if ev else None
+
+
+def _other_phones_copy(db: Session, ledger_id: int, source: str, device: str, amount, posted):
+    """A payment another phone of this ledger already reported from the same wallet, within 2 minutes, that this
+    phone has not reported yet: then this notice is that phone's copy, not a second purchase. A second notice of
+    the same amount from the SAME phone is always a new payment."""
+    E, T = models.RawEvent, models.Transaction
+    candidates = (db.query(T).join(E, E.transaction_id == T.id)
+                  .filter(E.ledger_id == ledger_id, E.source == source, E.device.isnot(None), E.device != device,
+                          E.posted_at >= posted - timedelta(minutes=2), E.posted_at <= posted + timedelta(minutes=2),
+                          T.amount == amount, T.tx_type == models.TxType.expense)
+                  .order_by(E.posted_at.desc()).all())
+    for tx in candidates:
+        mine = db.query(E).filter(E.transaction_id == tx.id, E.source == source, E.device == device).first()
+        if not mine:
+            return tx
+    return None
 
 
 def _popup_fields(db: Session, source: str, status: str, tx) -> dict:

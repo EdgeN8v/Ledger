@@ -44,7 +44,7 @@ class PaymentListenerService : NotificationListenerService() {
             if (!ORDER_WORDS.containsMatchIn(all) || PROMO_WORDS.containsMatchIn(all)) return
         }
 
-        val item = CaptureQueue.Item(sbn.packageName, title, text, sbn.postTime)
+        val item = CaptureQueue.Item(sbn.packageName, title, text, sbn.postTime, sbn.key)
         // fresh ones only: old alerts re-read from the shade on reconnect just go through the queue, no popup
         val fresh = System.currentTimeMillis() - sbn.postTime < 2 * 60_000
         if (fresh && sbn.packageName in WALLETS && PAY_ALERT.containsMatchIn((title ?: "") + " " + text)) {
@@ -60,7 +60,7 @@ class PaymentListenerService : NotificationListenerService() {
 
     private suspend fun sendAndMaybePopup(item: CaptureQueue.Item) {
         val primary = ApiClient.create(applicationContext)
-        val req = IngestRequest(item.source, item.title, item.text, item.postedAtMs)
+        val req = IngestRequest(item.source, item.title, item.text, item.postedAtMs, Prefs.deviceId(this), item.notifKey)
         val result = try {
             try {
                 primary.ingest(req)

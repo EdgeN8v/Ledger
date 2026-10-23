@@ -13,14 +13,14 @@ object CaptureQueue {
     private const val KEY_LAST_ERR = "last_error"
     private const val MAX_ITEMS = 5000
 
-    data class Item(val source: String, val title: String?, val text: String?, val postedAtMs: Long)
+    data class Item(val source: String, val title: String?, val text: String?, val postedAtMs: Long, val notifKey: String? = null)
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     @Synchronized
     fun add(c: Context, item: Item) {
         val arr = load(c)
-        arr.put(JSONObject().put("s", item.source).put("t", item.title).put("x", item.text).put("p", item.postedAtMs))
+        arr.put(JSONObject().put("s", item.source).put("t", item.title).put("x", item.text).put("p", item.postedAtMs).put("k", item.notifKey))
         val trimmed = if (arr.length() > MAX_ITEMS) JSONArray((0 until arr.length()).drop(arr.length() - MAX_ITEMS).map { arr.get(it) }) else arr
         prefs(c).edit().putString(KEY, trimmed.toString()).apply()
     }
@@ -30,7 +30,7 @@ object CaptureQueue {
         val arr = load(c)
         return (0 until minOf(n, arr.length())).map {
             val o = arr.getJSONObject(it)
-            Item(o.getString("s"), o.optString("t").ifEmpty { null }, o.optString("x").ifEmpty { null }, o.getLong("p"))
+            Item(o.getString("s"), o.optString("t").ifEmpty { null }, o.optString("x").ifEmpty { null }, o.getLong("p"), o.optString("k").ifEmpty { null })
         }
     }
 

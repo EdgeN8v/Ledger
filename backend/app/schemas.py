@@ -155,6 +155,8 @@ class IngestRequest(BaseModel):
     title: Optional[str] = None
     text: Optional[str] = None
     posted_at_ms: int          # when the phone received it (epoch ms)
+    device: Optional[str] = None       # a fixed id per phone install - tells "the other phone's copy" from "a new payment"
+    notif_key: Optional[str] = None    # Android's StatusBarNotification.key - the same key again = the same notice re-posted
 
 
 class PendingCategoryIn(BaseModel):

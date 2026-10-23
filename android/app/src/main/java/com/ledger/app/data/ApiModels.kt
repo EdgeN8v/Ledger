@@ -116,7 +116,11 @@ data class IngestRequest(
     val source: String,
     val title: String?,
     val text: String?,
-    val posted_at_ms: Long
+    val posted_at_ms: Long,
+    // which phone, and which Android notification: lets the server tell "the same notice again" / "the other
+    // phone's copy" from "a new payment with the same text" (two orders of the same amount at the same shop)
+    val device: String? = null,
+    val notif_key: String? = null
 )
 
 data class IngestResult(

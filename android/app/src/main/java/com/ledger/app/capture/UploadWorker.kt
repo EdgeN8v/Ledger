@@ -37,7 +37,7 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
             var sent = 0
             for (item in batch) {
                 try {
-                    send(IngestRequest(item.source, item.title, item.text, item.postedAtMs))
+                    send(IngestRequest(item.source, item.title, item.text, item.postedAtMs, com.ledger.app.data.Prefs.deviceId(applicationContext), item.notifKey))
                     sent++
                 } catch (e: HttpException) {
                     // 401: token expired -> keep the queue until the user logs in again. 4xx/5xx otherwise: retry later.

@@ -324,6 +324,47 @@ def test_two_phones_get_the_same_alipay_notice_one_payment_one_popup(client):
     assert later["status"] == "created" and float(later["amount"]) == 3.4
 
 
+def _ali(client, text, h, m, s=0, device=None, key=None, day=24):
+    body = {"source": "com.eg.android.AlipayGphone", "title": "交易提醒", "text": text,
+            "posted_at_ms": ms(2026, 10, day, h, m) + s * 1000}
+    if device:
+        body.update(device=device, notif_key=key)
+    return client.post("/ingest", json=body).json()
+
+
+def test_same_shop_same_amount_twice_from_one_phone_is_two_payments(client):
+    # the real case: her second ¥3.50 order 2.5 minutes after the first, word-for-word the same notice; the old
+    # "same text within 10 minutes = re-post" rule swallowed it and her phone showed no popup
+    t = "你有一笔3.50元的支出，点击领取2个支付宝积分。"
+    first = _ali(client, t, 0, 48, 19, device="her", key="0|alipay|-29968464")
+    mine = _ali(client, "你有一笔3.50元的支出，点此查看详情。", 0, 48, 34, device="his", key="0|alipay|-1001")
+    second = _ali(client, t, 0, 50, 46, device="her", key="0|alipay|-29968465")
+    assert first["status"] == "created" and float(first["amount"]) == 3.5
+    assert mine["status"] == "duplicate" and mine.get("amount") is None                   # his copy: no second popup
+    assert second["status"] == "created" and float(second["amount"]) == 3.5               # a new payment: popup
+    assert second["transaction"]["id"] != first["transaction"]["id"]
+    his2 = _ali(client, "你有一笔3.50元的支出，点此查看详情。", 0, 51, 2, device="his", key="0|alipay|-1002")
+    assert his2["status"] == "duplicate" and his2["transaction"]["id"] == second["transaction"]["id"]
+    _sms(client, "【建设银行】您账户1234于10月24日00:48向支付宝-淘宝-某店支出3.5元,可用余额900元。", 0, 48, day=24)
+    _sms(client, "【建设银行】您账户1234于10月24日00:50向支付宝-淘宝-某店支出3.5元,可用余额896.5元。", 0, 51, day=24)
+    assert len(client.get("/transactions").json()) == 2
+
+
+def test_the_same_notification_reposted_or_reread_is_a_duplicate(client):
+    first = _ali(client, "你有一笔9.90元的支出，点此查看详情。", 1, 0, 0, device="her", key="0|alipay|-7")
+    # the shade is read again after the listener reconnects, minutes later, same Android key
+    again = _ali(client, "你有一笔9.90元的支出，点此查看详情。", 1, 3, 0, device="her", key="0|alipay|-7")
+    assert first["status"] == "created" and again["status"] == "duplicate" and again.get("amount") is None
+    assert len(client.get("/transactions").json()) == 1
+
+
+def test_other_phones_copy_first_then_own(client):
+    a = _ali(client, "你有一笔12.00元的支出，点此查看详情。", 2, 0, 0, device="his", key="k1")
+    b = _ali(client, "你有一笔12.00元的支出，点击领取2个支付宝积分。", 2, 0, 20, device="her", key="k2")
+    assert a["status"] == "created" and b["status"] == "duplicate"
+    assert len(client.get("/transactions").json()) == 1
+
+
 def test_wechat_payment_notice_carries_a_learned_suggestion(client):
     cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
     first = client.post("/ingest", json={"source": "com.tencent.mm", "title": "微信支付",

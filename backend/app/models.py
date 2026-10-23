@@ -146,6 +146,8 @@ class RawEvent(Base):
     created_at = Column(DateTime, default=now_local)
     pref_category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)   # category chosen on the payment-page popup, before the bank SMS creates the transaction
     pref_sub = Column(String, nullable=True)
+    device = Column(String, nullable=True)        # which phone sent it (IngestRequest.device), when the app says
+    notif_key = Column(String, nullable=True)     # Android's notification key, when the app says
 
     __table_args__ = (Index("ix_raw_events_ledger_fp", "ledger_id", "fingerprint", unique=True),)
 

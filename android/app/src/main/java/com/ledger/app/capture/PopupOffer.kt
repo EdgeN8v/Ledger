@@ -16,7 +16,8 @@ import java.math.BigDecimal
  * One category popup per payment, whichever way the payment is noticed first: the payment page read by
  * PayeeReaderService, or the WeChat/Alipay payment notification read by PaymentListenerService (Taobao's 免密支付
  * page shows only "免密支付中", so there the notification is the only early sign). Both run in this process, so
- * a small in-memory record is enough: same transaction, or same amount within 2 minutes = already popped.
+ * a small in-memory record is enough: same transaction (or, when one side has none yet, same amount within 2
+ * minutes) = already popped.
  */
 object PopupOffer {
     private class Seen(val amount: BigDecimal, val at: Long, val txId: Int?)
@@ -29,7 +30,9 @@ object PopupOffer {
     fun claim(amount: String, txId: Int?, now: Long = System.currentTimeMillis()): Boolean {
         val a = amount.trim().toBigDecimalOrNull() ?: return true
         recent.removeAll { now - it.at > WINDOW_MS }
-        if (recent.any { (txId != null && it.txId == txId) || it.amount.compareTo(a) == 0 }) return false
+        // by transaction when both sides know it (two orders of the same amount are two popups); by amount only
+        // when one side has no transaction yet (a payment page read before the server created the record)
+        if (recent.any { if (txId != null && it.txId != null) it.txId == txId else it.amount.compareTo(a) == 0 }) return false
         recent += Seen(a, now, txId)
         return true
     }
