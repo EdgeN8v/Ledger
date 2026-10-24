@@ -34,6 +34,16 @@ def same_shop(a: Optional[str], b: Optional[str]) -> bool:
     return False
 
 
+def same_shop_as(refund: models.Transaction, purchase: models.Transaction) -> bool:
+    """same_shop, also against everything the purchase's own texts said: its shop name may come from the payment page
+    ("艾享**店", the shop's display name) while the bank SMS - kept in raw_text - and the refund name the company
+    behind it ("上海玖和健康管理有限公司")."""
+    if same_shop(refund.merchant, purchase.merchant):
+        return True
+    text = purchase.raw_text or ""
+    return any(len(x) >= 4 and x in text for x in _segments(refund.merchant))
+
+
 def refunded_amount(db: Session, expense_id: int) -> Decimal:
     total = (
         db.query(func.coalesce(func.sum(models.Transaction.amount), 0))
@@ -69,11 +79,11 @@ def link_refund(db: Session, refund: models.Transaction, refunded: Optional[dict
     family_only = [e for e in exact if e.family_card]
     target = None
     for pool in (
-        [e for e in exact if same_shop(refund.merchant, e.merchant)],
+        [e for e in exact if same_shop_as(refund, e)],
         [e for e in exact if timedelta(0) <= refund.occurred_at - e.occurred_at <= timedelta(hours=12)],   # a payee-less refund ("财付通"): the same amount paid hours ago
         family_only if is_generic(shop_core(refund.merchant)) and len(family_only) == 1 else [],
         exact if len(exact) == 1 else [],
-        [e for e, _ in room if same_shop(refund.merchant, e.merchant)],     # partial refund: shop must match
+        [e for e, _ in room if same_shop_as(refund, e)],                     # partial refund: shop must match
     ):
         if pool:
             target = pool[0]

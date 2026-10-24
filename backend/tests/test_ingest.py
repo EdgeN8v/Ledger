@@ -417,6 +417,22 @@ def test_my_car_has_the_car_pages_kinds_as_subs(client):
     assert put["sub"] == "停车" and put["car_bucket"] == "parking"
 
 
+def test_refund_finds_the_purchase_named_after_the_payment_page(client):
+    # the real 10-24 case: the purchase got its name from Alipay's payment page ("艾享**店"), the bank SMS and the
+    # refund name the company behind the shop; another same-amount purchase is still open, so the amount alone
+    # could not decide
+    other = _sms(client, "【建设银行】您账户1234于10月21日00:24向支付宝-拼多多平台商户支出10.9元,可用余额900元。", 0, 24, day=21)
+    client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒", "text": "你有一笔10.90元的支出，点此查看详情。",
+                                 "posted_at_ms": ms(2026, 10, 23, 12, 27)})
+    page = client.post("/ingest", json={"source": "screen:alipay", "title": "", "text": "艾享**店\n支出10.9元\n自动扣款成功",
+                                        "posted_at_ms": ms(2026, 10, 23, 12, 27)}).json()
+    assert page["status"] == "applied"
+    buy = _sms(client, "【建设银行】您账户1234于10月23日12:27向支付宝-天猫-上海某某健康管理有限公司支出10.9元,可用余额889.1元。", 12, 27, day=23)
+    assert buy["status"] == "merged" and "艾享" in buy["transaction"]["merchant"]
+    ref = _sms(client, "【建设银行】支付宝-上海某某健康管理有限公司于10月24日17:02向您账户1234消费退货存入10.9元,可用余额900元。", 17, 2, day=24)
+    assert ref["transaction"]["refund_of_id"] == buy["transaction"]["id"] != other["transaction"]["id"]
+
+
 def test_other_phones_copy_first_then_own(client):
     a = _ali(client, "你有一笔12.00元的支出，点此查看详情。", 2, 0, 0, device="his", key="k1")
     b = _ali(client, "你有一笔12.00元的支出，点击领取2个支付宝积分。", 2, 0, 20, device="her", key="k2")
