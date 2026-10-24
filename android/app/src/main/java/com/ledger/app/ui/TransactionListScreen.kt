@@ -253,7 +253,14 @@ fun TransactionListScreen(
             categories = state.categories,
             onDismiss = { pickFor = null },
             onConfirm = { catId, sub, isTreat -> pickFor = null; onSetCategory(tx.id, catId, sub, isTreat) },
-            onEdit = { pickFor = null; onEditTransaction(tx) },
+            // a category picked here but not yet confirmed is saved first, and the editor opens showing it -
+            // otherwise 改金额/备注 silently threw the pick away
+            onEdit = { catId, sub, isTreat ->
+                pickFor = null
+                val picked = catId != null && (catId != tx.category_id || sub != tx.sub || isTreat != tx.is_treat)
+                if (picked) onSetCategory(tx.id, catId!!, sub, isTreat)
+                onEditTransaction(if (picked) tx.copy(category_id = catId, sub = sub, is_treat = isTreat) else tx)
+            },
             onDelete = { pickFor = null; onDeleteTransaction(tx.id) },
             onLinkRefund = { incomeId, purchaseId -> pickFor = null; onLinkRefund(incomeId, purchaseId) }
         )
@@ -562,7 +569,7 @@ internal fun CategoryPickerDialog(
     categories: List<CategoryDto>,
     onDismiss: () -> Unit,
     onConfirm: (categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
-    onEdit: (() -> Unit)? = null,
+    onEdit: ((categoryId: Int?, sub: String?, isTreat: Boolean) -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onLinkRefund: ((incomeId: Int, purchaseId: Int) -> Unit)? = null
 ) {
@@ -649,7 +656,7 @@ internal fun CategoryPickerDialog(
                         Text("算进「吃好吃的」额度", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }
+                if (onEdit != null) TextButton(onClick = { onEdit(selCat, selSub, treat) }, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }
                 if (onDelete != null) TextButton(
                     onClick = { confirmingDelete = true },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)

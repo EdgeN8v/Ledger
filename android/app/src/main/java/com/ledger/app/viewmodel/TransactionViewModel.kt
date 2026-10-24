@@ -302,19 +302,15 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun updateTransaction(id: Int, txType: String, amount: String, categoryId: Int?, note: String?) {
+    /** [previousCategoryId]: the category the record already has. The category is only sent when it really
+     *  changed - sending it counts as "the user just filed this", which re-guesses the sub and re-files the
+     *  shop's other payments, and a note edit must not do that. */
+    fun updateTransaction(id: Int, txType: String, amount: String, categoryId: Int?, note: String?, previousCategoryId: Int? = null) {
         viewModelScope.launch {
             try {
-                api().updateTransaction(
-                    id,
-                    mapOf(
-                        "tx_type" to txType,
-                        "amount" to amount,
-                        "category_id" to categoryId,
-                        "note" to note,
-                        "needs_review" to false
-                    )
-                )
+                val body = mutableMapOf<String, Any?>("tx_type" to txType, "amount" to amount, "note" to note, "needs_review" to false)
+                if (categoryId != previousCategoryId) body["category_id"] = categoryId
+                api().updateTransaction(id, body)
                 _state.value = _state.value.copy(message = "已更新")
                 reloadLoaded()
             } catch (e: Exception) {

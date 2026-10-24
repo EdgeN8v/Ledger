@@ -366,7 +366,7 @@ fun LedgerApp() {
                         if (!handled) {
                             handled = true
                             if (editing != null) {
-                                transactionViewModel.updateTransaction(editing.id, txType, amount, categoryId, note)
+                                transactionViewModel.updateTransaction(editing.id, txType, amount, categoryId, note, editing.category_id)
                             } else {
                                 transactionViewModel.createManual(txType, amount, categoryId, note)
                             }
