@@ -289,9 +289,12 @@ private fun PaymentPopupCard(
             )
             if (subs.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    subs.forEach { s ->
-                        FilterChip(selected = s == selSub, onClick = { selSub = if (selSub == s) null else s }, label = { Text(s) })
+                // 我的车 has 8 subs: four to a row instead of running off the edge
+                subs.chunked(4).forEach { row ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { s ->
+                            FilterChip(selected = s == selSub, onClick = { selSub = if (selSub == s) null else s }, label = { Text(s, maxLines = 1) })
+                        }
                     }
                 }
             }

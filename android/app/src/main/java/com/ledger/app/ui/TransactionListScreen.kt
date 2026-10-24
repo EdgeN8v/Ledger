@@ -576,7 +576,10 @@ internal fun CategoryPickerDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
-    val changed = selCat != tx.category_id || selSub != tx.sub || selTreat != tx.is_treat
+    // "吃好吃的" is a food budget: only offered (and only kept) while the category is 餐饮
+    val isFood = categories.find { it.id == selCat }?.name == "餐饮"
+    val treat = selTreat && isFood
+    val changed = selCat != tx.category_id || selSub != tx.sub || treat != tx.is_treat
     AlertDialog(
         onDismissRequest = onDismiss,
         text = {
@@ -629,15 +632,18 @@ internal fun CategoryPickerDialog(
                 }
                 if (tx.tx_type == "expense" && subs.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        subs.forEach { s ->
-                            // a longer label (e.g. "水果/酸奶") needs more of the row than a short one ("零食"); share
-                            // the width by how long the text actually is instead of splitting it evenly
-                            CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, modifier = Modifier.weight(s.length.toFloat().coerceAtLeast(2f)))
+                    // up to 5 fit on one line; more (我的车 has 8) go four to a row
+                    subs.chunked(if (subs.size > 5) 4 else subs.size).forEachIndexed { i, row ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = if (i > 0) 6.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { s ->
+                                // a longer label (e.g. "水果/酸奶") needs more of the row than a short one ("零食"); share
+                                // the width by how long the text actually is instead of splitting it evenly
+                                CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, modifier = Modifier.weight(s.length.toFloat().coerceAtLeast(2f)))
+                            }
                         }
                     }
                 }
-                if (tx.tx_type == "expense") {
+                if (tx.tx_type == "expense" && isFood) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                         androidx.compose.material3.Checkbox(checked = selTreat, onCheckedChange = { selTreat = it })
                         Text("算进「吃好吃的」额度", style = MaterialTheme.typography.bodyMedium)
@@ -652,7 +658,7 @@ internal fun CategoryPickerDialog(
         },
         // a transaction already flagged "待确认" must stay tappable even when the guessed category was right all
         // along and the user changes nothing - only require a real edit for one that wasn't flagged
-        confirmButton = { Button(enabled = selCat != null && (changed || tx.needs_review), onClick = { onConfirm(selCat!!, selSub, selTreat) }) { Text("确认") } },
+        confirmButton = { Button(enabled = selCat != null && (changed || tx.needs_review), onClick = { onConfirm(selCat!!, selSub, treat) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
     if (confirmingDelete) {
