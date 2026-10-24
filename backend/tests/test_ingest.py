@@ -377,6 +377,46 @@ def test_both_phones_copy_of_one_refund_is_one_refund(client):
     assert len(client.get("/transactions").json()) == 2       # the purchase and one refund
 
 
+def test_the_sms_apps_reused_notification_key_never_swallows_the_next_sms(client):
+    # the real 10-24 case: the SMS app posts every message under one key; each bank SMS arrives twice (receiver +
+    # SMS-app notification), and the second copy of the refund became a second refund, while later SMS copies
+    # were pinned to that wrong record
+    def sms(text, h, m, s, key=None):
+        body = {"source": "com.android.mms", "title": "建设银行", "text": text, "posted_at_ms": ms(2026, 10, 24, h, m) + s * 1000, "device": "his"}
+        if key:
+            body["notif_key"] = key
+        return client.post("/ingest", json=body).json()
+    r1 = sms("【建设银行】支付宝-某店于10月24日17:02向您账户1234消费退货存入10.9元,可用余额900元。", 17, 2, 53)
+    r2 = sms("【建设银行】支付宝-某店于10月24日17:02向您账户1234消费退货存入10.9元,可用余额900元。", 17, 2, 54, key="0|com.android.mms|3120|null|1001")
+    assert r1["status"] == "created" and r2["status"] == "duplicate"
+    p1 = sms("【建设银行】您账户1234于10月24日20:16向某餐饮支出82元,可用余额818元。", 20, 16, 31)
+    p2 = sms("【建设银行】您账户1234于10月24日20:16向某餐饮支出82元,可用余额818元。", 20, 16, 32, key="0|com.android.mms|3120|null|1001")
+    assert p1["status"] == "created" and p2["status"] == "duplicate" and p2["transaction"]["id"] == p1["transaction"]["id"]
+    assert len(client.get("/transactions").json()) == 2
+
+
+def test_a_coupon_ad_is_not_a_payment(client):
+    r = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "支付宝卡包",
+                                     "text": "别让优惠溜走！你的淘宝闪购满29减8元券今晚失效。", "posted_at_ms": ms(2026, 10, 24, 20, 9)}).json()
+    assert r["status"] in ("ignored", "failed") and r.get("transaction") is None
+    # a real payment notice with a reward plug still counts
+    ok = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "交易提醒",
+                                      "text": "你有一笔39.90元的支出，领立减1.08元权益。", "posted_at_ms": ms(2026, 10, 24, 20, 10)}).json()
+    assert ok["status"] == "created"
+
+
+def test_my_car_has_the_car_pages_kinds_as_subs(client):
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    assert "停车" in (cats["我的车"]["subs"] or []) and "加油" in cats["我的车"]["subs"]
+    r = _sms(client, "【建设银行】您账户1234于10月24日08:00向中国石化加油站支出300元,可用余额600元。", 8, 0, day=24)
+    t = r["transaction"]
+    assert t["category_id"] == cats["我的车"]["id"] and t["sub"] == "加油"
+    # picking 停车 in the popup also files it under 停车 on the 用车 page
+    w = _sms(client, "【建设银行】您账户1234于10月24日20:41向微信支付-智慧城市合作商户支出6元,可用余额594元。", 20, 41, day=24)
+    put = client.put(f"/transactions/{w['transaction']['id']}", json={"category_id": cats["我的车"]["id"], "sub": "停车"}).json()
+    assert put["sub"] == "停车" and put["car_bucket"] == "parking"
+
+
 def test_other_phones_copy_first_then_own(client):
     a = _ali(client, "你有一笔12.00元的支出，点此查看详情。", 2, 0, 0, device="his", key="k1")
     b = _ali(client, "你有一笔12.00元的支出，点击领取2个支付宝积分。", 2, 0, 20, device="her", key="k2")

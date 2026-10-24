@@ -12,11 +12,17 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 TRAVEL = "交通/酒店"
+CAR = "我的车"
+# the 用车 page's kinds (routers/analysis.CAR_BUCKETS) are this category's subs: key -> label
+CAR_SUBS = {"fuel": "加油", "repair": "保养维修", "insurance": "保险", "parking": "停车", "wash": "洗车",
+            "toll": "过路费", "parts": "配件", "other": "其他"}
+CAR_KEY = {label: key for key, label in CAR_SUBS.items()}
 SUBS = {
     "购物": ["数码", "日用", "服装", "其他"],
     "餐饮": ["饭店", "外卖", "食材", "零食", "水果/酸奶"],
     TRAVEL: ["交通", "酒店"],
     "狗狗": ["狗粮", "狗砂", "零食", "玩具", "医疗", "其他"],
+    CAR: list(CAR_SUBS.values()),
 }
 
 _SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
@@ -94,6 +100,9 @@ def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> 
         return None
     if cat_name == TRAVEL:
         return "酒店" if _has(hay, _HOTEL) else "交通"
+    if cat_name == CAR:
+        from app.routers.analysis import car_bucket      # lazy: the router imports models, which import this module
+        return CAR_SUBS[car_bucket(merchant, note)[0]]
     return None
 
 
@@ -144,6 +153,9 @@ def classify_all(db: Session) -> int:
                 if t.sub is not None:
                     t.sub, changed = None, changed + 1
                 continue
+            if name == CAR and t.car_bucket in CAR_SUBS and t.sub != CAR_SUBS[t.car_bucket]:
+                t.sub, changed = CAR_SUBS[t.car_bucket], changed + 1   # what the user picked on the 用车 page
+                continue
             if t.sub in allowed:
                 continue
             if name in ("购物", "餐饮", "其他支出") and not t.category_locked and "狗狗" in by_name and is_pet(t.merchant, t.note):
@@ -179,6 +191,9 @@ def register() -> None:
             if pid and t.category_id != pid:
                 t.category_id, t.sub = pid, keyword_sub("狗狗", t.merchant, t.note)
                 return
+        if name == CAR and t.sub is None and t.car_bucket in CAR_SUBS:
+            t.sub = CAR_SUBS[t.car_bucket]
+            return
         if name not in SUBS or t.sub is not None:
             return
         rules = [(p, s_) for p, s_ in connection.execute(select(R.c.pattern, R.c.sub).where(R.c.ledger_id == ledger_id, R.c.sub.isnot(None)))]

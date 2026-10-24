@@ -269,11 +269,16 @@ def update_transaction(
                                   models.Transaction.tx_type == tx.tx_type).all()):
                 if shop_core(other.merchant) == core:
                     other.sub = wanted
+    elif "car_bucket" in changes and cat_name == subcats.CAR:
+        tx.sub = subcats.CAR_SUBS.get(tx.car_bucket)          # changed on the 用车 page
     elif changes.get("category_id"):
         tx.sub = subcats.guess(cat_name, tx.merchant, tx.note, rules) if tx.tx_type == models.TxType.expense else None
         for other in db.query(models.Transaction).filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.id != tx.id,
                                                          models.Transaction.category_id == tx.category_id, models.Transaction.sub.is_(None)).all():
             other.sub = subcats.guess(cat_name, other.merchant, other.note, rules) if other.tx_type == models.TxType.expense else None
+
+    if cat_name == subcats.CAR and "sub" in changes:
+        tx.car_bucket = subcats.CAR_KEY.get(tx.sub)            # the 用车 page shows the same kind
 
     db.commit()
     db.refresh(tx)

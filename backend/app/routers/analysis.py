@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, schemas, subcats
 from app.database import get_db
 from app.deps import get_current_user
 from app.stats import current_cycle, cycle_bounds, period_data
@@ -272,6 +272,8 @@ def car_costs(range: str = "12m", db: Session = Depends(get_db), user: models.Us
         key, _label, _core = car_bucket(t.merchant, f"{t.note or ''} {t.raw_text or ''}")
         if t.car_bucket in buckets:
             key = t.car_bucket                        # the user said which kind it is
+        elif subcats.CAR_KEY.get(t.sub) in buckets:
+            key = subcats.CAR_KEY[t.sub]              # ...or picked it as the sub, in the popup / long-press menu
         if key == "other":                     # the user's own "parking fee" fixed item (paid to a property company, say)
             fx = item_for(fixed, t.amount, t.merchant, t.raw_text or "", t.occurred_at)
             if fx and "停车" in fx.get("name", ""):

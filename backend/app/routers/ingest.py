@@ -273,7 +273,9 @@ def ingest(
     # the SMS app prefixes a running "[39条]" counter that changes with every message: not part of the content
     title, text = payload.title or "", clean_text(payload.text or "")
     fp = _fingerprint(source, title, text, posted.strftime("%Y%m%d%H%M"))
-    if payload.device and payload.notif_key:
+    # only for WeChat/Alipay: the SMS app reuses ONE notification key for every message, so for SMS a key says nothing
+    keyed = bool(payload.device and payload.notif_key and source in ("wechat", "alipay"))
+    if keyed:
         # the same text twice can be two real payments (same shop, same amount, minutes apart): only the same
         # notification (same phone, same Android key) is a repeat
         fp = _fingerprint(source, title, f"{text}|{payload.device}|{payload.notif_key}", posted.strftime("%Y%m%d%H%M"))
@@ -283,7 +285,7 @@ def ingest(
         .filter(models.RawEvent.ledger_id == user.ledger_id, models.RawEvent.fingerprint == fp)
         .first()
     )
-    if not existing and payload.device and payload.notif_key:
+    if not existing and keyed:
         # a notice first recorded before phones sent their id (or sent from the queue without it), now re-read
         # from the shade: same text, same posting minute, no device on file
         legacy = _fingerprint(source, title, text, posted.strftime("%Y%m%d%H%M"))
@@ -318,7 +320,7 @@ def ingest(
         status = "failed" if (looks_financial(f"{title} {text}") or looks_like_ticket(text)) else "ignored"
     else:
         when = parsed.occurred_at or posted
-        same = _same_notice(db, user.ledger_id, payload) if (payload.device and payload.notif_key) else (
+        same = _same_notice(db, user.ledger_id, payload, source, text, posted) if keyed else (
             db.query(models.Transaction)
             .filter(
                 models.Transaction.ledger_id == user.ledger_id,
@@ -441,12 +443,14 @@ def ingest(
     return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx, **_popup_fields(db, source, status, tx))
 
 
-def _same_notice(db: Session, ledger_id: int, payload):
-    """The transaction this very notification (same phone, same Android key) already went into, if any: a
-    notification updated or re-read from the shade, never a new payment."""
+def _same_notice(db: Session, ledger_id: int, payload, source: str, text: str, posted):
+    """The transaction this very notification already went into, if any: same phone, same Android key, same text,
+    posted within 10 minutes - a notification updated or re-read from the shade, never a new payment. (Apps may reuse
+    a key for their next notice, so the key alone is not enough.)"""
     E = models.RawEvent
     ev = (db.query(E).filter(E.ledger_id == ledger_id, E.device == payload.device, E.notif_key == payload.notif_key,
-                             E.transaction_id.isnot(None)).first())
+                             E.source == source, E.text == text, E.transaction_id.isnot(None),
+                             E.posted_at >= posted - MERGE_WINDOW, E.posted_at <= posted + MERGE_WINDOW).first())
     return db.get(models.Transaction, ev.transaction_id) if ev else None
 
 

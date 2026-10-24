@@ -11,6 +11,23 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -201,13 +218,56 @@ private fun PaymentPopupCard(
     var selSub by remember { mutableStateOf(initialSub) }
     val selected = categories.find { it.id == selCat }
     val subs = selected?.subs.orEmpty()
+    // swipe the card down to close it. The drag can start anywhere on the card: on the category grid the scroll
+    // container takes it first, so whatever it does not use (it is already at the top) moves the card instead.
+    var dragY by remember { mutableStateOf(0f) }
+    val closeAt = with(LocalDensity.current) { 90.dp.toPx() }
+    fun release(velocity: Float) {
+        if (dragY > closeAt || velocity > 1500f) onDismiss() else dragY = 0f
+    }
+    val pullDown = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (dragY > 0f && available.y < 0f) {                  // dragging back up: undo the pull first
+                    val used = maxOf(available.y, -dragY)
+                    dragY += used
+                    return Offset(0f, used)
+                }
+                return Offset.Zero
+            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (available.y > 0f && source == NestedScrollSource.Drag) {
+                    dragY += available.y
+                    return Offset(0f, available.y)
+                }
+                return Offset.Zero
+            }
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (dragY > 0f) { release(available.y); return available }
+                return Velocity.Zero
+            }
+        }
+    }
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(12.dp)
+            .offset { IntOffset(0, dragY.roundToInt()) }
+            .alpha((1f - dragY / (closeAt * 3)).coerceIn(0.3f, 1f))
+            .nestedScroll(pullDown)
+            .draggable(
+                orientation = Orientation.Vertical,
+                state = rememberDraggableState { d -> dragY = (dragY + d).coerceAtLeast(0f) },
+                onDragStopped = { v -> release(v) }
+            ),
         shape = RoundedCornerShape(18.dp),
         tonalElevation = 8.dp,
         shadowElevation = 8.dp
     ) {
-        Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp).verticalScroll(rememberScrollState())) {
+            // grab handle: says "this can be pulled down"
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(width = 36.dp, height = 4.dp).clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("¥$amount", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
