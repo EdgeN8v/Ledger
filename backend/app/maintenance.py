@@ -115,13 +115,23 @@ def relink_orphan_refunds(db: Session) -> None:
     from app.refunds import relink_orphans
     relink_orphans(db)
     db.commit()
-def sync_refund_categories(db: Session) -> None:
-    """A refund always belongs to the category of the purchase it cancels (keeps category totals netting out)."""
-    for r in db.query(models.Transaction).filter(models.Transaction.refund_of_id.isnot(None)).all():
-        orig = db.get(models.Transaction, r.refund_of_id)
-        if orig and orig.category_id and r.category_id != orig.category_id:
-            r.category_id = orig.category_id
-    db.commit()
+def sync_refund_categories(db: Session, ledger_id: Optional[int] = None, commit: bool = True) -> int:
+    """A refund always belongs to the category of the purchase it cancels (keeps category totals netting out).
+    Returns how many refunds were moved. Needs the session flushed if the purchases were just changed."""
+    from sqlalchemy.orm import aliased
+    O = aliased(models.Transaction)
+    T = models.Transaction
+    q = (db.query(T, O.category_id).join(O, T.refund_of_id == O.id)
+         .filter(O.category_id.isnot(None), (T.category_id.is_(None)) | (T.category_id != O.category_id)))
+    if ledger_id is not None:
+        q = q.filter(T.ledger_id == ledger_id)
+    n = 0
+    for refund, category_id in q.all():
+        refund.category_id = category_id
+        n += 1
+    if commit:
+        db.commit()
+    return n
 
 
 def recategorize_uncategorized(db: Session) -> None:

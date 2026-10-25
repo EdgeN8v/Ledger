@@ -10,6 +10,7 @@ from app import models, schemas
 from app.database import get_db
 from app.clock import now_local
 from app.deps import get_current_user
+from app.maintenance import sync_refund_categories
 from app.merchants import UNNAMED_DEDUCTION, is_generic, is_unnamed_deduction, shop_core
 from app.refunds import WINDOW, refunded_amount
 from app.stats import cycle_bounds, period_data
@@ -279,6 +280,12 @@ def update_transaction(
 
     if cat_name == subcats.CAR and "sub" in changes:
         tx.car_bucket = subcats.CAR_KEY.get(tx.sub)            # the 用车 page shows the same kind
+
+    if "category_id" in changes and not tx.refund_of_id:
+        # a returned purchase re-filed under another category: its refunds belong to the new one too (the shop's
+        # other purchases may have been re-filed by the rule above, so every refund of this ledger is checked)
+        db.flush()
+        sync_refund_categories(db, user.ledger_id, commit=False)
 
     db.commit()
     db.refresh(tx)

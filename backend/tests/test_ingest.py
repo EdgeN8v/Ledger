@@ -426,6 +426,31 @@ def test_family_card_payment_pops_on_the_payers_phone_not_the_card_owners(client
     assert a["status"] == "created" and b["status"] == "duplicate" and b.get("amount") is None
 
 
+def test_a_refund_follows_when_its_purchase_is_refiled(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    buy = _sms(client, "【建设银行】您账户1234于10月24日10:00向支付宝-某某杂货铺支出35.13元,可用余额900元。", 10, 0, day=24)["transaction"]
+    ref = _sms(client, "【建设银行】支付宝-某某杂货铺于10月24日17:00向您账户1234消费退货存入35.13元,可用余额935元。", 17, 0, day=24)["transaction"]
+    assert ref["refund_of_id"] == buy["id"] and ref["category_id"] == buy["category_id"]
+    old = buy["category_id"]
+    # the purchase is re-filed: the refund must not stay behind in the old category
+    client.put(f"/transactions/{buy['id']}", json={"category_id": cats["教育"]})
+    by_id = {t["id"]: t for t in client.get("/transactions").json()}
+    assert by_id[buy["id"]]["category_id"] == cats["教育"] != old
+    assert by_id[ref["id"]]["category_id"] == cats["教育"]
+    # a later purchase of the same shop is re-filed by the learned rule, and so is its own refund
+    buy2 = _sms(client, "【建设银行】您账户1234于10月25日10:00向支付宝-某某杂货铺支出20元,可用余额915元。", 10, 0, day=25)["transaction"]
+    ref2 = _sms(client, "【建设银行】支付宝-某某杂货铺于10月25日17:00向您账户1234消费退货存入20元,可用余额935元。", 17, 0, day=25)["transaction"]
+    assert ref2["refund_of_id"] == buy2["id"]
+    client.put(f"/transactions/{buy['id']}", json={"category_id": cats["娱乐"]})
+    by_id = {t["id"]: t for t in client.get("/transactions").json()}
+    assert by_id[ref["id"]]["category_id"] == cats["娱乐"]
+    assert by_id[ref2["id"]]["category_id"] == by_id[buy2["id"]]["category_id"]
+    # editing the refund itself changes nothing else
+    client.put(f"/transactions/{ref['id']}", json={"note": "退货"})
+    by_id = {t["id"]: t for t in client.get("/transactions").json()}
+    assert by_id[buy["id"]]["category_id"] == cats["娱乐"] and by_id[ref["id"]]["category_id"] == cats["娱乐"]
+
+
 def test_a_daily_total_notice_is_not_a_payment(client):
     r = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "银行卡支出提醒",
                                      "text": "昨日卡账单已出，其中支付宝交易共计73.38元", "posted_at_ms": ms(2026, 10, 25, 12, 12)}).json()
