@@ -33,7 +33,11 @@ def _day_ok(item: dict, when: Optional[datetime]) -> bool:
     return abs(when.day - int(day)) <= int(tol) or abs(when.day - int(day)) >= 31 - int(tol)
 
 
-def matches(item: dict, amount, merchant: Optional[str], text: str, when: Optional[datetime]) -> bool:
+def matches(item: dict, amount, merchant: Optional[str], text: str, when: Optional[datetime], sub: Optional[str] = None) -> bool:
+    # "match_sub": a payment the user (or a keyword) filed under one of these sub-categories IS this item, whatever
+    # shop name or amount it came with - for bills whose company name and amount change every month
+    if sub and sub in (item.get("match_sub") or []):
+        return True
     amounts = item.get("match_amount") or []
     merchants = item.get("match_merchants") or []
     texts = item.get("match_text") or []
@@ -65,11 +69,34 @@ def category_name_for(items: list[dict], tx_type: str, amount, merchant, text, w
     return None
 
 
-def item_for(items: list[dict], amount, merchant, text, when) -> Optional[dict]:
+def item_for(items: list[dict], amount, merchant, text, when, sub: Optional[str] = None) -> Optional[dict]:
     for it in items:
-        if matches(it, amount, merchant, text, when):
+        if matches(it, amount, merchant, text, when, sub):
             return it
     return None
+
+
+def cycle_starts_between(start_day: int, after: date, upto: date) -> int:
+    """How many pay-cycle starts (the `start_day` of a month) fall after `after` and on or before `upto`."""
+    n, y, m = 0, after.year, after.month
+    while True:
+        d = date(y, m, min(start_day, calendar.monthrange(y, m)[1]))
+        if d > upto:
+            return n
+        if d > after:
+            n += 1
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+
+
+def pot_amount(item: dict, start_day: int, last_paid: Optional[date], today: date) -> Decimal:
+    """The sinking fund of a lumpy bill (rent every 3 months, parking 2-3 months at once): the reserve the plan sets aside
+    every cycle, added up since the bill was last paid, never more than the bill itself ("pot_cap"). Paid on 9-27 with
+    4900 a cycle: 4900 after the 20 Oct, 9800 after the 20 Nov, 14700 after the 20 Dec - exactly the next bill."""
+    cap = Decimal(str(item.get("pot_cap") or 0))
+    per = Decimal(str(item.get("monthly") or 0))
+    if cap <= 0 or per <= 0 or last_paid is None:
+        return ZERO
+    return min(cap, per * cycle_starts_between(start_day, last_paid, today))
 
 
 def cycle_key(year: int, month: int) -> str:

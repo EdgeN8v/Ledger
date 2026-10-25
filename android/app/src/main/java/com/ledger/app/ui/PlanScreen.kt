@@ -169,6 +169,10 @@ fun PlanScreen(
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { marking = f }, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(f.name + (f.due_day?.let { "  (每月${it}号)" } ?: ""), style = MaterialTheme.typography.bodyMedium)
+                                if (f.pot != null && f.pot_cap != null) {
+                                    // lumpy bill (rent every 3 months): what has been set aside so far for the next one
+                                    Text("已攒 ${money(f.pot)} / ${money(f.pot_cap)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                }
                                 Text(
                                     "历史", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.clickable {

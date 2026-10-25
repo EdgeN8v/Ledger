@@ -144,11 +144,22 @@ data class AccountDto(
     val include_in_total: Boolean
 )
 
+data class EarmarkedDto(
+    val name: String,
+    val amount: String,
+    val cap: String,
+    val due: String? = null,
+    val last_paid: String? = null
+)
+
 data class AccountsOverviewDto(
     val receivable: String = "0",
     val receivable_trips: List<String> = emptyList(),
     val total: String,
-    val accounts: List<AccountDto>
+    val accounts: List<AccountDto>,
+    val earmarked: List<EarmarkedDto> = emptyList(),   // money in the accounts that is already spoken for (the rent fund ...)
+    val earmarked_total: String = "0",
+    val free_total: String? = null
 )
 
 data class AccountCreateRequest(
@@ -244,7 +255,11 @@ data class FixedItemDto(
     val due_day: Int? = null,
     val note: String? = null,
     val paid_note: String? = null,
-    val state: String
+    val state: String,
+    val pot: String? = null,            // sinking fund set aside so far for a lumpy bill (rent every 3 months)
+    val pot_cap: String? = null,        // ... and what the next bill costs
+    val pot_last_paid: String? = null,
+    val pot_due: String? = null
 )
 
 data class FixedMarkRequest(val name: String, val paid: Boolean? = null, val paid_until: String? = null)

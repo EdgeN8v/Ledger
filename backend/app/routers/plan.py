@@ -1,5 +1,5 @@
 """The savings plan: how much to keep each pay cycle, and where the cycle stands against it."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -11,7 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 import json
 
-from app.fixed import cycle_key, item_for, load, marked_paid, matches, reminders
+from app.fixed import cycle_key, item_for, load, marked_paid, matches, pot_amount, reminders
 from app.clock import now_local
 from app.stats import current_cycle, cycle_bounds, period_data
 
@@ -34,6 +34,28 @@ def _salary_estimate(db: Session, ledger: models.Ledger) -> Decimal:
         .all()
     )
     return min((r.amount for r in rows), default=ZERO).quantize(Decimal("0.01"))
+
+
+def pots_for(db: Session, l: models.Ledger, items: list[dict], today: date) -> dict:
+    """name -> {amount, cap, last_paid, due} for every item with a "pot_cap". The fund starts after the item's last real
+    payment: a matching expense of at least one cycle's reserve (so a 10-yuan street-parking fee is not "the" parking bill)."""
+    wanted = [it for it in items if it.get("pot_cap")]
+    if not wanted:
+        return {}
+    rows = (db.query(models.Transaction)
+            .filter(models.Transaction.ledger_id == l.id, models.Transaction.tx_type == models.TxType.expense,
+                    models.Transaction.is_transfer.is_(False), models.Transaction.refund_of_id.is_(None),
+                    models.Transaction.occurred_at >= datetime.combine(today - timedelta(days=500), datetime.min.time()))
+            .all())
+    out = {}
+    for it in wanted:
+        per = Decimal(str(it.get("monthly") or 0))
+        paid_on = [t.occurred_at.date() for t in rows
+                   if t.amount >= per and t.occurred_at.date() <= today and matches(it, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)]
+        last = max(paid_on, default=None)
+        out[it["name"]] = {"amount": pot_amount(it, l.cycle_start_day or 1, last, today).quantize(Decimal("0.01")),
+                           "cap": Decimal(str(it["pot_cap"])), "last_paid": last.isoformat() if last else None, "due": it.get("paid_until")}
+    return out
 
 
 @router.get("", response_model=schemas.PlanOut)
@@ -60,7 +82,7 @@ def bill_reminders(db: Session = Depends(get_db), user: models.User = Depends(ge
     )
 
     def paid(item) -> bool:
-        return any(matches(item, t.amount, t.merchant, t.raw_text or "", None) for t in rows)
+        return any(matches(item, t.amount, t.merchant, t.raw_text or "", None, t.sub) for t in rows)
 
     y, m = current_cycle(l.cycle_start_day or 1, today)
     return reminders(load(l), today, paid, cycle_key(y, m))
@@ -84,7 +106,7 @@ def fixed_history(name: str, cycles: int = 6, db: Session = Depends(get_db), use
         year, month = (year - 1, 12) if month == 1 else (year, month - 1)
         start, end = cycle_bounds(start_day, year, month)
         d = period_data(db, l.id, start, end)
-        got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at) or {}).get("name") == name), ZERO)
+        got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub) or {}).get("name") == name), ZERO)
         out.append(schemas.FixedHistoryEntry(
             period_start=start.strftime("%Y-%m-%d"), period_end=(end - timedelta(days=1)).strftime("%Y-%m-%d"), amount=got,
         ))
@@ -159,7 +181,7 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
 
     paid = {it["name"]: ZERO for it in items}
     for t, eff in data.expenses:
-        it = item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at)
+        it = item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)
         if it is not None:
             paid[it["name"]] += eff                 # whatever matches is a fixed payment, seen or not
 
@@ -174,11 +196,12 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
             py, pm = (py - 1, 12) if pm == 1 else (py, pm - 1)
             ps, pe = cycle_bounds(start_day, py, pm)
             d = period_data(db, l.id, ps, pe)
-            got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at) or {}).get("name") == it["name"]), ZERO)
+            got = sum((e for t, e in d.expenses if (item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub) or {}).get("name") == it["name"]), ZERO)
             if got:
                 return got.quantize(Decimal("0.01"))
         return ZERO
 
+    pots = pots_for(db, l, items, today)
     fixed_rows, fixed_total, matched_total = [], ZERO, ZERO
     for it in items:
         r = reserve(it)
@@ -190,6 +213,8 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
             name=it["name"], reserve=r, paid=paid[it["name"]], tracked=tracked, due_day=it.get("due_day"), note=it.get("note"),
             paid_note=why,
             state="paid" if (paid[it["name"]] > 0 or why) else ("waiting" if tracked else "reserved"),
+            pot=pots.get(it["name"], {}).get("amount"), pot_cap=pots.get(it["name"], {}).get("cap"),
+            pot_last_paid=pots.get(it["name"], {}).get("last_paid"), pot_due=pots.get(it["name"], {}).get("due"),
         ))
     if not items:                                    # no itemised commitments: the old single "fixed expenses" figure
         fixed_total = l.fixed_expenses or ZERO
@@ -202,7 +227,7 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
     else:
         income_basis = data.income if data.income > 0 else expected
     budget = income_basis - fixed_total - target                 # what may be spent freely this cycle
-    trip_total = sum((e for t, e in data.expenses if t.trip_id and not item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at)), ZERO)
+    trip_total = sum((e for t, e in data.expenses if t.trip_id and not item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)), ZERO)
     spent = data.expense - matched_total - trip_total            # everyday spending only (fixed items and trips are separate)
     remaining = budget - spent - trip_total                      # ...but a trip is real money, so it does come off what is left
     # forecast: extrapolate the everyday pace only; a trip is a one-off that happened, not a habit

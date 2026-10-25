@@ -23,12 +23,13 @@ SUBS = {
     TRAVEL: ["交通", "酒店"],
     "狗狗": ["狗粮", "狗砂", "零食", "玩具", "医疗", "其他"],
     CAR: list(CAR_SUBS.values()),
+    "订阅服务": ["美国节点", "香港节点"],
 }
 
 _SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
           "好想来,零食很忙,蜜雪冰城,茶百道,古茗,喜茶,奈雪,霸王茶姬,沪上阿姨,瑞幸,星巴克,库迪,冰淇淋,甜品,冷饮,饮品,面包,蛋糕,烘焙,好利来,糕点,零嘴,"
           "便利店,全家,便利蜂,罗森,7-ELEVEN,711,雪糕,冰棍,果汁,可乐,啤酒").split(",")
-_GROCERY = ("超市,买菜,菜市场,菜场,农贸,生鲜,盒马,叮咚,小象,永辉,沃尔玛,山姆,大润发,物美,家乐福,联华,华润万家,百联,每日优鲜,蔬菜,肉铺,"
+_GROCERY = ("象鲜,超市,买菜,菜市场,菜场,农贸,生鲜,盒马,叮咚,小象,永辉,沃尔玛,山姆,大润发,物美,家乐福,联华,华润万家,百联,每日优鲜,蔬菜,肉铺,"
             "粮油,大米,面条,食用油,调料,酱油,牛排,海鲜,鸡蛋,卖场").split(",")
 _FRUIT = ("水果,果切,百果园,鲜丰水果,果多美,甘源,苹果,香蕉,橙子,脐橙,西瓜,葡萄,草莓,车厘子,榴莲,芒果,橘子,酸奶,"
           "柑橘,柚子,水蜜桃,猕猴桃,哈密瓜,荔枝,石榴,甘蔗,樱桃,梨,柿子,枣,山竹,释迦,菠萝,椰子,火龙果,百香果").split(",")
@@ -100,6 +101,15 @@ def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> 
         return None
     if cat_name == TRAVEL:
         return "酒店" if _has(hay, _HOTEL) else "交通"
+    if cat_name == "订阅服务":
+        # the two VPN nodes bill under a different company name every month and in a floating amount, so a keyword
+        # only helps when the text names the provider; otherwise the user tags it once and the plan follows the tag
+        low = hay.lower()
+        if "evoxt" in low or "razer" in low:
+            return "香港节点"
+        if "千杯" in hay:
+            return "美国节点"
+        return None
     if cat_name == CAR:
         from app.routers.analysis import car_bucket      # lazy: the router imports models, which import this module
         return CAR_SUBS[car_bucket(merchant, note)[0]]

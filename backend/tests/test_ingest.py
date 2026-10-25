@@ -783,6 +783,71 @@ def test_fixed_items_file_payments_and_reserve_budget(client):
     assert by["妈妈生活费"]["state"] == "paid" and by["房租"]["state"] == "paid"
 
 
+def test_the_sinking_fund_arithmetic():
+    from datetime import date
+    from app.fixed import cycle_starts_between, pot_amount
+    rent = {"monthly": 4900, "pot_cap": 14700}
+    # paid on 9-27, cycles start on the 20th: the first full reserve lands on 10-20, then 11-20, 12-20
+    assert cycle_starts_between(20, date(2026, 9, 27), date(2026, 10, 19)) == 0
+    assert cycle_starts_between(20, date(2026, 9, 27), date(2026, 10, 25)) == 1
+    assert cycle_starts_between(20, date(2026, 9, 27), date(2026, 12, 25)) == 3
+    assert pot_amount(rent, 20, date(2026, 9, 27), date(2026, 10, 25)) == 4900
+    assert pot_amount(rent, 20, date(2026, 9, 27), date(2026, 11, 20)) == 9800
+    assert pot_amount(rent, 20, date(2026, 9, 27), date(2026, 12, 20)) == 14700
+    assert pot_amount(rent, 20, date(2026, 9, 27), date(2027, 2, 1)) == 14700          # never more than the bill
+    assert pot_amount(rent, 20, date(2026, 12, 27), date(2026, 12, 28)) == 0           # paid: starts over
+    assert pot_amount(rent, 20, None, date(2026, 10, 25)) == 0                         # no payment on record
+    assert pot_amount({"monthly": 4900}, 20, date(2026, 9, 27), date(2026, 10, 25)) == 0   # no pot_cap = no pot
+    assert cycle_starts_between(31, date(2026, 1, 31), date(2026, 3, 1)) == 1           # short months: Feb counts on the 28th
+
+
+def test_rent_sinking_fund_is_taken_out_of_what_is_free(client):
+    from datetime import timedelta
+    from app.clock import now_local
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 2000, "expected_income": 10000, "fixed_items": [
+        {"name": "房租", "monthly": 4900, "tracked": True, "category": "居住", "match_amount": [14700], "pot_cap": 14700,
+         "paid_until": "2099-12-31"}]})
+    client.post("/accounts", json={"name": "工资卡", "kind": "bank", "balance": "50000"})
+    ov = client.get("/accounts").json()
+    assert ov["earmarked"] == [] and float(ov["free_total"]) == 50000.0           # no rent payment on record yet: no fund
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    paid_on = (now_local() - timedelta(days=100)).isoformat()                     # 100 days always hold 3+ cycle starts
+    r = client.post("/transactions", json={"tx_type": "expense", "amount": "14700", "category_id": cats["居住"], "note": "房租", "occurred_at": paid_on})
+    assert r.status_code in (200, 201)
+    ov = client.get("/accounts").json()
+    assert [e["name"] for e in ov["earmarked"]] == ["房租"] and float(ov["earmarked"][0]["amount"]) == 14700.0
+    assert float(ov["earmarked_total"]) == 14700.0 and float(ov["free_total"]) == 35300.0 and float(ov["total"]) == 50000.0
+    st = client.get("/plan/status").json()
+    rent = [i for i in st["fixed_items"] if i["name"] == "房租"][0]
+    assert float(rent["pot"]) == 14700.0 and float(rent["pot_cap"]) == 14700.0 and rent["pot_last_paid"] == paid_on[:10]
+
+
+def test_a_subscription_is_recognised_by_its_sub_category_not_by_shop_or_amount(client):
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    assert cats["订阅服务"]["subs"] == ["美国节点", "香港节点"]
+    client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [
+        {"name": "美国节点", "monthly": 138, "tracked": True, "category": "订阅服务", "match_amount": [138], "match_sub": ["美国节点"]},
+        {"name": "香港节点", "monthly": 43, "tracked": True, "category": "订阅服务", "match_sub": ["香港节点"]}]})
+    st = client.get("/plan/status").json()
+    assert {i["name"]: i["state"] for i in st["fixed_items"]} == {"美国节点": "waiting", "香港节点": "waiting"}
+    # this month's bill: a company name never seen before, 138.95 instead of 138 - the old amount/shop match missed it
+    us = client.post("/transactions", json={"tx_type": "expense", "amount": "138.95", "category_id": cats["订阅服务"]["id"], "note": "成都某某商贸"}).json()
+    assert client.get("/plan/status").json()["fixed_items"][0]["state"] == "waiting"          # untagged: still not recognised
+    assert client.put(f"/transactions/{us['id']}", json={"sub": "美国节点"}).status_code == 200
+    st = client.get("/plan/status").json()
+    by = {i["name"]: i for i in st["fixed_items"]}
+    assert by["美国节点"]["state"] == "paid" and float(by["美国节点"]["paid"]) == 138.95
+    assert by["香港节点"]["state"] == "waiting"                                                # the other node is not tagged
+    # the provider's own name does file it by itself
+    hk = client.post("/transactions", json={"tx_type": "expense", "amount": "42.06", "category_id": cats["订阅服务"]["id"], "note": "RAZER MERCHANT*"}).json()
+    assert hk["sub"] == "香港节点"
+    assert {i["name"]: i["state"] for i in client.get("/plan/status").json()["fixed_items"]}["香港节点"] == "paid"
+    # 象鲜 (the Meituan grocery company) is groceries, not a restaurant
+    from app.subcats import keyword_sub
+    assert keyword_sub("餐饮", "美团支付-美团上海象鲜网络科技有限公司", None) == "食材"
+
+
 def test_heavy_early_spending_does_not_falsely_flag_at_risk(client):
     # two days into a 31-day cycle, spending fast enough that naive extrapolation would blow the budget - but the
     # actual money spent so far is still well under it, so the state must stay on_track, not a scary early guess

@@ -231,11 +231,22 @@ class ReceivableTrip(BaseModel):
     items: list[ReceivableItem]
 
 
+class EarmarkedOut(BaseModel):
+    name: str
+    amount: Decimal               # set aside so far
+    cap: Decimal                  # the bill it is for
+    due: Optional[str] = None
+    last_paid: Optional[str] = None
+
+
 class AccountsOverview(BaseModel):
     receivable: Decimal = Decimal(0)   # business trips waiting to be paid back (not part of the total)
     receivable_trips: list[str] = []
     total: Decimal                # sum of balances of accounts counted in the total
     accounts: list[AccountOut]
+    earmarked: list[EarmarkedOut] = []     # money in the accounts that is already spoken for (rent fund ...)
+    earmarked_total: Decimal = Decimal(0)
+    free_total: Optional[Decimal] = None   # total - earmarked_total: what is really free
 
 
 class LedgerSettings(BaseModel):
@@ -290,6 +301,10 @@ class FixedItemStatus(BaseModel):
     note: Optional[str] = None
     paid_note: Optional[str] = None
     state: str                  # paid / waiting / reserved
+    pot: Optional[Decimal] = None          # sinking fund set aside so far for a lumpy bill (None = this item has none)
+    pot_cap: Optional[Decimal] = None      # ... and what the next bill will cost
+    pot_last_paid: Optional[str] = None    # YYYY-MM-DD of the payment the fund started after
+    pot_due: Optional[str] = None          # YYYY-MM-DD the next bill falls due (paid-in-advance date), if known
 
 
 class PlanStatus(BaseModel):

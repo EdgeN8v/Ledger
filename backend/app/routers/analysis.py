@@ -275,7 +275,7 @@ def car_costs(range: str = "12m", db: Session = Depends(get_db), user: models.Us
         elif subcats.CAR_KEY.get(t.sub) in buckets:
             key = subcats.CAR_KEY[t.sub]              # ...or picked it as the sub, in the popup / long-press menu
         if key == "other":                     # the user's own "parking fee" fixed item (paid to a property company, say)
-            fx = item_for(fixed, t.amount, t.merchant, t.raw_text or "", t.occurred_at)
+            fx = item_for(fixed, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)
             if fx and "停车" in fx.get("name", ""):
                 key = "parking"
         b = buckets[key]

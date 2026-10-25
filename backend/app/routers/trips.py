@@ -63,7 +63,7 @@ def _eligible(db: Session, ledger: models.Ledger, start: date, end: date, busine
                 continue                               # taxis and meals are the user's own spending
         elif cats.get(t.category_id) not in TRIP_CATEGORIES:
             continue
-        if item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at):
+        if item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub):
             continue                                   # rent, parking subscription... are fixed items
         out.append(t)
     return out

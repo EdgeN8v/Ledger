@@ -65,6 +65,20 @@ fun AccountsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                // part of the total is already spoken for (the rent that is paid every 3 months but set aside every
+                // month): shown apart, so what is left is what is really free to save or spend
+                val spoken = state.overview?.earmarked.orEmpty()
+                if (spoken.isNotEmpty()) {
+                    spoken.forEach { e ->
+                        val due = e.due?.takeIf { it.length >= 10 }?.let { " · ${it.substring(5, 7).trimStart('0')}月${it.substring(8, 10).trimStart('0')}日前要付" } ?: ""
+                        Text(
+                            "其中 ${e.name}专款 ${money(e.amount)} / ${money(e.cap)}$due",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
+                    Text("可自由支配 ${money(state.overview?.free_total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                }
             }
         }
 
