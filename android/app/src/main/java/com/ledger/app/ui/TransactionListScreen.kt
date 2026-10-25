@@ -171,7 +171,13 @@ fun TransactionListScreen(
             FilterHeader(state, onFilterChange)
 
             Box(modifier = Modifier.fillMaxSize().pullRefresh(pullState)) {
-                if (state.transactions.isEmpty() && !refreshing) {
+                if (state.transactions.isEmpty() && refreshing) {
+                    // loading, not empty: say so instead of showing "no records" for the seconds the list takes
+                    Column(modifier = Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                        Text("加载中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    }
+                } else if (state.transactions.isEmpty() && !refreshing) {
                     Column(
                         modifier = Modifier.align(Alignment.Center).padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally

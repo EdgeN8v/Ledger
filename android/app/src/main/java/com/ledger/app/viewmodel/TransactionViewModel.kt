@@ -112,18 +112,23 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     /** First page again (pull-to-refresh, app resume, filter change). */
     fun refresh() {
         viewModelScope.launch {
-            val hasData = _state.value.transactions.isNotEmpty() || _state.value.cycleSummary != null
-            _state.value = _state.value.copy(loading = !hasData, error = null)
+            // "loading" while there is no list to keep showing: a filter change empties the list first, and an empty list
+            // that is only waiting for the server must never read as "no records" (it used to, for a few seconds)
+            val hasList = _state.value.transactions.isNotEmpty()
+            val asked = _state.value.filter
+            _state.value = _state.value.copy(loading = !hasList, error = null)
             try {
+                // the list first - it is what is being waited for; the account details below used to come first
+                val page = fetch(0, pageSize)
+                if (_state.value.filter != asked) return@launch            // the filter changed meanwhile: a newer load is on its way
+                _state.value = _state.value.copy(
+                    loading = false, transactions = page, endReached = page.size < pageSize
+                )
                 val me = api().me()
                 val categories = api().listCategories()
                 val trips = try { api().listTrips().filter { it.kind == "business" } } catch (_: Exception) { emptyList() }
                 _state.value = _state.value.copy(
                     inviteCode = me.invite_code, cycleStartDay = me.cycle_start_day, categories = categories, businessTrips = trips
-                )
-                val page = fetch(0, pageSize)
-                _state.value = _state.value.copy(
-                    loading = false, transactions = page, endReached = page.size < pageSize
                 )
                 val app = getApplication<Application>()
                 com.ledger.app.data.DiskCache.put(app, "categories", categories)

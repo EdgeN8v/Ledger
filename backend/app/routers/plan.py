@@ -185,12 +185,10 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         if it is not None:
             paid[it["name"]] += eff                 # whatever matches is a fixed payment, seen or not
 
-    def reserve(it) -> Decimal:
-        if it.get("monthly"):
-            return Decimal(str(it["monthly"]))
-        # amount unknown (utilities): use the last cycle that actually had a bill, so a sudden jump this winter
-        # shows up right away instead of being smoothed out by older, cheaper cycles - fall further back only
-        # if the most recent cycles are missing a bill entirely (e.g. not imported yet)
+    def last_bill(it) -> Decimal:
+        # the last cycle that actually had a bill, so a sudden jump this winter shows up right away instead of being
+        # smoothed out by older, cheaper cycles - fall further back only if the most recent cycles are missing a
+        # bill entirely (e.g. not imported yet)
         py, pm = year, month
         for _ in range(6):
             py, pm = (py - 1, 12) if pm == 1 else (py, pm - 1)
@@ -200,6 +198,17 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
             if got:
                 return got.quantize(Decimal("0.01"))
         return ZERO
+
+    def reserve(it) -> Decimal:
+        # an item whose amount moves every cycle (utilities; a dollar-priced server billed at the month's exchange
+        # rate - "variable", or no fixed "monthly" at all): this cycle's real bill once it is in, and until then last
+        # cycle's real bill - a typed-in "monthly" is only the fallback for a first cycle with no history
+        if it.get("variable") or not it.get("monthly"):
+            actual = paid[it["name"]]
+            if actual > 0:
+                return actual.quantize(Decimal("0.01"))
+            return last_bill(it) or Decimal(str(it.get("monthly") or 0))
+        return Decimal(str(it["monthly"]))
 
     pots = pots_for(db, l, items, today)
     fixed_rows, fixed_total, matched_total = [], ZERO, ZERO
@@ -226,6 +235,15 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         income_basis = max(l.expected_income, data.income)
     else:
         income_basis = data.income if data.income > 0 else expected
+    income_is_estimate = data.income <= 0 or (bool(l.expected_income) and data.income < l.expected_income)
+    cat_names = {c.id: c.name for c in db.query(models.Category).filter(models.Category.ledger_id == l.id)}
+    parts: dict = {}
+    for t in data.incomes:
+        parts[cat_names.get(t.category_id) or "其他收入"] = parts.get(cat_names.get(t.category_id) or "其他收入", ZERO) + t.amount
+    gap = data.income - sum(parts.values(), ZERO)
+    if abs(gap) >= Decimal("0.005"):                              # e.g. a business trip's allowance counts less than the transfer
+        parts["出差补贴"] = parts.get("出差补贴", ZERO) + gap
+    income_items = [schemas.IncomeItem(name=n, amount=a) for n, a in sorted(parts.items(), key=lambda kv: -kv[1]) if a]
     budget = income_basis - fixed_total - target                 # what may be spent freely this cycle
     trip_total = sum((e for t, e in data.expenses if t.trip_id and not item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)), ZERO)
     spent = data.expense - matched_total - trip_total            # everyday spending only (fixed items and trips are separate)
@@ -254,7 +272,8 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         year=year, month=month, period_start=start.strftime("%Y-%m-%d"),
         period_end=(end - timedelta(days=1)).strftime("%Y-%m-%d"),
         days_total=total_days, days_elapsed=elapsed, days_left=left,
-        income_actual=data.income, income_basis=income_basis, fixed_expenses=fixed_total, savings_target=target,
+        income_actual=data.income, income_basis=income_basis, income_is_estimate=income_is_estimate, income_items=income_items,
+        fixed_expenses=fixed_total, savings_target=target,
         budget=budget, spent=spent, remaining=remaining, daily_allowance=allowance.quantize(Decimal("0.01")),
         projected_spend=pace.quantize(Decimal("0.01")), projected_saving=projected_save.quantize(Decimal("0.01")),
         saved_so_far=saved_so_far, state=state, fixed_total=fixed_total, fixed_items=fixed_rows, spent_total=data.expense, trip_total=trip_total,

@@ -184,6 +184,8 @@ data class PlanInRequest(
     val treat_budget: String? = null
 )
 
+data class IncomeItemDto(val name: String, val amount: String)
+
 data class PlanStatusDto(
     val year: Int,
     val month: Int,
@@ -194,6 +196,8 @@ data class PlanStatusDto(
     val days_left: Int,
     val income_actual: String,
     val income_basis: String,
+    val income_is_estimate: Boolean = false,                 // the cycle's pay is not in yet: the basis is a guess
+    val income_items: List<IncomeItemDto> = emptyList(),     // what really arrived this cycle, by category
     val fixed_expenses: String,
     val savings_target: String,
     val fixed_total: String = "0",

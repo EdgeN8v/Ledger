@@ -201,8 +201,18 @@ fun PlanScreen(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("我的计划", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                PlanRow("每月月收入",
-                    (plan?.expected_income?.let { money(it) } ?: ("自动 " + money(plan?.estimated_income))))
+                // pay is not the same every month, so show what this cycle really is: what has arrived, and only
+                // before pay day a cautious guess, labelled as one
+                if (st != null) {
+                    PlanRow(if (st.income_is_estimate) "本期收入(预估)" else "本期收入", money(st.income_basis))
+                    Text(
+                        if (st.income_is_estimate || st.income_items.isEmpty()) "工资还没到账, 先按最近三次工资里最低的一次估算; 到账后按实际的算"
+                        else st.income_items.joinToString(" + ") { it.name + " " + money(it.amount) } + "  (实际到账)",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    PlanRow("本期收入", "按实际到账的算")
+                }
                 PlanRow("固定支出", if (st != null && st.fixed_items.isNotEmpty()) "按上面的明细" else (plan?.fixed_expenses?.let { money(it) } ?: "未设置"))
                 PlanRow("每月要存", plan?.savings_target?.let { money(it) } ?: "未设置")
                 Button(onClick = { editing = true }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("修改计划") }
@@ -291,7 +301,7 @@ fun PlanScreen(
             text = {
                 Column {
                     OutlinedTextField(income, { income = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        label = { Text("每月收入 (空白=按工资自动算)") })
+                        label = { Text("收入保底(选填; 工资不固定就留空)") })
                     OutlinedTextField(fixed, { fixed = it }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         label = { Text("固定支出, 如房租") })
                     OutlinedTextField(target, { target = it }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

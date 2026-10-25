@@ -848,6 +848,45 @@ def test_a_subscription_is_recognised_by_its_sub_category_not_by_shop_or_amount(
     assert keyword_sub("餐饮", "美团支付-美团上海象鲜网络科技有限公司", None) == "食材"
 
 
+def test_a_variable_bill_reserves_what_it_really_cost_not_a_typed_in_guess(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [
+        {"name": "海外节点", "monthly": 43, "variable": True, "tracked": True, "category": "订阅服务", "match_sub": ["香港节点"]},
+        {"name": "房租", "monthly": 4900, "tracked": False, "category": "居住", "match_amount": [14700]}]})
+
+    def bill(amount, day):
+        t = client.post("/transactions", json={"tx_type": "expense", "amount": amount, "category_id": cats["订阅服务"], "occurred_at": day}).json()
+        client.put(f"/transactions/{t['id']}", json={"sub": "香港节点"})
+
+    def reserve(year, month):
+        by = {i["name"]: i for i in client.get("/plan/status", params={"year": year, "month": month}).json()["fixed_items"]}
+        return float(by["海外节点"]["reserve"]), float(by["房租"]["reserve"])
+
+    assert reserve(2026, 9) == (43.0, 4900.0)                       # no history yet: the typed-in figure
+    bill("42.06", "2026-09-29T12:00:00")                            # the September cycle (9-20 .. 10-19) really cost 42.06
+    assert reserve(2026, 9) == (42.06, 4900.0)                      # paid in the cycle: the real bill, not 43
+    assert reserve(2026, 10) == (42.06, 4900.0)                     # October's cycle, bill not in yet: last cycle's real bill
+    bill("42.51", "2026-10-29T12:00:00")                            # the exchange rate moved
+    assert reserve(2026, 10) == (42.51, 4900.0)                     # ...and October now uses its own
+    assert reserve(2026, 11) == (42.51, 4900.0)                     # ...and November starts from it
+    # a fixed amount stays fixed whatever is paid
+    assert reserve(2026, 8)[1] == 4900.0
+
+
+def test_plan_status_says_what_the_income_really_is(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 1000})
+    st = client.get("/plan/status", params={"year": 2026, "month": 10}).json()
+    assert st["income_is_estimate"] is True and st["income_items"] == []            # pay not in yet: only a guess
+    for name, amount, day in (("工资", "14374.85", "2026-10-20T09:00:00"), ("公积金", "4000", "2026-10-25T09:00:00")):
+        client.post("/transactions", json={"tx_type": "income", "amount": amount, "category_id": cats[name], "note": name, "occurred_at": day})
+    st = client.get("/plan/status", params={"year": 2026, "month": 10}).json()
+    assert st["income_is_estimate"] is False and float(st["income_basis"]) == 18374.85
+    assert [(i["name"], float(i["amount"])) for i in st["income_items"]] == [("工资", 14374.85), ("公积金", 4000.0)]
+
+
 def test_heavy_early_spending_does_not_falsely_flag_at_risk(client):
     # two days into a 31-day cycle, spending fast enough that naive extrapolation would blow the budget - but the
     # actual money spent so far is still well under it, so the state must stay on_track, not a scary early guess

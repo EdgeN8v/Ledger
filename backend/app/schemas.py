@@ -292,6 +292,11 @@ class FixedHistoryEntry(BaseModel):
     amount: Decimal             # 0 when nothing matched that cycle
 
 
+class IncomeItem(BaseModel):
+    name: str
+    amount: Decimal
+
+
 class FixedItemStatus(BaseModel):
     name: str
     reserve: Decimal            # set aside every cycle
@@ -317,6 +322,8 @@ class PlanStatus(BaseModel):
     days_left: int
     income_actual: Decimal
     income_basis: Decimal
+    income_is_estimate: bool = False     # True: the cycle's pay is not in yet (or is below the typed-in floor), basis is a guess
+    income_items: list[IncomeItem] = []  # what really arrived this cycle, by category (工资 / 公积金 ...)
     fixed_expenses: Decimal
     savings_target: Decimal
     budget: Decimal                      # what may be spent freely this cycle
