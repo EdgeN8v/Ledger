@@ -206,7 +206,7 @@ fun PlanScreen(
                 if (st != null) {
                     PlanRow(if (st.income_is_estimate) "本期收入(预估)" else "本期收入", money(st.income_basis))
                     Text(
-                        if (st.income_is_estimate || st.income_items.isEmpty()) "工资还没到账, 先按最近三次工资里最低的一次估算; 到账后按实际的算"
+                        if (st.income_is_estimate || st.income_items.isNullOrEmpty()) "工资还没到账, 先按最近三次工资里最低的一次估算; 到账后按实际的算"
                         else st.income_items.joinToString(" + ") { it.name + " " + money(it.amount) } + "  (实际到账)",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

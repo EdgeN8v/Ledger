@@ -197,7 +197,9 @@ data class PlanStatusDto(
     val income_actual: String,
     val income_basis: String,
     val income_is_estimate: Boolean = false,                 // the cycle's pay is not in yet: the basis is a guess
-    val income_items: List<IncomeItemDto> = emptyList(),     // what really arrived this cycle, by category
+    // nullable on purpose: a plan status cached by an older build has no such field, and Gson then yields null
+    // (it ignores Kotlin default values), which crashed the plan page right after an update
+    val income_items: List<IncomeItemDto>? = null,           // what really arrived this cycle, by category
     val fixed_expenses: String,
     val savings_target: String,
     val fixed_total: String = "0",
