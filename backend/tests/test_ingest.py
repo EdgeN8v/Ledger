@@ -405,6 +405,13 @@ def test_a_coupon_ad_is_not_a_payment(client):
     assert ok["status"] == "created"
 
 
+def test_a_daily_total_notice_is_not_a_payment(client):
+    r = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "银行卡支出提醒",
+                                     "text": "昨日卡账单已出，其中支付宝交易共计73.38元", "posted_at_ms": ms(2026, 10, 25, 12, 12)}).json()
+    assert r.get("transaction") is None and r.get("amount") is None
+    assert client.get("/transactions").json() == []
+
+
 def test_my_car_has_the_car_pages_kinds_as_subs(client):
     cats = {c["name"]: c for c in client.get("/categories").json()}
     assert "停车" in (cats["我的车"]["subs"] or []) and "加油" in cats["我的车"]["subs"]

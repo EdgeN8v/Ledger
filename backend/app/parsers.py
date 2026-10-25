@@ -23,6 +23,7 @@ _NOISE = re.compile(r"验证码|动态码|校验码|登录|密码|退订|还款�
 _GROUP_PREFIX = re.compile(r"^\s*\[\d+条\]\s*")
 _REFUND = re.compile(r"退款|退货|退还|退回|已退")
 _PROMO = re.compile(r"券|优惠|失效|过期|满\d+减|立减金|抢购|秒杀|福利")
+_SUMMARY = re.compile(r"共计|合计|总计|累计|账单已出|已出账|昨日.{0,8}(?:账单|支出|消费)|本月.{0,6}(?:账单|支出|消费)")
 _PAID = re.compile(r"支出|已支付|支付成功|付款|扣款|扣费|消费|退款|收到|到账|收款|转账")
 
 
@@ -133,6 +134,8 @@ def _wallet(text: str, title: str, channel: str) -> Optional[Parsed]:
     blob = f"{title} {text}"
     if _PROMO.search(blob) and not _PAID.search(text):
         return None                       # "你的淘宝闪购满29减8元券今晚失效": a coupon ad, the amount in it was never paid
+    if _SUMMARY.search(blob):
+        return None                       # "昨日卡账单已出，其中支付宝交易共计73.38元": a day's total, each payment is already in
     direction = _direction(blob)
     if not direction:
         return None
