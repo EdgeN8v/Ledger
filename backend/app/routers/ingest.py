@@ -305,6 +305,7 @@ def ingest(
     if zero:
         parsed = None
     status, tx = "ignored", None
+    echo = None
 
     if ctrip:
         status = "flight"
@@ -331,7 +332,6 @@ def ingest(
             )
             .first()
         )
-        echo = None
         # (the 亲情卡 notice is left out: it carries "this was the family card" and must merge as before)
         if (not same and source in ("wechat", "alipay") and (parsed.tx_type == "expense" or parsed.is_refund)
                 and not _FAMILY_CARD.search(text)):
@@ -440,7 +440,8 @@ def ingest(
         sync_flight_trips(db, user.ledger_id)
     if tx:
         db.refresh(tx)
-    return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx, **_popup_fields(db, source, status, tx))
+    return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx,
+                                **_popup_fields(db, source, status, tx, bool(echo), payload.device, ev.id))
 
 
 def _same_notice(db: Session, ledger_id: int, payload, source: str, text: str, posted):
@@ -471,12 +472,25 @@ def _other_phones_copy(db: Session, ledger_id: int, source: str, device: str, am
     return None
 
 
-def _popup_fields(db: Session, source: str, status: str, tx) -> dict:
+def _popup_fields(db: Session, source: str, status: str, tx, other_phones_copy: bool = False,
+                  device: Optional[str] = None, event_id: Optional[int] = None) -> dict:
     """A WeChat/Alipay payment notice ("交易提醒: 你有一笔4.70元的支出") is usually the first sign of a payment -
     the payment page itself often cannot be read (Taobao's 免密支付 page shows only "免密支付中"). So like the
     screen:* path, hand the phone what its category popup needs. Only for a real purchase seen for the first
     time: not a re-post, an income, a refund or a transfer between own accounts."""
-    if source not in ("wechat", "alipay") or status not in ("created", "merged") or tx is None:
+    if source not in ("wechat", "alipay") or tx is None:
+        return {}
+    if status == "duplicate":
+        # A family-card payment (the spouse spends from the card the user gave): the user's phone is told "someone
+        # used your 亲情卡" and, being quick, files the record first; the payer's own phone then only brings the
+        # second copy. The popup belongs on the payer's phone - the one holding the receipt - so that copy gets it,
+        # once (not on the phone that already reported this payment, which is the card owner's).
+        if not (other_phones_copy and device and tx.family_card):
+            return {}
+        E = models.RawEvent
+        if db.query(E).filter(E.transaction_id == tx.id, E.device == device, E.id != event_id).first():
+            return {}
+    elif status not in ("created", "merged"):
         return {}
     if tx.tx_type != models.TxType.expense or tx.is_transfer or tx.is_refund or tx.refund_of_id:
         return {}

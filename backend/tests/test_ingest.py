@@ -405,6 +405,27 @@ def test_a_coupon_ad_is_not_a_payment(client):
     assert ok["status"] == "created"
 
 
+def test_family_card_payment_pops_on_the_payers_phone_not_the_card_owners(client):
+    # the real 10-25 13:44 case: the wife pays with the card the user gave her. The user's phone is told "使用你赠送的
+    # 亲情卡消费" and files the record in under a second; her own phone's notice is the later, second copy - and the
+    # one in front of the receipt, so it is the one that must get the popup
+    def post(title, text, s, device, key):
+        return client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": title, "text": text,
+                                            "posted_at_ms": ms(2026, 10, 25, 13, 44) + s * 1000, "device": device, "notif_key": key}).json()
+    marker = post("你的亲情卡剩余800.00元", "M***Y（**怡）使用你赠送的亲情卡消费21.90元", 41, "his", "k1")
+    his = post("交易提醒", "你有一笔21.90元的支出，点此查看详情。", 41, "his", "k2")
+    hers = post("交易提醒", "你有一笔21.90元的支出，点击领取3个支付宝积分。", 41, "her", "k3")
+    assert marker["status"] == "created" and his["status"] == "merged"
+    assert hers["status"] == "duplicate" and float(hers["amount"]) == 21.9 and hers["transaction"]["id"] == marker["transaction"]["id"]
+    # only once: the same notice read again does not pop again
+    again = post("交易提醒", "你有一笔21.90元的支出，点击领取3个支付宝积分。", 41, "her", "k3")
+    assert again["status"] == "duplicate" and again.get("amount") is None
+    # an ordinary (not family-card) duplicate still never pops
+    a = post("交易提醒", "你有一笔5.00元的支出，点此查看详情。", 55, "his", "k5")
+    b = post("交易提醒", "你有一笔5.00元的支出，点击领取2个支付宝积分。", 56, "her", "k6")
+    assert a["status"] == "created" and b["status"] == "duplicate" and b.get("amount") is None
+
+
 def test_a_daily_total_notice_is_not_a_payment(client):
     r = client.post("/ingest", json={"source": "com.eg.android.AlipayGphone", "title": "银行卡支出提醒",
                                      "text": "昨日卡账单已出，其中支付宝交易共计73.38元", "posted_at_ms": ms(2026, 10, 25, 12, 12)}).json()

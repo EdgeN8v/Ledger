@@ -75,6 +75,22 @@ object ApiClient {
             .build().also { shared = it }
     }
 
+    /** For the time-critical sends (the category popup waits for the answer): the same client with short timeouts, so
+     *  an unreachable address costs 1.5 s instead of the 10 s connect timeout. Meant for the home LAN address. */
+    fun createFast(context: Context, baseUrl: String): ApiService {
+        val app = context.applicationContext
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(client(app).newBuilder()
+                .connectTimeout(1500, TimeUnit.MILLISECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .callTimeout(10, TimeUnit.SECONDS)
+                .build())
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+    }
+
     /** Retrofit is rebuilt per call so a base-URL change takes effect at once; the heavy part (the OkHttp client) is shared. */
     fun create(context: Context, baseUrlOverride: String? = null): ApiService {
         val app = context.applicationContext

@@ -56,21 +56,15 @@ class PayeeReaderService : AccessibilityService() {
     }
 
     private suspend fun sendAndMaybePopup(source: String, text: String, now: Long) {
-        val primary = ApiClient.create(applicationContext)
-        val result = try {
-            try {
-                primary.ingest(IngestRequest(source, null, text, now))
-            } catch (e: java.io.IOException) {
-                if (Prefs.LAN_URL.isBlank()) throw e
-                ApiClient.create(applicationContext, Prefs.LAN_URL).ingest(IngestRequest(source, null, text, now))
-            }
+        val sent = try {
+            ImmediateIngest.send(applicationContext, IngestRequest(source, null, text, now))
         } catch (_: Exception) {
             CaptureQueue.add(this, CaptureQueue.Item(source, null, text, now))
             UploadWorker.enqueue(this)
             return
         }
         // one popup per payment: skipped if the Alipay/WeChat notification already popped for it (PopupOffer)
-        PopupOffer.offer(applicationContext, scope, primary, result, "")
+        PopupOffer.offer(applicationContext, scope, sent.api, sent.result, "")
     }
 
     private fun collect(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {

@@ -51,30 +51,29 @@ class PaymentListenerService : NotificationListenerService() {
             // a WeChat/Alipay payment alert ("交易提醒: 你有一笔4.70元的支出"): sent right away so the category
             // popup can show now - the payment page itself often can't be read (Taobao 免密支付). The server
             // decides whether it is a popup-worthy purchase (it returns an amount only then)
-            scope.launch { sendAndMaybePopup(item) }
+            // "M***Y（**怡）使用你赠送的亲情卡消费21.90元": the spouse paid with the card this phone's owner gave her. She is
+            // holding the receipt, so her phone gets the popup (the server sends it to her copy); this phone only records
+            val familyUse = FAMILY_USE.containsMatchIn(text)
+            if (familyUse) AMOUNT_YUAN.find(text)?.let { PopupOffer.mute(it.groupValues[1]) }
+            scope.launch { sendAndMaybePopup(item, popup = !familyUse) }
             return
         }
         CaptureQueue.add(this, item)
         UploadWorker.enqueue(this)
     }
 
-    private suspend fun sendAndMaybePopup(item: CaptureQueue.Item) {
-        val primary = ApiClient.create(applicationContext)
+    private suspend fun sendAndMaybePopup(item: CaptureQueue.Item, popup: Boolean = true) {
         val req = IngestRequest(item.source, item.title, item.text, item.postedAtMs, Prefs.deviceId(this), item.notifKey)
-        val result = try {
-            try {
-                primary.ingest(req)
-            } catch (e: java.io.IOException) {
-                if (Prefs.LAN_URL.isBlank()) throw e
-                ApiClient.create(applicationContext, Prefs.LAN_URL).ingest(req)
-            }
+        val sent = try {
+            ImmediateIngest.send(applicationContext, req)
         } catch (_: Exception) {
             CaptureQueue.add(this, item)
             UploadWorker.enqueue(this)
             return
         }
+        if (!popup) return
         // the shop name usually arrives later (bank SMS), so name the popup after the wallet meanwhile
-        PopupOffer.offer(applicationContext, scope, primary, result, if (item.source == "com.tencent.mm") "微信支付" else "支付宝付款")
+        PopupOffer.offer(applicationContext, scope, sent.api, sent.result, if (item.source == "com.tencent.mm") "微信支付" else "支付宝付款")
     }
 
     override fun onListenerDisconnected() {
@@ -91,6 +90,8 @@ class PaymentListenerService : NotificationListenerService() {
         private val PAYMENT_WORDS = Regex("已支付|已扣费|支付成功|付款|收款|转账|红包|到账|退款|扣款|¥|￥")
         private val ORDER_WORDS = Regex("已发货|已签收|已出库|待收货|已揽收|派送|取件|包裹|订单|已下单|已支付|退款|退货|售后|换货")
         private val PROMO_WORDS = Regex("优惠|红包|秒杀|领券|降价|会员日|猜你喜欢|直播|签到|福利|限时|抢购|折扣|满[0-9]+减|活动|立减|补贴|大促|爆款")
+        private val FAMILY_USE = Regex("亲情卡消费")
+        private val AMOUNT_YUAN = Regex("([0-9][0-9,]*\\.[0-9]{1,2})\\s*元")
         private val WALLETS = setOf("com.tencent.mm", "com.eg.android.AlipayGphone")
         // tolerant on purpose: anything that might be a payment goes now; the server sorts out the rest
         private val PAY_ALERT = Regex("交易提醒|支出|已支付|付款|扣款|扣费|消费|支付成功")

@@ -1,6 +1,7 @@
 package com.ledger.app.capture
 
 import android.content.Context
+import com.ledger.app.data.ApiClient
 import com.ledger.app.data.ApiService
 import com.ledger.app.data.CategoryDto
 import com.ledger.app.data.DiskCache
@@ -24,12 +25,23 @@ object PopupOffer {
 
     private const val WINDOW_MS = 2 * 60_000L
     private val recent = ArrayList<Seen>()
+    private val muted = ArrayList<Pair<BigDecimal, Long>>()
+
+    /** This phone was told "someone used your 亲情卡" for this amount: the payer is the spouse, and the popup belongs
+     *  on the payer's phone (the server hands it to the spouse's copy), so this phone stays quiet for it. */
+    @Synchronized
+    fun mute(amount: String, now: Long = System.currentTimeMillis()) {
+        val a = amount.replace(",", "").trim().toBigDecimalOrNull() ?: return
+        muted += a to now
+    }
 
     /** True = nobody popped for this payment yet, and now this caller has; false = skip. */
     @Synchronized
     fun claim(amount: String, txId: Int?, now: Long = System.currentTimeMillis()): Boolean {
         val a = amount.trim().toBigDecimalOrNull() ?: return true
         recent.removeAll { now - it.at > WINDOW_MS }
+        muted.removeAll { now - it.second > WINDOW_MS }
+        if (muted.any { it.first.compareTo(a) == 0 }) return false
         // by transaction when both sides know it (two orders of the same amount are two popups); by amount only
         // when one side has no transaction yet (a payment page read before the server created the record)
         if (recent.any { if (txId != null && it.txId != null) it.txId == txId else it.amount.compareTo(a) == 0 }) return false
@@ -53,12 +65,17 @@ object PopupOffer {
                 suggestedCategoryId = result.suggested_category_id, suggestedSub = result.suggested_sub
             ) { categoryId, sub ->
                 scope.launch {
-                    try {
+                    // the pick goes out on the address that just worked; if the phone has meanwhile left the home
+                    // network (the fast LAN client gives up after 10 s), the normal client gets a second try
+                    suspend fun upload(a: ApiService) {
                         if (result.transaction != null) {
-                            api.updateTransaction(result.transaction.id, mapOf("category_id" to categoryId, "sub" to sub, "needs_review" to false))
+                            a.updateTransaction(result.transaction.id, mapOf("category_id" to categoryId, "sub" to sub, "needs_review" to false))
                         } else if (result.event_id != null) {
-                            api.setPendingCategory(PendingCategoryRequest(result.event_id, categoryId, sub))
+                            a.setPendingCategory(PendingCategoryRequest(result.event_id, categoryId, sub))
                         }
+                    }
+                    try {
+                        try { upload(api) } catch (e: java.io.IOException) { upload(ApiClient.create(app)) }
                     } catch (_: Exception) {
                     }
                 }
