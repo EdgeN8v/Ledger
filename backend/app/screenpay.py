@@ -100,13 +100,13 @@ def store_and_apply(db: Session, ledger_id: int, user_id: int, posted, lines: li
     return ("applied" if applied else "hint"), (tx if applied else None), ev.id, amount, payee
 
 
-def set_pending_category(db: Session, ledger_id: int, event_id: int, category_id: int, sub: Optional[str]) -> bool:
-    """The user picked a category on the payment-page popup before the bank SMS arrived: remember it so
-    apply_pending can use it (instead of a keyword guess) once the real transaction shows up."""
+def set_pending_category(db: Session, ledger_id: int, event_id: int, category_id: int, sub: Optional[str], note: Optional[str] = None) -> bool:
+    """The user picked a category (and maybe typed a note) on the payment-page popup before the bank SMS arrived:
+    remember it so apply_pending can use it (instead of a keyword guess) once the real transaction shows up."""
     ev = db.query(models.RawEvent).filter(models.RawEvent.id == event_id, models.RawEvent.ledger_id == ledger_id).first()
     if not ev or ev.status != "hint":
         return False
-    ev.pref_category_id, ev.pref_sub = category_id, sub
+    ev.pref_category_id, ev.pref_sub, ev.pref_note = category_id, sub, (note or "").strip() or None
     db.commit()
     return True
 
@@ -124,3 +124,5 @@ def apply_pending(db: Session, tx: models.Transaction) -> None:
     ev.status, ev.transaction_id = "applied", tx.id
     if ev.pref_category_id:
         tx.category_id, tx.sub, tx.needs_review, tx.category_locked = ev.pref_category_id, ev.pref_sub, False, True
+    if ev.pref_note:
+        tx.note = ev.pref_note

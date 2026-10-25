@@ -229,7 +229,7 @@ def set_pending_category(
 ):
     """The payment-page popup got a category tap before the bank SMS created the transaction: remember the
     choice (screenpay.apply_pending applies it once the SMS lands)."""
-    if not screenpay.set_pending_category(db, user.ledger_id, payload.event_id, payload.category_id, payload.sub):
+    if not screenpay.set_pending_category(db, user.ledger_id, payload.event_id, payload.category_id, payload.sub, payload.note):
         raise HTTPException(404, "no matching pending event")
     return schemas.IngestResult(status="pending", event_id=payload.event_id)
 

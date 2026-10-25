@@ -63,15 +63,18 @@ object PopupOffer {
             PaymentPopup.show(
                 app, amount, result.payee?.takeIf { it.isNotBlank() } ?: fallbackPayee, categories,
                 suggestedCategoryId = result.suggested_category_id, suggestedSub = result.suggested_sub
-            ) { categoryId, sub ->
+            ) { categoryId, sub, note ->
                 scope.launch {
                     // the pick goes out on the address that just worked; if the phone has meanwhile left the home
                     // network (the fast LAN client gives up after 10 s), the normal client gets a second try
                     suspend fun upload(a: ApiService) {
                         if (result.transaction != null) {
-                            a.updateTransaction(result.transaction.id, mapOf("category_id" to categoryId, "sub" to sub, "needs_review" to false))
+                            // the note is sent only when one was typed: an empty box must not wipe the record's own note
+                            val body = mutableMapOf<String, Any?>("category_id" to categoryId, "sub" to sub, "needs_review" to false)
+                            if (note != null) body["note"] = note
+                            a.updateTransaction(result.transaction.id, body)
                         } else if (result.event_id != null) {
-                            a.setPendingCategory(PendingCategoryRequest(result.event_id, categoryId, sub))
+                            a.setPendingCategory(PendingCategoryRequest(result.event_id, categoryId, sub, note))
                         }
                     }
                     try {

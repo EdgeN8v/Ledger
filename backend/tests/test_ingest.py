@@ -1638,6 +1638,28 @@ def test_payment_page_popup_category_choice_is_applied_when_the_sms_lands(client
     assert client.put("/ingest/pending-category", json={"event_id": 999999, "category_id": cats["狗狗"]}).status_code == 404
 
 
+def test_a_note_typed_on_the_popup_lands_on_the_record(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    # picked on the payment page before the bank SMS exists: the note waits with the category
+    got = client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": "某某超市\n￥19.50\n支付成功\n完成",
+                                       "posted_at_ms": ms(2026, 10, 6, 18, 31)}).json()
+    assert client.put("/ingest/pending-category", json={"event_id": got["event_id"], "category_id": cats["餐饮"],
+                                                        "sub": "零食", "note": "  给妈妈买的  "}).status_code == 200
+    _sms(client, "【建设银行】您账户1234于10月6日18:31向微信支付-扫二维码付款充值支出19.5元,可用余额900元。", 18, 31)
+    t = client.get("/transactions").json()[0]
+    assert t["note"] == "给妈妈买的" and t["category_id"] == cats["餐饮"] and t["sub"] == "零食"
+    # no note typed: the record keeps whatever note it had
+    got2 = client.post("/ingest", json={"source": "screen:wechat", "title": "", "text": "另一家店\n￥8.00\n支付成功\n完成",
+                                        "posted_at_ms": ms(2026, 10, 6, 19, 31)}).json()
+    assert client.put("/ingest/pending-category", json={"event_id": got2["event_id"], "category_id": cats["餐饮"]}).status_code == 200
+    _sms(client, "【建设银行】您账户1234于10月6日19:31向微信支付-扫二维码付款充值支出8元,可用余额890元。", 19, 31)
+    t2 = client.get("/transactions").json()[0]
+    assert t2["note"] != "给妈妈买的" and t2["category_id"] == cats["餐饮"]
+    # a plain update that carries the picked category and the note together (the popup's normal path)
+    r = client.put(f"/transactions/{t2['id']}", json={"category_id": cats["购物"], "sub": "日用", "needs_review": False, "note": "纸巾"}).json()
+    assert r["note"] == "纸巾" and r["category_id"] == cats["购物"] and r["sub"] == "日用"
+
+
 def test_payment_page_popup_gets_the_transaction_back_when_the_sms_already_landed(client):
     _sms(client, "【建设银行】您账户1234于10月6日18:31向微信支付-扫二维码付款充值支出50元,可用余额900元。", 18, 31)
     got = client.post("/ingest", json={"source": "screen:wechat", "title": "",

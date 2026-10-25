@@ -46,7 +46,7 @@ def ensure_columns(db: Session) -> None:
               "categories": [("sort_order", "INTEGER")],
               "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("family_card", "BOOLEAN DEFAULT FALSE NOT NULL"), ("car_bucket", "VARCHAR"), ("sub", "VARCHAR"), ("is_treat", "BOOLEAN DEFAULT FALSE NOT NULL")],
               "merchant_rules": [("sub", "VARCHAR")],
-              "raw_events": [("pref_category_id", "INTEGER"), ("pref_sub", "VARCHAR"), ("device", "VARCHAR"), ("notif_key", "VARCHAR")]}
+              "raw_events": [("pref_category_id", "INTEGER"), ("pref_sub", "VARCHAR"), ("pref_note", "VARCHAR"), ("device", "VARCHAR"), ("notif_key", "VARCHAR")]}
     insp = inspect(db.get_bind())
     for table, cols in wanted.items():
         have = {c["name"] for c in insp.get_columns(table)}

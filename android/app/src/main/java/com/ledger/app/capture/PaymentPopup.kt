@@ -12,6 +12,11 @@ import android.view.View
 import android.widget.FrameLayout
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -145,7 +150,7 @@ object PaymentPopup {
     fun show(
         c: Context, amount: String, shop: String, categories: List<CategoryDto>,
         suggestedCategoryId: Int? = null, suggestedSub: String? = null,
-        onPick: (categoryId: Int, sub: String?) -> Unit
+        onPick: (categoryId: Int, sub: String?, note: String?) -> Unit
     ) {
         dismiss()
         if (!canShow(c)) return
@@ -156,7 +161,10 @@ object PaymentPopup {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.BOTTOM }
+        ).apply {
+            gravity = Gravity.BOTTOM
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE   // the keyboard for the note pushes the card up
+        }
 
         val o = Owner().also { it.start() }
         // the popup runs inside the accessibility service's process: a bug in it must close the popup, never
@@ -185,7 +193,8 @@ object PaymentPopup {
                         PaymentPopupCard(
                             amount = amount, shop = shop, categories = categories,
                             initialCategoryId = suggestedCategoryId, initialSub = suggestedSub,
-                            onPick = { catId, sub -> onPick(catId, sub); dismiss() },
+                            onPick = { catId, sub, note -> onPick(catId, sub, note?.trim()?.takeIf { it.isNotEmpty() }); dismiss() },
+                            onTyping = { timeoutJob?.cancel(); timeoutJob = null },
                             onDismiss = { dismiss() }
                         )
                     }
@@ -211,11 +220,13 @@ private fun PaymentPopupCard(
     categories: List<CategoryDto>,
     initialCategoryId: Int?,
     initialSub: String?,
-    onPick: (categoryId: Int, sub: String?) -> Unit,
+    onPick: (categoryId: Int, sub: String?, note: String?) -> Unit,
+    onTyping: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var selCat by remember { mutableStateOf(initialCategoryId) }
     var selSub by remember { mutableStateOf(initialSub) }
+    var note by remember { mutableStateOf("") }
     val selected = categories.find { it.id == selCat }
     val subs = selected?.subs.orEmpty()
     // swipe the card down to close it. The drag can start anywhere on the card: on the category grid the scroll
@@ -276,7 +287,7 @@ private fun PaymentPopupCard(
                 // a known shop arrives pre-selected: one tap on "确认" and you're done. An unfamiliar one starts
                 // blank, so "关闭" just dismisses without guessing at something uncertain.
                 if (selCat != null) {
-                    Button(onClick = { onPick(selCat!!, selSub) }) { Text("确认") }
+                    Button(onClick = { onPick(selCat!!, selSub, note) }) { Text("确认") }
                 } else {
                     TextButton(onClick = onDismiss) { Text("关闭") }
                 }
@@ -298,6 +309,17 @@ private fun PaymentPopupCard(
                     }
                 }
             }
+            // an optional note ("给妈妈买的", "纸巾"): saved together with the category on 确认 (or the keyboard's 完成).
+            // Typing stops the 25 s auto-close, otherwise the card would vanish under the keyboard
+            OutlinedTextField(
+                value = note,
+                onValueChange = { if (it.length <= 60) note = it },
+                label = { Text("备注(选填)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { selCat?.let { onPick(it, selSub, note) } }),
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp).onFocusChanged { if (it.isFocused) onTyping() }
+            )
         }
     }
 }

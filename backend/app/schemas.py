@@ -163,6 +163,7 @@ class PendingCategoryIn(BaseModel):
     event_id: int
     category_id: int
     sub: Optional[str] = None
+    note: Optional[str] = None
 
 
 class IngestResult(BaseModel):

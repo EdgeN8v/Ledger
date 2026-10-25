@@ -146,6 +146,7 @@ class RawEvent(Base):
     created_at = Column(DateTime, default=now_local)
     pref_category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)   # category chosen on the payment-page popup, before the bank SMS creates the transaction
     pref_sub = Column(String, nullable=True)
+    pref_note = Column(String, nullable=True)     # the note typed on the popup together with that category
     device = Column(String, nullable=True)        # which phone sent it (IngestRequest.device), when the app says
     notif_key = Column(String, nullable=True)     # Android's notification key, when the app says
 

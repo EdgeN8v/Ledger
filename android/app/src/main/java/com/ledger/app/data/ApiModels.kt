@@ -133,7 +133,7 @@ data class IngestResult(
     val suggested_sub: String? = null
 )
 
-data class PendingCategoryRequest(val event_id: Int, val category_id: Int, val sub: String? = null)
+data class PendingCategoryRequest(val event_id: Int, val category_id: Int, val sub: String? = null, val note: String? = null)
 
 data class AccountDto(
     val id: Int,
