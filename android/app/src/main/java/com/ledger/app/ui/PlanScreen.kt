@@ -40,6 +40,12 @@ import com.ledger.app.viewmodel.PlanUiState
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+/** Whole yuan, for pages where the cents are only noise. */
+internal fun moneyWhole(v: String?): String {
+    val d = v?.toDoubleOrNull() ?: return "-"
+    return (if (d < 0) "-" else "") + "¥" + String.format(Locale.CHINA, "%,.0f", kotlin.math.abs(d))
+}
+
 internal fun money(v: String?, signed: Boolean = false): String {
     val d = v?.toDoubleOrNull() ?: return "-"
     val body = String.format(Locale.CHINA, "%,.2f", kotlin.math.abs(d))
@@ -52,6 +58,7 @@ fun PlanScreen(
     onMark: (name: String, paid: Boolean?, paidUntil: String?) -> Unit
 ) {
     var editing by remember { mutableStateOf(false) }
+    var editingTarget by remember { mutableStateOf(false) }
     var marking by remember { mutableStateOf<com.ledger.app.data.FixedItemDto?>(null) }
     var breakdown by remember { mutableStateOf(false) }
     var historyFor by remember { mutableStateOf<String?>(null) }
@@ -152,7 +159,9 @@ fun PlanScreen(
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Metric("已存", money(st.saved_so_far), MaterialTheme.colorScheme.onSurface)
-                        Metric("目标存款", money(st.savings_target), MaterialTheme.colorScheme.onSurface)
+                        Column(modifier = Modifier.clickable { editingTarget = true }) {
+                            Metric("目标存款 ✎", money(st.savings_target), MaterialTheme.colorScheme.onSurface)
+                        }
                     }
                 }
             }
@@ -290,6 +299,26 @@ fun PlanScreen(
                 }
             },
             dismissButton = { TextButton(onClick = { marking = null }) { Text("关闭") } }
+        )
+    }
+
+    if (editingTarget) {
+        var target by remember { mutableStateOf(plan?.savings_target?.substringBefore('.') ?: st?.savings_target?.substringBefore('.') ?: "") }
+        AlertDialog(
+            onDismissRequest = { editingTarget = false },
+            title = { Text("每月目标存款") },
+            text = {
+                OutlinedTextField(target, { target = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("每月要存多少(元)") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    editingTarget = false
+                    onSave(plan?.expected_income, target.trim().ifEmpty { null }, plan?.fixed_expenses, plan?.treat_budget)
+                }) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { editingTarget = false }) { Text("取消") } }
         )
     }
 

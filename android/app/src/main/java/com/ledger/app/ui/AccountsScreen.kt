@@ -91,16 +91,16 @@ fun AccountsScreen(
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("总资产", style = MaterialTheme.typography.labelMedium)
-                    Text("¥" + (ov?.total ?: "0.00"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(moneyWhole(ov?.total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     // part of the total is already spoken for (the rent fund ...): what is left is what is really free
                     ov?.earmarked.orEmpty().forEach { e ->
                         val due = e.due?.takeIf { it.length >= 10 }?.let { " · ${it.substring(5, 7).trimStart('0')}/${it.substring(8, 10).trimStart('0')}前付" } ?: ""
-                        Text("${e.name}专款 ${money(e.amount)} / ${money(e.cap)}$due", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                        Text("${e.name}专款 ${moneyWhole(e.amount)} / ${moneyWhole(e.cap)}$due", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                     }
-                    if (ov?.earmarked.orEmpty().isNotEmpty()) Text("可自由支配 ${money(ov?.free_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
-                    if (!ov?.liabilities.isNullOrEmpty()) Text("负债 ${money(ov?.liabilities_total)} · 净资产 ${money(ov?.net_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    if (ov?.earmarked.orEmpty().isNotEmpty()) Text("可自由支配 ${moneyWhole(ov?.free_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    if (!ov?.liabilities.isNullOrEmpty()) Text("负债 ${moneyWhole(ov?.liabilities_total)} · 净资产 ${moneyWhole(ov?.net_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
                     val owed = ov?.receivable?.toDoubleOrNull() ?: 0.0
-                    if (owed > 0) TextButton(onClick = { showReceivable = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("待报销 ${money(ov?.receivable)} ›") }
+                    if (owed > 0) TextButton(onClick = { showReceivable = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("待报销 ${moneyWhole(ov?.receivable)} ›") }
                 }
             }
         }
@@ -110,14 +110,13 @@ fun AccountsScreen(
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(d.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text("还剩 ${money(d.remaining)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text("还剩 ${moneyWhole(d.remaining)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     }
                     LinearProgressIndicator(progress = { (d.percent / 100.0).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                    val cycle = d.repaid_this_cycle?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("已还 ${money(d.repaid)} / ${money(d.borrowed)}" + (cycle?.let { " · 本期 ${money(it)}" } ?: ""), style = MaterialTheme.typography.bodySmall)
+                        Text("已还 ${moneyWhole(d.repaid)} / ${moneyWhole(d.borrowed)}", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { monthlyFor = d; monthlyText = d.monthly?.substringBefore('.') ?: "" }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
-                            Text(if (d.monthly == null) "设每月还款" else "每月 ${money(d.monthly)}" + (d.months_left?.let { " · ${it}个月" } ?: ""))
+                            Text(if (d.monthly == null) "设每月还款" else "每月 ${moneyWhole(d.monthly)}")
                         }
                     }
                 }
@@ -134,7 +133,7 @@ fun AccountsScreen(
                         ).joinToString(" · ")
                         if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("¥" + (a.balance ?: "-"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(moneyWhole(a.balance), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -158,17 +157,17 @@ fun AccountsScreen(
                         t.items.forEach {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(it.date.drop(5) + "  " + (it.merchant ?: ""), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
-                                Text(money(it.amount), style = MaterialTheme.typography.bodySmall)
+                                Text(moneyWhole(it.amount), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("垫付小计", style = MaterialTheme.typography.bodySmall); Text(money(t.advanced), style = MaterialTheme.typography.bodySmall)
+                            Text("垫付小计", style = MaterialTheme.typography.bodySmall); Text(moneyWhole(t.advanced), style = MaterialTheme.typography.bodySmall)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(if (t.open_end) "补贴(回程定了再算)" else "补贴(每天×天数+通勤)", style = MaterialTheme.typography.bodySmall); Text(if (t.open_end) "-" else money(t.allowance), style = MaterialTheme.typography.bodySmall)
+                            Text(if (t.open_end) "补贴(回程定了再算)" else "补贴(每天×天数+通勤)", style = MaterialTheme.typography.bodySmall); Text(if (t.open_end) "-" else moneyWhole(t.allowance), style = MaterialTheme.typography.bodySmall)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("应收", fontWeight = FontWeight.Bold); Text(money(t.expected), fontWeight = FontWeight.Bold)
+                            Text("应收", fontWeight = FontWeight.Bold); Text(moneyWhole(t.expected), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
