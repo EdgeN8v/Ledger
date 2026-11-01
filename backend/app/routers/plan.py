@@ -239,7 +239,7 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
             continue
         fixed_total += r
         fixed_rows.append(schemas.FixedItemStatus(
-            name="还款: " + d.name, reserve=r, paid=paid_c, tracked=True, note=f"每月还{d.who}, 还剩 {d.remaining}",
+            name=d.name.removeprefix("欠"), reserve=r, paid=paid_c, tracked=True, note=f"每月还{d.who}, 还剩 {d.remaining}",
             paid_note=(f"已还 ¥{paid_c} / 计划 ¥{d.monthly}" if 0 < paid_c < r else None), state="paid" if paid_c > 0 else "waiting"))
 
     # until payday the real income is not in yet: plan with the expected one, afterwards with whichever is larger

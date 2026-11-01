@@ -825,7 +825,7 @@ def test_rent_sinking_fund_is_taken_out_of_what_is_free(client):
 
 def test_a_subscription_is_recognised_by_its_sub_category_not_by_shop_or_amount(client):
     cats = {c["name"]: c for c in client.get("/categories").json()}
-    assert cats["订阅服务"]["subs"] == ["美国节点", "香港节点"]
+    assert cats["订阅服务"]["subs"] == ["美国节点", "香港节点", "Claude"]
     client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [
         {"name": "美国节点", "monthly": 138, "tracked": True, "category": "订阅服务", "match_amount": [138], "match_sub": ["美国节点"]},
         {"name": "香港节点", "monthly": 43, "tracked": True, "category": "订阅服务", "match_sub": ["香港节点"]}]})
@@ -958,21 +958,21 @@ def test_the_monthly_repayment_is_a_commitment_in_the_plan_and_can_be_changed(cl
         st = client.get("/plan/status").json()
         return st, {i["name"]: i for i in st["fixed_items"]}
     st, by = rows()
-    assert "还款: 欠老婆" not in by and float(st["fixed_total"]) == 0.0                         # no monthly amount yet: nothing reserved
+    assert "老婆" not in by and float(st["fixed_total"]) == 0.0                         # no monthly amount yet: nothing reserved
     assert float(client.put("/loans/monthly", json={"who": "李梅", "monthly": 5000}).json()[0]["monthly"]) == 5000.0
     st, by = rows()
-    assert float(by["还款: 欠老婆"]["reserve"]) == 5000.0 and by["还款: 欠老婆"]["state"] == "waiting" and float(st["fixed_total"]) == 5000.0
+    assert float(by["老婆"]["reserve"]) == 5000.0 and by["老婆"]["state"] == "waiting" and float(st["fixed_total"]) == 5000.0
     assert float(st["budget"]) == 20000 - 5000 - 1000                                             # reserved before anything is free
     t = today - timedelta(hours=1)
     client.post("/ingest", json={"source": "com.android.mms", "title": "建设银行", "posted_at_ms": int(t.replace(tzinfo=CN).timestamp() * 1000),
                                  "text": f"【建设银行】您账户1234于{t.month}月{t.day}日{t.hour:02d}:{t.minute:02d}向李梅转账支出3000元,可用余额57900元。"})
     st, by = rows()
-    assert float(by["还款: 欠老婆"]["paid"]) == 3000.0 and by["还款: 欠老婆"]["state"] == "paid" and "3000" in by["还款: 欠老婆"]["paid_note"]
+    assert float(by["老婆"]["paid"]) == 3000.0 and by["老婆"]["state"] == "paid" and "3000" in by["老婆"]["paid_note"]
     assert float(st["spent"]) == 0.0                                                              # a repayment is not spending
     loan = client.get("/loans").json()[0]
     assert float(loan["repaid_this_cycle"]) == 3000.0 and float(loan["remaining"]) == 57000.0
     assert client.put("/loans/monthly", json={"who": "李梅", "monthly": None}).json()[0]["monthly"] is None
-    assert "还款: 欠老婆" not in rows()[1]                                                       # cleared again
+    assert "老婆" not in rows()[1]                                                       # cleared again
     assert client.put("/loans/monthly", json={"who": "路人", "monthly": 1}).status_code == 404
 
 

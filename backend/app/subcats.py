@@ -23,7 +23,7 @@ SUBS = {
     TRAVEL: ["交通", "酒店"],
     "狗狗": ["狗粮", "狗砂", "零食", "玩具", "医疗", "其他"],
     CAR: list(CAR_SUBS.values()),
-    "订阅服务": ["美国节点", "香港节点"],
+    "订阅服务": ["美国节点", "香港节点", "Claude"],
 }
 
 _SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
@@ -107,8 +107,10 @@ def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> 
         low = hay.lower()
         if "evoxt" in low or "razer" in low:
             return "香港节点"
-        if "千杯" in hay:
+        if "千杯" in hay or "朱勇" in hay:
             return "美国节点"
+        if "claude" in low or "anthropic" in low:
+            return "Claude"
         return None
     if cat_name == CAR:
         from app.routers.analysis import car_bucket      # lazy: the router imports models, which import this module
