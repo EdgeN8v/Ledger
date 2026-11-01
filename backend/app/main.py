@@ -29,6 +29,8 @@ with SessionLocal() as _db:
     backfill_balances(_db)
     relink_orphan_refunds(_db)
     sync_refund_categories(_db)
+    from app.subcats import load_lists
+    load_lists(_db)
     classify_all(_db)
     flag_family_card(_db)
     rename_old_subs(_db)

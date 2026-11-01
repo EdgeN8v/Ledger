@@ -130,6 +130,18 @@ interface ApiService {
     @GET("categories")
     suspend fun listCategories(): List<CategoryDto>
 
+    @POST("categories/{id}/subs")
+    suspend fun addSub(@Path("id") id: Int, @Body body: SubRequest): CategoryDto
+
+    @DELETE("categories/{id}/subs")
+    suspend fun deleteSub(@Path("id") id: Int, @Query("name") name: String): CategoryDto
+
+    @POST("plan/fixed")
+    suspend fun saveFixed(@Body body: FixedInRequest): PlanStatusDto
+
+    @DELETE("plan/fixed")
+    suspend fun deleteFixed(@Query("name") name: String): PlanStatusDto
+
     @POST("transactions/parse")
     suspend fun parseTransaction(@Body body: ParseRequestBody): ParseResultDto
 

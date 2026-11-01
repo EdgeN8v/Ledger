@@ -1,11 +1,11 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, schemas, subcats
 from app.clock import now_local
 from app.database import get_db
 from app.deps import get_current_user
@@ -60,3 +60,42 @@ def create_category(
     db.commit()
     db.refresh(category)
     return category
+
+
+def _own_category(db: Session, user: models.User, category_id: int) -> models.Category:
+    c = db.get(models.Category, category_id)
+    if c is None or c.ledger_id != user.ledger_id or c.tx_type != models.TxType.expense:
+        raise HTTPException(404, "no such category")
+    if c.name == subcats.CAR:
+        raise HTTPException(400, "the kinds of 我的车 are managed on the car page")
+    return c
+
+
+@router.post("/{category_id}/subs", response_model=schemas.CategoryOut)
+def add_sub(category_id: int, payload: schemas.SubIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    c = _own_category(db, user, category_id)
+    name = payload.name.strip()
+    cur = subcats.subs_of(user.ledger_id, c.name)
+    if not name or len(name) > 8 or "," in name:
+        raise HTTPException(400, "bad name")
+    if name in cur:
+        raise HTTPException(400, "already there")
+    subcats.save_list(db, user.ledger, c.name, cur + [name])
+    db.commit()
+    return c
+
+
+@router.delete("/{category_id}/subs", response_model=schemas.CategoryOut)
+def delete_sub(category_id: int, name: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Drop a sub-category: payments filed under it go back to 'no sub' (and are not guessed into it again)."""
+    c = _own_category(db, user, category_id)
+    cur = subcats.subs_of(user.ledger_id, c.name)
+    if name not in cur:
+        raise HTTPException(404, "no such sub-category")
+    subcats.save_list(db, user.ledger, c.name, [x for x in cur if x != name])
+    T = models.Transaction
+    db.query(T).filter(T.ledger_id == user.ledger_id, T.category_id == c.id, T.sub == name).update({T.sub: None}, synchronize_session=False)
+    db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.category_id == c.id,
+                                         models.MerchantRule.sub == name).update({models.MerchantRule.sub: None}, synchronize_session=False)
+    db.commit()
+    return c

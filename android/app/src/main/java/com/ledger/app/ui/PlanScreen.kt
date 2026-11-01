@@ -52,6 +52,8 @@ internal fun money(v: String?, signed: Boolean = false): String {
     return (if (d < 0) "-" else if (signed) "+" else "") + "¥" + body
 }
 
+private val NEW_ITEM = com.ledger.app.data.FixedItemDto(name = "", reserve = "0", paid = "0", tracked = false, state = "reserved")
+
 @Composable
 fun PlanScreen(
     state: PlanUiState, onLoad: () -> Unit, onSave: (String?, String?, String?, String?) -> Unit,
@@ -60,6 +62,8 @@ fun PlanScreen(
     var editing by remember { mutableStateOf(false) }
     var editingTarget by remember { mutableStateOf(false) }
     var marking by remember { mutableStateOf<com.ledger.app.data.FixedItemDto?>(null) }
+    var editingItem by remember { mutableStateOf<com.ledger.app.data.FixedItemDto?>(null) }
+    var deletingItem by remember { mutableStateOf<String?>(null) }
     var breakdown by remember { mutableStateOf(false) }
     var historyFor by remember { mutableStateOf<String?>(null) }
     var historyRows by remember { mutableStateOf<List<FixedHistoryEntryDto>?>(null) }
@@ -167,22 +171,30 @@ fun PlanScreen(
             }
         }
 
-        if (st != null && st.fixed_items.isNotEmpty()) {
+        if (st != null) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("固定支出 · 每月预留 ${moneyWhole(st.fixed_total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("固定支出 · 每月预留 ${moneyWhole(st.fixed_total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text("＋", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { editingItem = NEW_ITEM })
+                    }
+                    // paid items fade out, what is still to pay stays dark: the colour says it, no "已付" text needed
                     st.fixed_items.sortedByDescending { it.reserve.toDoubleOrNull() ?: 0.0 }.forEach { f ->
-                        val status = when (f.state) { "paid" -> "✅ " + (f.paid_note ?: "已付"); "waiting" -> "⏳ 未付"; else -> "🔒 已预留" }
-                        val extra = if (f.pot != null && f.pot_cap != null) " · 已攒 ${moneyWhole(f.pot)}/${moneyWhole(f.pot_cap)}" else ""
+                        val color = if (f.state == "paid") MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
+                        val extra = listOfNotNull(
+                            if (f.pot != null && f.pot_cap != null) "已攒 ${moneyWhole(f.pot)}/${moneyWhole(f.pot_cap)}" else null,
+                            f.paid_note?.takeIf { it.contains("/") }
+                        ).joinToString(" · ")
                         Column(modifier = Modifier.fillMaxWidth().clickable { marking = f }.padding(top = 12.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(f.name + (f.due_day?.let { " · ${it}号" } ?: ""), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                                Text(moneyWhole(f.reserve), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1)
+                                Text(f.name + (f.due_day?.let { " · ${it}号" } ?: ""), style = MaterialTheme.typography.bodyLarge, color = color, modifier = Modifier.weight(1f))
+                                Text(moneyWhole(f.reserve), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = color, maxLines = 1)
                             }
-                            Text(status + extra, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -288,9 +300,74 @@ fun PlanScreen(
                         }, d.year, d.monthValue - 1, d.dayOfMonth).show()
                     }) { Text("📅 已提前付到某一天…") }
                     TextButton(onClick = { marking = null; onMark(f.name, false, "") }) { Text("⏳ 本期还没付(清除标记)") }
+                    if (f.editable != false) TextButton(onClick = { marking = null; editingItem = f }) { Text("✎ 修改 / 删除") }
                 }
             },
             dismissButton = { TextButton(onClick = { marking = null }) { Text("关闭") } }
+        )
+    }
+
+    editingItem?.let { f ->
+        val isNew = f === NEW_ITEM
+        var name by remember { mutableStateOf(if (isNew) "" else f.name) }
+        var amount by remember { mutableStateOf(if (isNew) "" else f.monthly?.toDoubleOrNull()?.takeIf { it > 0 }?.let { String.format(Locale.CHINA, "%.0f", it) } ?: "") }
+        var linked by remember { mutableStateOf(f.match_sub.orEmpty()) }
+        var subOptions by remember { mutableStateOf<List<String>>(emptyList()) }
+        LaunchedEffect(Unit) {
+            subOptions = try { ApiClient.create(context).listCategories().firstOrNull { it.name == "订阅服务" }?.subs.orEmpty() } catch (_: Exception) { emptyList() }
+        }
+        AlertDialog(
+            onDismissRequest = { editingItem = null },
+            title = { Text(if (isNew) "新固定支出" else f.name) },
+            text = {
+                Column {
+                    OutlinedTextField(name, { name = it.take(20) }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("名称") })
+                    OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        label = { Text("每月金额") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                    if (subOptions.isNotEmpty()) {
+                        Text("关联订阅", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                            subOptions.forEach { o ->
+                                val on = o in linked
+                                androidx.compose.material3.FilterChip(selected = on, onClick = { linked = if (on) linked - o else linked + o }, label = { Text(o) })
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = {
+                    editingItem = null
+                    scope.launch {
+                        try { ApiClient.create(context).saveFixed(com.ledger.app.data.FixedInRequest(name.trim(), if (isNew) null else f.name, amount.ifBlank { "0" }, linked)) } catch (_: Exception) {}
+                        onLoad()
+                    }
+                }) { Text("保存") }
+            },
+            dismissButton = {
+                Row {
+                    if (!isNew) TextButton(onClick = { editingItem = null; deletingItem = f.name }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { editingItem = null }) { Text("取消") }
+                }
+            }
+        )
+    }
+    deletingItem?.let { name ->
+        AlertDialog(
+            onDismissRequest = { deletingItem = null },
+            title = { Text("删除「$name」?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingItem = null
+                    scope.launch {
+                        try { ApiClient.create(context).deleteFixed(name) } catch (_: Exception) {}
+                        onLoad()
+                    }
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deletingItem = null }) { Text("不删") } }
         )
     }
 

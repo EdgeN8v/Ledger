@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, schemas, subcats
 from app.database import get_db
 from app.deps import get_current_user
 import json
@@ -172,6 +172,53 @@ def mark_fixed(payload: schemas.FixedMark, db: Session = Depends(get_db), user: 
     return get_plan(db, user)
 
 
+@router.post("/fixed", response_model=schemas.PlanStatus)
+def save_fixed(payload: schemas.FixedIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Add a fixed item, or (with old_name) change one: its name, its monthly amount, the sub-categories linked to it."""
+    l = user.ledger
+    items = load(l)
+    name = payload.name.strip()
+    if not name or len(name) > 20:
+        raise HTTPException(400, "bad name")
+    it = None
+    if payload.old_name is not None:
+        it = next((i for i in items if i["name"] == payload.old_name), None)
+        if it is None:
+            raise HTTPException(404, "no such fixed item")
+    if name != payload.old_name and any(i["name"] == name for i in items):
+        raise HTTPException(400, "already there")
+    if it is None:
+        it = {"tracked": False}
+        items.append(it)
+    it["name"], it["monthly"] = name, float(payload.monthly)
+    subs = [x for x in payload.match_sub if x]
+    if subs:
+        it["match_sub"], it["tracked"], it["variable"] = subs, True, True
+        # a payment filed under a linked sub counts for this item: the plan files it where the sub lives
+        cat = next((c.name for c in db.query(models.Category).filter(models.Category.ledger_id == l.id)
+                    if any(x in subcats.subs_of(l.id, c.name) for x in subs)), None)
+        if cat:
+            it["category"] = cat
+    else:
+        for k in ("match_sub", "variable"):
+            it.pop(k, None)
+        it["tracked"] = bool(it.get("match_amount") or it.get("match_text") or it.get("match_merchants") or it.get("match_core") or it.get("match_core_part"))
+    l.fixed_items = json.dumps(items, ensure_ascii=False)
+    db.commit()
+    return status_for(db, l)
+
+
+@router.delete("/fixed", response_model=schemas.PlanStatus)
+def delete_fixed(name: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    l = user.ledger
+    items = load(l)
+    if not any(i["name"] == name for i in items):
+        raise HTTPException(404, "no such fixed item")
+    l.fixed_items = json.dumps([i for i in items if i["name"] != name], ensure_ascii=False)
+    db.commit()
+    return status_for(db, l)
+
+
 @router.get("/status", response_model=schemas.PlanStatus)
 def plan_status(
     year: Optional[int] = None,
@@ -246,6 +293,7 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
             state="paid" if (paid[it["name"]] > 0 or why) else ("waiting" if tracked else "reserved"),
             pot=pots.get(it["name"], {}).get("amount"), pot_cap=pots.get(it["name"], {}).get("cap"),
             pot_last_paid=pots.get(it["name"], {}).get("last_paid"), pot_due=pots.get(it["name"], {}).get("due"),
+            monthly=Decimal(str(it.get("monthly") or 0)), match_sub=list(it.get("match_sub") or []),
         ))
     if not items:                                    # no itemised commitments: the old single "fixed expenses" figure
         fixed_total = l.fixed_expenses or ZERO
@@ -261,7 +309,7 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         fixed_total += r
         fixed_rows.append(schemas.FixedItemStatus(
             name=d.name.removeprefix("欠"), reserve=r, paid=paid_c, tracked=True, note=f"每月还{d.who}, 还剩 {d.remaining}",
-            paid_note=(f"已还 ¥{paid_c} / 计划 ¥{d.monthly}" if 0 < paid_c < r else None), state="paid" if paid_c > 0 else "waiting"))
+            paid_note=(f"已还 ¥{paid_c} / 计划 ¥{d.monthly}" if 0 < paid_c < r else None), state="paid" if paid_c > 0 else "waiting", editable=False))
 
     # until payday the real income is not in yet: plan with the expected one, afterwards with whichever is larger
     # salary varies: once this cycle's pay has landed use what really arrived; before that use the cautious

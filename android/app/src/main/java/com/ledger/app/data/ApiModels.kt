@@ -290,8 +290,15 @@ data class FixedItemDto(
     val pot: String? = null,            // sinking fund set aside so far for a lumpy bill (rent every 3 months)
     val pot_cap: String? = null,        // ... and what the next bill costs
     val pot_last_paid: String? = null,
-    val pot_due: String? = null
+    val pot_due: String? = null,
+    val monthly: String? = null,
+    val match_sub: List<String>? = null,
+    val editable: Boolean? = null
 )
+
+data class SubRequest(val name: String)
+
+data class FixedInRequest(val name: String, val old_name: String? = null, val monthly: String = "0", val match_sub: List<String> = emptyList())
 
 data class FixedMarkRequest(val name: String, val paid: Boolean? = null, val paid_until: String? = null)
 

@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ledger.app.data.ApiClient
 import com.ledger.app.data.CategoryDto
+import com.ledger.app.data.SubRequest
 import com.ledger.app.data.TransactionDto
 import com.ledger.app.ui.theme.CategoryBadgeColors
 import com.ledger.app.ui.theme.ExpenseColor
@@ -589,6 +590,9 @@ internal fun CategoryPickerDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
+    val catName = categories.find { it.id == selCat }?.name
+    var addingSub by remember { mutableStateOf(false) }
+    var deletingSub by remember { mutableStateOf<String?>(null) }
     // "吃好吃的" is a food budget: only offered (and only kept) while the category is 餐饮
     val isFood = categories.find { it.id == selCat }?.name == "餐饮"
     val treat = selTreat && isFood
@@ -643,15 +647,18 @@ internal fun CategoryPickerDialog(
                         }
                     }
                 }
-                if (tx.tx_type == "expense" && subs.isNotEmpty()) {
+                if (tx.tx_type == "expense" && catName != "我的车") {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    // up to 5 fit on one line; more (我的车 has 8) go four to a row
-                    subs.chunked(if (subs.size > 5) 4 else subs.size).forEachIndexed { i, row ->
+                    // up to 5 fit on one line; more (我的车 has 8) go four to a row; the last chip adds a sub, a long press deletes one
+                    val chips = subs + "＋"
+                    chips.chunked(if (chips.size > 5) 4 else chips.size).forEachIndexed { i, row ->
                         Row(modifier = Modifier.fillMaxWidth().padding(top = if (i > 0) 6.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             row.forEach { s ->
                                 // a longer label (e.g. "水果/酸奶") needs more of the row than a short one ("零食"); share
                                 // the width by how long the text actually is instead of splitting it evenly
-                                CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, modifier = Modifier.weight(s.length.toFloat().coerceAtLeast(2f)))
+                                if (s == "＋" && s !in subs) CompactChip(text = s, selected = false, onClick = { addingSub = true }, modifier = Modifier.weight(2f))
+                                else CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s },
+                                    onLongClick = { deletingSub = s }, modifier = Modifier.weight(s.length.toFloat().coerceAtLeast(2f)))
                             }
                         }
                     }
@@ -674,6 +681,46 @@ internal fun CategoryPickerDialog(
         confirmButton = { Button(enabled = selCat != null && (changed || tx.needs_review), onClick = { onConfirm(selCat!!, selSub, treat) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
+    if (addingSub) {
+        var newSub by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { addingSub = false },
+            title = { Text("新小分类") },
+            text = { OutlinedTextField(newSub, { newSub = it.take(8) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = {
+                TextButton(enabled = newSub.isNotBlank(), onClick = {
+                    addingSub = false
+                    scope.launch {
+                        try {
+                            ApiClient.create(context).addSub(selCat ?: return@launch, SubRequest(newSub.trim()))
+                            selSub = newSub.trim()
+                            CategoryHub.onChanged?.invoke()
+                        } catch (_: Exception) {}
+                    }
+                }) { Text("添加") }
+            },
+            dismissButton = { TextButton(onClick = { addingSub = false }) { Text("取消") } }
+        )
+    }
+    deletingSub?.let { name ->
+        AlertDialog(
+            onDismissRequest = { deletingSub = null },
+            title = { Text("删除「$name」?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingSub = null
+                    scope.launch {
+                        try {
+                            ApiClient.create(context).deleteSub(selCat ?: return@launch, name)
+                            if (selSub == name) selSub = null
+                            CategoryHub.onChanged?.invoke()
+                        } catch (_: Exception) {}
+                    }
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deletingSub = null }) { Text("不删") } }
+        )
+    }
     if (confirmingDelete) {
         AlertDialog(
             onDismissRequest = { confirmingDelete = false },
@@ -718,9 +765,9 @@ internal fun CategoryPickerDialog(
 /** A small-category pick: as many as there are (up to 6 for 狗狗), sized to always fit one row without wrapping or
  *  spilling past the dialog edge - the caller gives each one a width share based on how long its label is. */
 @Composable
-private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
     androidx.compose.material3.Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(16.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)

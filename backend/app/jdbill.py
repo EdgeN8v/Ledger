@@ -140,8 +140,8 @@ def apply(db: Session, ledger_id: int, matched: list[tuple[dict, models.Transact
             stats["recategorized"] += 1
         cur = db.get(models.Category, tx.category_id)
         name = cur.name if cur else None
-        if name in subcats.SUBS:
-            new = sub if (sub in subcats.SUBS[name] and not locked) else subcats.guess(name, tx.merchant, tx.note)
+        if subcats.subs_of(tx.ledger_id, name):
+            new = sub if (sub in subcats.subs_of(tx.ledger_id, name) and not locked) else subcats.guess(name, tx.merchant, tx.note, (), tx.ledger_id)
             if new and new != tx.sub:
                 tx.sub = new
                 stats["subbed"] += 1

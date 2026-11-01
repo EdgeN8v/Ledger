@@ -45,6 +45,10 @@ class CategoryCreate(BaseModel):
     keywords: Optional[str] = None
 
 
+class SubIn(BaseModel):
+    name: str
+
+
 class CategoryOrder(BaseModel):
     tx_type: TxType
     ids: list[int]
@@ -317,6 +321,13 @@ class BillReminder(BaseModel):
     note: Optional[str] = None
 
 
+class FixedIn(BaseModel):
+    name: str
+    old_name: Optional[str] = None         # set when editing: the name the item has now
+    monthly: Decimal = Decimal(0)
+    match_sub: list[str] = []
+
+
 class FixedMark(BaseModel):
     name: str
     paid: Optional[bool] = None            # mark / unmark the CURRENT cycle as paid
@@ -347,6 +358,9 @@ class FixedItemStatus(BaseModel):
     pot_cap: Optional[Decimal] = None      # ... and what the next bill will cost
     pot_last_paid: Optional[str] = None    # YYYY-MM-DD of the payment the fund started after
     pot_due: Optional[str] = None          # YYYY-MM-DD the next bill falls due (paid-in-advance date), if known
+    monthly: Optional[Decimal] = None      # the amount typed for the item (0 = learned from the last cycles)
+    match_sub: list[str] = []              # sub-categories linked by hand: a payment filed under one of them is this item
+    editable: bool = True                  # False for rows the plan makes up itself (the debt to the spouse)
 
 
 class PlanStatus(BaseModel):

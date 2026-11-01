@@ -26,6 +26,35 @@ SUBS = {
     "订阅服务": ["美国节点", "香港节点", "Claude", "域名"],
 }
 
+# the user's own lists (ledger_id -> {category: [subs]}), loaded from ledgers.sub_lists; a category without an entry keeps SUBS
+_OVR: dict = {}
+
+
+def subs_of(ledger_id, cat_name) -> list:
+    own = _OVR.get(ledger_id, {}).get(cat_name)
+    return list(own) if own is not None else list(SUBS.get(cat_name, []))
+
+
+def load_lists(db: Session) -> None:
+    import json
+    from app import models
+    _OVR.clear()
+    for l in db.query(models.Ledger).all():
+        try:
+            lists = json.loads(l.sub_lists or "{}")
+        except ValueError:
+            lists = {}
+        if isinstance(lists, dict):
+            _OVR[l.id] = {k: [x for x in v if isinstance(x, str)] for k, v in lists.items() if isinstance(v, list)}
+
+
+def save_list(db: Session, ledger, cat_name: str, subs: list) -> None:
+    import json
+    cur = {**_OVR.get(ledger.id, {}), cat_name: subs}
+    ledger.sub_lists = json.dumps(cur, ensure_ascii=False)
+    _OVR[ledger.id] = cur
+
+
 _SNACK = ("零食,坚果,饼干,糖果,巧克力,辣条,薯片,果干,肉干,蜜饯,瓜子,牛奶,饮料,矿泉水,咖啡,奶茶,速溶,茶叶,三只松鼠,良品铺子,百草味,来伊份,盐津铺子,卫龙,洽洽,"
           "好想来,零食很忙,蜜雪冰城,茶百道,古茗,喜茶,奈雪,霸王茶姬,沪上阿姨,瑞幸,星巴克,库迪,冰淇淋,甜品,冷饮,饮品,面包,蛋糕,烘焙,好利来,糕点,零嘴,"
           "便利店,全家,便利蜂,罗森,7-ELEVEN,711,雪糕,冰棍,果汁,可乐,啤酒").split(",")
@@ -132,15 +161,17 @@ def food_instead_of_shopping(merchant: Optional[str], note: Optional[str]) -> Op
     return None
 
 
-def guess(cat_name: str, merchant: Optional[str], note: Optional[str], rules=()) -> Optional[str]:
+def guess(cat_name: str, merchant: Optional[str], note: Optional[str], rules=(), ledger_id=None) -> Optional[str]:
     """rules: (pattern, sub) learned from the user; the most specific shop name first."""
     from app.merchants import rule_applies
-    if cat_name not in SUBS:
+    allowed = subs_of(ledger_id, cat_name)
+    if not allowed:
         return None
     for pattern, sub in sorted(rules, key=lambda r: -len(r[0] or "")):
-        if sub in SUBS[cat_name] and rule_applies(pattern, merchant):
+        if sub in allowed and rule_applies(pattern, merchant):
             return sub
-    return keyword_sub(cat_name, merchant, note)
+    found = keyword_sub(cat_name, merchant, note)
+    return found if found in allowed else None
 
 
 def rules_of(db: Session, ledger_id: int):
@@ -159,7 +190,7 @@ def classify_all(db: Session) -> int:
         rules = rules_of(db, ledger.id)
         for t in db.query(models.Transaction).filter(models.Transaction.ledger_id == ledger.id, models.Transaction.tx_type == models.TxType.expense):
             name = cats.get(t.category_id)
-            allowed = SUBS.get(name)
+            allowed = subs_of(ledger.id, name) or None
             if name in ("购物", "餐饮", "其他支出") and not t.category_locked and "狗狗" in by_name and is_pet(t.merchant, t.note):
                 t.category_id, t.sub, changed = by_name["狗狗"], keyword_sub("狗狗", t.merchant, t.note), changed + 1
                 continue
@@ -180,7 +211,7 @@ def classify_all(db: Session) -> int:
                 if food:
                     t.category_id, t.sub, changed = by_name["餐饮"], food, changed + 1
                     continue
-            new = guess(name, t.merchant, t.note, rules)
+            new = guess(name, t.merchant, t.note, rules, ledger.id)
             if new != t.sub:
                 t.sub, changed = new, changed + 1
     db.commit()
@@ -208,7 +239,7 @@ def register() -> None:
         if name == CAR and t.sub is None and t.car_bucket in CAR_SUBS:
             t.sub = CAR_SUBS[t.car_bucket]
             return
-        if name not in SUBS or t.sub is not None:
+        if not subs_of(ledger_id, name) or t.sub is not None:
             return
         rules = [(p, s_) for p, s_ in connection.execute(select(R.c.pattern, R.c.sub).where(R.c.ledger_id == ledger_id, R.c.sub.isnot(None)))]
         if name == "购物" and not t.category_locked:
@@ -218,7 +249,7 @@ def register() -> None:
                 if fid:
                     t.category_id, t.sub = fid, food
                     return
-        t.sub = guess(name, t.merchant, t.note, rules)
+        t.sub = guess(name, t.merchant, t.note, rules, ledger_id)
 
     @event.listens_for(models.Transaction, "before_insert")
     def _before_insert(mapper, connection, t):  # noqa: ANN001

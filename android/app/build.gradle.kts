@@ -19,8 +19,8 @@ android {
         applicationId = "com.ledger.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 65
-        versionName = "0.4.52"
+        versionCode = 66
+        versionName = "0.4.53"
         // Where the app looks for your server out of the box. Set them in android/local.properties (never committed):
         //   ledger.defaultServer=https://ledger.example.com/     ledger.lanServer=http://192.168.1.10:8000/
         buildConfigField("String", "DEFAULT_SERVER", "\"" + localProp("ledger.defaultServer", "http://192.168.1.10:8000/") + "\"")

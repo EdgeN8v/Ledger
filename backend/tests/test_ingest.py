@@ -22,6 +22,8 @@ def ms(y, mo, d, h, mi):
 
 @pytest.fixture()
 def client():
+    from app import subcats
+    subcats._OVR.clear()
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     c = TestClient(app)
@@ -1998,3 +2000,27 @@ def test_a_hidden_item_never_shows_as_a_plan_row_and_its_renewal_rolls_the_date_
     new = json.loads(db.query(models.Ledger).first().fixed_items)[0]["paid_until"]
     db.close()
     assert new > (today.date() + timedelta(days=300)).isoformat()
+
+
+def test_subcategories_can_be_added_and_deleted_and_a_sub_can_be_linked_to_a_fixed_item(client):
+    from app.clock import now_local
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    sub = cats["订阅服务"]
+    r = client.post(f"/categories/{sub['id']}/subs", json={"name": "视频会员"})
+    assert r.status_code == 200 and "视频会员" in r.json()["subs"]
+    assert client.post(f"/categories/{sub['id']}/subs", json={"name": "视频会员"}).status_code == 400
+    tx = client.post("/transactions", json={"tx_type": "expense", "amount": "25", "category_id": sub["id"], "merchant": "某视频", "occurred_at": now_local().strftime("%Y-%m-%dT%H:%M:%S")}).json()
+    assert client.put(f"/transactions/{tx['id']}", json={"sub": "视频会员"}).json()["sub"] == "视频会员"
+    # link it to a new fixed item by hand
+    s = client.post("/plan/fixed", json={"name": "视频", "monthly": "25", "match_sub": ["视频会员"]})
+    assert s.status_code == 200
+    row = next(f for f in s.json()["fixed_items"] if f["name"] == "视频")
+    assert row["match_sub"] == ["视频会员"] and row["paid"] == "25.00" and row["editable"] is True
+    s = client.post("/plan/fixed", json={"name": "视频会员", "old_name": "视频", "monthly": "30", "match_sub": ["视频会员"]}).json()
+    assert [f["name"] for f in s["fixed_items"]].count("视频会员") == 1 and not any(f["name"] == "视频" for f in s["fixed_items"])
+    s = client.delete("/plan/fixed", params={"name": "视频会员"}).json()
+    assert not any(f["name"] == "视频会员" for f in s["fixed_items"])
+    # deleting the sub clears it from the payments filed under it
+    r = client.delete(f"/categories/{sub['id']}/subs", params={"name": "视频会员"})
+    assert "视频会员" not in r.json()["subs"]
+    assert next(t for t in client.get("/transactions").json() if t["id"] == tx["id"])["sub"] is None

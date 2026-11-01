@@ -42,6 +42,7 @@ class Ledger(Base):
     trips_enabled = Column(Boolean, nullable=False, default=True)   # False: flight SMS no longer open new business trips
     owner_names = Column(String, nullable=True)    # comma-separated names of the account holders: money from/to them is a transfer
     treat_budget = Column(Numeric(14, 2), nullable=True)   # monthly "eat something nice" allowance, tracked separately from the regular budget
+    sub_lists = Column(Text, nullable=True)        # JSON {category: [sub, ...]}: the user's own sub-category lists, see subcats.py
     loans = Column(Text, nullable=True)            # JSON list of money owed to someone (the spouse who lent for a big purchase), see loans.py
     created_at = Column(DateTime, default=now_local)
 
@@ -86,8 +87,8 @@ class Category(Base):
 
     @property
     def subs(self):
-        from app.subcats import SUBS
-        return SUBS.get(self.name, [])
+        from app.subcats import subs_of
+        return subs_of(self.ledger_id, self.name)
 
 
 class Transaction(Base):
