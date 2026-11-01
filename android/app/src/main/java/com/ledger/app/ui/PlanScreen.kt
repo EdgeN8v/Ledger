@@ -182,16 +182,16 @@ fun PlanScreen(
                         Text("＋", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { editingItem = NEW_ITEM })
                     }
-                    // paid items fade out, what is still to pay stays dark: the colour says it, no "已付" text needed
+                    // paid items turn green like "还能花", what is still to pay stays dark: the colour says it, no "已付" text needed
                     st.fixed_items.sortedByDescending { it.reserve.toDoubleOrNull() ?: 0.0 }.forEach { f ->
-                        val color = if (f.state == "paid") MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
+                        val color = if (f.state == "paid") IncomeColor else MaterialTheme.colorScheme.onSurface
                         val extra = listOfNotNull(
-                            if (f.pot != null && f.pot_cap != null) "已攒 ${moneyWhole(f.pot)}/${moneyWhole(f.pot_cap)}" else null,
-                            f.paid_note?.takeIf { it.contains("/") }
+                            if (f.pot != null && f.pot_cap != null && (f.pot.toDoubleOrNull() ?: 0.0) > 0) "已攒 ${moneyWhole(f.pot)}/${moneyWhole(f.pot_cap)}" else null,
+                            f.paid_note?.takeIf { it.contains("/") || it.startsWith("已付到") }
                         ).joinToString(" · ")
                         Column(modifier = Modifier.fillMaxWidth().clickable { marking = f }.padding(top = 12.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(f.name + (f.due_day?.let { " · ${it}号" } ?: ""), style = MaterialTheme.typography.bodyLarge, color = color, modifier = Modifier.weight(1f))
+                                Text(f.name, style = MaterialTheme.typography.bodyLarge, color = color, modifier = Modifier.weight(1f))
                                 Text(moneyWhole(f.reserve), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = color, maxLines = 1)
                             }
                             if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -273,12 +273,22 @@ fun PlanScreen(
     }
     marking?.let { f ->
         val context = androidx.compose.ui.platform.LocalContext.current
+        val paid = f.state == "paid"
         AlertDialog(
             onDismissRequest = { marking = null },
             title = { Text(f.name) },
             text = {
                 Column {
-                    if (f.state == "paid" && f.paid_note != null) Text("现在: ${f.paid_note}")
+                    if (paid && f.paid_note != null) Text(f.paid_note, style = MaterialTheme.typography.bodySmall, color = IncomeColor)
+                    // one short list: mark / clear, paid ahead, history, edit
+                    TextButton(onClick = { marking = null; onMark(f.name, !paid, if (paid) "" else null) }) { Text(if (paid) "取消已付" else "标记已付") }
+                    TextButton(onClick = {
+                        val d = java.time.LocalDate.now().plusMonths(1)
+                        android.app.DatePickerDialog(context, { _, y, m, day ->
+                            marking = null
+                            onMark(f.name, true, java.time.LocalDate.of(y, m + 1, day).toString())
+                        }, d.year, d.monthValue - 1, d.dayOfMonth).show()
+                    }) { Text("提前付到…") }
                     TextButton(onClick = {
                         marking = null
                         historyFor = f.name; historyRows = null; historyError = null
@@ -286,26 +296,14 @@ fun PlanScreen(
                             try { historyRows = ApiClient.create(context).fixedHistory(f.name) }
                             catch (e: Exception) { historyError = e.message ?: "加载失败" }
                         }
-                    }) { Text("📜 查看历史") }
+                    }) { Text("历史") }
+                    if (f.editable != false) TextButton(onClick = { marking = null; editingItem = f }) { Text("修改") }
                 }
             },
-            confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = { marking = null; onMark(f.name, true, null) }) { Text("✅ 本期已付") }
-                    TextButton(onClick = {
-                        val d = java.time.LocalDate.now().plusMonths(1)
-                        android.app.DatePickerDialog(context, { _, y, m, day ->
-                            marking = null
-                            onMark(f.name, true, java.time.LocalDate.of(y, m + 1, day).toString())
-                        }, d.year, d.monthValue - 1, d.dayOfMonth).show()
-                    }) { Text("📅 已提前付到某一天…") }
-                    TextButton(onClick = { marking = null; onMark(f.name, false, "") }) { Text("⏳ 本期还没付(清除标记)") }
-                    if (f.editable != false) TextButton(onClick = { marking = null; editingItem = f }) { Text("✎ 修改 / 删除") }
-                }
-            },
-            dismissButton = { TextButton(onClick = { marking = null }) { Text("关闭") } }
+            confirmButton = {}
         )
     }
+
 
     editingItem?.let { f ->
         val isNew = f === NEW_ITEM
