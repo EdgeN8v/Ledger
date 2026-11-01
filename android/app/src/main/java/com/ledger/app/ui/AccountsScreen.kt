@@ -64,7 +64,6 @@ fun AccountsScreen(
                         label = { Text("每月计划还款(元)") }, singleLine = true,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
                     )
-                    Text("会作为固定支出算进计划, 还剩 ${money(d.remaining)}。留空 = 不设计划。随时可以再改。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                     monthlyError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             },
@@ -82,130 +81,64 @@ fun AccountsScreen(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("资产", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text("总资产 (计入总额的账户合计)", style = MaterialTheme.typography.labelMedium)
-                Text(
-                    "¥" + (state.overview?.total ?: "0.00"),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "银行卡的余额来自银行短信,每笔交易后自动更新",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                // part of the total is already spoken for (the rent that is paid every 3 months but set aside every
-                // month): shown apart, so what is left is what is really free to save or spend
-                val spoken = state.overview?.earmarked.orEmpty()
-                if (spoken.isNotEmpty()) {
-                    spoken.forEach { e ->
-                        val due = e.due?.takeIf { it.length >= 10 }?.let { " · ${it.substring(5, 7).trimStart('0')}月${it.substring(8, 10).trimStart('0')}日前要付" } ?: ""
-                        Text(
-                            "其中 ${e.name}专款 ${money(e.amount)} / ${money(e.cap)}$due",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 10.dp)
-                        )
-                    }
-                    Text("可自由支配 ${money(state.overview?.free_total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
-                }
-                if (!state.overview?.liabilities.isNullOrEmpty()) {
-                    Text("负债 ${money(state.overview?.liabilities_total)} · 净资产 ${money(state.overview?.net_total)}", style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
-                }
-            }
-        }
-
-        // money owed to someone (the spouse lent it for the big purchase): how much is left and how far the paying back has got
-        state.overview?.liabilities.orEmpty().forEach { d ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
-            ) {
+    val ov = state.overview
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("💳 ${d.name}  还剩 ${money(d.remaining)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    LinearProgressIndicator(
-                        progress = { (d.percent / 100.0).toFloat().coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-                    )
-                    Text("已还 ${money(d.repaid)} / 共借 ${money(d.borrowed)}  (${"%.1f".format(d.percent)}%)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
-                    val extra = listOfNotNull(
-                        d.repaid_this_cycle?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }?.let { "本期已还 ${money(it)}" }
-                            ?: d.repaid_this_month?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }?.let { "本月已还 ${money(it)}" },
-                        if (d.monthly != null && d.months_left != null) "每月还 ${money(d.monthly)}, 还要 ${d.months_left} 个月" + (d.payoff?.let { " (约${it}还清)" } ?: "") else null,
-                        d.last_repaid?.let { "上次还款 $it" }
-                    )
-                    if (extra.isNotEmpty()) Text(extra.joinToString(" · "), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
-                    TextButton(onClick = { monthlyFor = d; monthlyText = d.monthly?.substringBefore('.') ?: "" }) {
-                        Text(if (d.monthly == null) "设置每月还多少" else "改每月还款 (现在 ${money(d.monthly)})")
+                    Text("总资产", style = MaterialTheme.typography.labelMedium)
+                    Text("¥" + (ov?.total ?: "0.00"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    // part of the total is already spoken for (the rent fund ...): what is left is what is really free
+                    ov?.earmarked.orEmpty().forEach { e ->
+                        val due = e.due?.takeIf { it.length >= 10 }?.let { " · ${it.substring(5, 7).trimStart('0')}/${it.substring(8, 10).trimStart('0')}前付" } ?: ""
+                        Text("${e.name}专款 ${money(e.amount)} / ${money(e.cap)}$due", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                     }
-                    Text("${d.who}转进来的算借款, 转给${d.who}的算还款, 都不算收入和支出(${d.start} 起); 每月计划还款会算进「计划」的固定支出", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    if (ov?.earmarked.orEmpty().isNotEmpty()) Text("可自由支配 ${money(ov?.free_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    if (!ov?.liabilities.isNullOrEmpty()) Text("负债 ${money(ov?.liabilities_total)} · 净资产 ${money(ov?.net_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    val owed = ov?.receivable?.toDoubleOrNull() ?: 0.0
+                    if (owed > 0) TextButton(onClick = { showReceivable = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("待报销 ${money(ov?.receivable)} ›") }
                 }
             }
         }
-
-        val owed = state.overview?.receivable?.toDoubleOrNull() ?: 0.0
-        if (owed > 0) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                onClick = { showReceivable = true },
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("🧾 待报销 ${money(state.overview?.receivable)} (不计入总资产, 但这是你的钱)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    state.overview?.receivable_trips?.forEach { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
-                }
-            }
-        }
-
-        if (state.error != null) {
-            Text(state.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f).padding(top = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(state.overview?.accounts ?: emptyList()) { a ->
-                Card(
-                    onClick = { editing = a },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(a.name, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                (KINDS.find { it.first == a.kind }?.second ?: a.kind) +
-                                    (a.balance_at?.let { " · 更新于 " + it.replace('T', ' ').take(16) } ?: " · 还没有余额") +
-                                    (if (!a.include_in_total) " · 不计入总额" else ""),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+        if (state.error != null) item { Text(state.error, color = MaterialTheme.colorScheme.error) }
+        items(ov?.liabilities.orEmpty()) { d ->
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(d.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text("还剩 ${money(d.remaining)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    }
+                    LinearProgressIndicator(progress = { (d.percent / 100.0).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                    val cycle = d.repaid_this_cycle?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("已还 ${money(d.repaid)} / ${money(d.borrowed)}" + (cycle?.let { " · 本期 ${money(it)}" } ?: ""), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { monthlyFor = d; monthlyText = d.monthly?.substringBefore('.') ?: "" }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
+                            Text(if (d.monthly == null) "设每月还款" else "每月 ${money(d.monthly)}" + (d.months_left?.let { " · ${it}个月" } ?: ""))
                         }
-                        Text(
-                            "¥" + (a.balance ?: "-"),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
             }
         }
-
-        Button(onClick = { adding = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Text("添加账户 (现金 / 钱包 / 不发短信的卡)")
+        items(ov?.accounts ?: emptyList()) { a ->
+            Card(onClick = { editing = a }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(a.name, style = MaterialTheme.typography.titleMedium)
+                        val sub = listOfNotNull(
+                            a.balance_at?.let { it.replace('T', ' ').take(16).drop(5) },
+                            if (!a.include_in_total) "不计入总额" else null
+                        ).joinToString(" · ")
+                        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("¥" + (a.balance ?: "-"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
         }
+        item { TextButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) { Text("+ 添加账户") } }
     }
 
     if (showReceivable) {
