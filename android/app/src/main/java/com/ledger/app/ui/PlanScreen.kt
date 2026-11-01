@@ -174,7 +174,7 @@ fun PlanScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("固定支出 (每月先预留 ${money(st.fixed_total)})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    st.fixed_items.forEach { f ->
+                    st.fixed_items.sortedByDescending { it.reserve.toDoubleOrNull() ?: 0.0 }.forEach { f ->
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { marking = f }, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(f.name + (f.due_day?.let { "  (每月${it}号)" } ?: ""), style = MaterialTheme.typography.bodyMedium)
