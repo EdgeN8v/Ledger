@@ -2024,3 +2024,60 @@ def test_subcategories_can_be_added_and_deleted_and_a_sub_can_be_linked_to_a_fix
     r = client.delete(f"/categories/{sub['id']}/subs", params={"name": "视频会员"})
     assert "视频会员" not in r.json()["subs"]
     assert next(t for t in client.get("/transactions").json() if t["id"] == tx["id"])["sub"] is None
+
+
+def test_a_sub_category_linked_from_the_bookkeeping_side_turns_the_fixed_item_paid(client):
+    from app.clock import now_local
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    sub = cats["订阅服务"]
+    client.post(f"/categories/{sub['id']}/subs", json={"name": "视频会员"})
+    client.post("/plan/fixed", json={"name": "视频", "monthly": "25"})
+    tx = client.post("/transactions", json={"tx_type": "expense", "amount": "25", "category_id": sub["id"], "merchant": "某视频", "occurred_at": now_local().strftime("%Y-%m-%dT%H:%M:%S")}).json()
+    client.put(f"/transactions/{tx['id']}", json={"sub": "视频会员"})
+    row = lambda s: next(f for f in s["fixed_items"] if f["name"] == "视频")
+    assert row(client.get("/plan/status").json())["state"] != "paid"
+    s = client.post("/plan/fixed-link", json={"sub": "视频会员", "name": "视频"}).json()
+    assert row(s)["state"] == "paid" and row(s)["match_sub"] == ["视频会员"]
+    s = client.post("/plan/fixed-link", json={"sub": "视频会员"}).json()
+    assert row(s)["state"] != "paid" and row(s)["match_sub"] == []
+
+
+def test_a_bill_paid_for_two_cycles_stays_green_into_the_next_one(client):
+    from datetime import timedelta
+    from app.clock import now_local
+    from app.database import SessionLocal
+    from app import models
+    import json
+    db = SessionLocal()
+    led = db.query(models.Ledger).first()
+    led.cycle_start_day = 20
+    led.fixed_items = json.dumps([{"name": "停车费", "monthly": 300, "tracked": True, "pot_cap": 900, "category": "我的车", "match_amount": [600, 300]}], ensure_ascii=False)
+    db.commit(); db.close()
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    paid_on = now_local() - timedelta(days=40)
+    client.post("/transactions", json={"tx_type": "expense", "amount": "600", "category_id": cats["我的车"]["id"], "occurred_at": paid_on.strftime("%Y-%m-%dT%H:%M:%S")})
+    r = client.get("/plan/status")
+    assert r.status_code == 200, r.text
+    # paid 40 days ago: that cycle and the next are covered, so today (one or two cycles later) is still green or just ended
+    db = SessionLocal()
+    until = json.loads(db.query(models.Ledger).first().fixed_items)[0].get("paid_until")
+    db.close()
+    assert until and until > paid_on.date().isoformat()
+
+
+def test_the_combined_us_node_sub_splits_into_two_each_linked_to_its_item(client):
+    import json
+    from app.database import SessionLocal
+    from app.maintenance import split_us_nodes
+    from app import models
+    db = SessionLocal()
+    led = db.query(models.Ledger).first()
+    led.fixed_items = json.dumps([{"name": "美国节点·Kila", "monthly": 66, "match_text": ["朱勇"]}, {"name": "美国节点·干杯", "monthly": 138, "match_sub": ["美国节点"]}], ensure_ascii=False)
+    db.commit()
+    split_us_nodes(db)
+    split_us_nodes(db)                                   # idempotent
+    items = {i["name"]: i for i in json.loads(db.query(models.Ledger).first().fixed_items)}
+    assert items["美国节点·Kila"]["match_sub"] == ["美国Kila"] and items["美国节点·干杯"]["match_sub"] == ["美国干杯"]
+    db.close()
+    cats = {c["name"]: c for c in client.get("/categories").json()}
+    assert cats["订阅服务"]["subs"] == ["美国Kila", "美国干杯", "香港节点", "Claude", "域名"]

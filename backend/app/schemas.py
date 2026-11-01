@@ -328,6 +328,10 @@ class FixedIn(BaseModel):
     match_sub: list[str] = []
 
 
+class FixedLink(BaseModel):
+    sub: str
+    name: Optional[str] = None             # the fixed item this sub-category pays for; None = unlink
+
 class FixedMark(BaseModel):
     name: str
     paid: Optional[bool] = None            # mark / unmark the CURRENT cycle as paid

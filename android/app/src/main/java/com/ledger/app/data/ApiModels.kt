@@ -298,6 +298,8 @@ data class FixedItemDto(
 
 data class SubRequest(val name: String)
 
+data class FixedLinkRequest(val sub: String, val name: String? = null)
+
 data class FixedInRequest(val name: String, val old_name: String? = null, val monthly: String = "0", val match_sub: List<String> = emptyList())
 
 data class FixedMarkRequest(val name: String, val paid: Boolean? = null, val paid_until: String? = null)

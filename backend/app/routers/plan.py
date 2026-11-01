@@ -59,6 +59,38 @@ def pots_for(db: Session, l: models.Ledger, items: list[dict], today: date) -> d
     return out
 
 
+def roll_prepaid(db: Session, l: models.Ledger) -> None:
+    """A lumpy bill paid for several cycles at once (parking 600 = 2 x 300, 900 = 3 x 300) covers that many cycles: the
+    item is 'paid until' the end of the last one. Only ever moves the date later, so a date set by hand (rent) stays."""
+    items = load(l)
+    wanted = [it for it in items if it.get("pot_cap") and it.get("monthly")]
+    if not wanted:
+        return
+    sd = l.cycle_start_day or 1
+    rows = (db.query(models.Transaction)
+            .filter(models.Transaction.ledger_id == l.id, models.Transaction.tx_type == models.TxType.expense,
+                    models.Transaction.is_transfer.is_(False), models.Transaction.refund_of_id.is_(None),
+                    models.Transaction.occurred_at >= datetime.combine(now_local().date() - timedelta(days=200), datetime.min.time()))
+            .all())
+    changed = False
+    for it in wanted:
+        per = Decimal(str(it["monthly"]))
+        paid = [t for t in rows if t.amount >= per * 2 and matches(it, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)]
+        if not paid:
+            continue
+        last = max(paid, key=lambda t: t.occurred_at)
+        n = int(last.amount // per)
+        y, m = current_cycle(sd, last.occurred_at.date())
+        m += n
+        y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+        until = (cycle_bounds(sd, y, m)[0] - timedelta(days=1)).date().isoformat()
+        if until > (it.get("paid_until") or ""):
+            it["paid_until"], changed = until, True
+    if changed:
+        l.fixed_items = json.dumps(items, ensure_ascii=False)
+        db.commit()
+
+
 @router.get("", response_model=schemas.PlanOut)
 def get_plan(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     l = user.ledger
@@ -73,6 +105,7 @@ def get_plan(db: Session = Depends(get_db), user: models.User = Depends(get_curr
 def bill_reminders(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Fixed bills that are due by the end of this month and have not been paid yet (shown 5 days ahead)."""
     l = user.ledger
+    roll_prepaid(db, l)
     today = now_local().date()
     first = today.replace(day=1)
     rows = (
@@ -208,6 +241,29 @@ def save_fixed(payload: schemas.FixedIn, db: Session = Depends(get_db), user: mo
     return status_for(db, l)
 
 
+@router.post("/fixed-link", response_model=schemas.PlanStatus)
+def link_sub(payload: schemas.FixedLink, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """A sub-category pays for a fixed item (from the bookkeeping page): its payments turn that item green. One sub, one item."""
+    l = user.ledger
+    items = load(l)
+    target = None
+    if payload.name is not None:
+        target = next((i for i in items if i["name"] == payload.name), None)
+        if target is None:
+            raise HTTPException(404, "no such fixed item")
+    for it in items:
+        if payload.sub in (it.get("match_sub") or []):
+            it["match_sub"] = [x for x in it["match_sub"] if x != payload.sub]
+            if not it["match_sub"]:
+                it.pop("match_sub")
+    if target is not None:
+        target["match_sub"] = (target.get("match_sub") or []) + [payload.sub]
+        target["tracked"] = True
+    l.fixed_items = json.dumps(items, ensure_ascii=False)
+    db.commit()
+    return status_for(db, l)
+
+
 @router.delete("/fixed", response_model=schemas.PlanStatus)
 def delete_fixed(name: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     l = user.ledger
@@ -226,6 +282,7 @@ def plan_status(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    roll_prepaid(db, user.ledger)
     return status_for(db, user.ledger, year, month)
 
 

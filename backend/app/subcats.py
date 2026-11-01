@@ -136,8 +136,10 @@ def keyword_sub(cat_name: str, merchant: Optional[str], note: Optional[str]) -> 
         low = hay.lower()
         if "evoxt" in low or "razer" in low:
             return "香港节点"
-        if "千杯" in hay or "朱勇" in hay:
-            return "美国节点"
+        if "朱勇" in hay:
+            return "美国Kila"
+        if "千杯" in hay:
+            return "美国干杯"
         if "claude" in low or "anthropic" in low:
             return "Claude"
         if "阿里云" in hay or "aliyun" in low:
@@ -171,6 +173,8 @@ def guess(cat_name: str, merchant: Optional[str], note: Optional[str], rules=(),
         if sub in allowed and rule_applies(pattern, merchant):
             return sub
     found = keyword_sub(cat_name, merchant, note)
+    if found not in allowed and found in ("美国Kila", "美国干杯") and "美国节点" in allowed:
+        found = "美国节点"                                  # a ledger that still has the one combined sub
     return found if found in allowed else None
 
 

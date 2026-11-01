@@ -139,6 +139,9 @@ interface ApiService {
     @POST("plan/fixed")
     suspend fun saveFixed(@Body body: FixedInRequest): PlanStatusDto
 
+    @POST("plan/fixed-link")
+    suspend fun linkSub(@Body body: FixedLinkRequest): PlanStatusDto
+
     @DELETE("plan/fixed")
     suspend fun deleteFixed(@Query("name") name: String): PlanStatusDto
 

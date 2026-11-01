@@ -593,6 +593,7 @@ internal fun CategoryPickerDialog(
     val catName = categories.find { it.id == selCat }?.name
     var addingSub by remember { mutableStateOf(false) }
     var deletingSub by remember { mutableStateOf<String?>(null) }
+    var subMenu by remember { mutableStateOf<String?>(null) }
     // "吃好吃的" is a food budget: only offered (and only kept) while the category is 餐饮
     val isFood = categories.find { it.id == selCat }?.name == "餐饮"
     val treat = selTreat && isFood
@@ -649,18 +650,13 @@ internal fun CategoryPickerDialog(
                 }
                 if (tx.tx_type == "expense" && catName != "我的车") {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    // up to 5 fit on one line; more (我的车 has 8) go four to a row; the last chip adds a sub, a long press deletes one
-                    val chips = subs + "＋"
-                    chips.chunked(if (chips.size > 5) 4 else chips.size).forEachIndexed { i, row ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = if (i > 0) 6.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { s ->
-                                // a longer label (e.g. "水果/酸奶") needs more of the row than a short one ("零食"); share
-                                // the width by how long the text actually is instead of splitting it evenly
-                                if (s == "＋" && s !in subs) CompactChip(text = s, selected = false, onClick = { addingSub = true }, modifier = Modifier.weight(2f))
-                                else CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s },
-                                    onLongClick = { deletingSub = s }, modifier = Modifier.weight(s.length.toFloat().coerceAtLeast(2f)))
-                            }
+                    // chips wrap onto the next line instead of cutting a label short; the last one adds a sub, a long press opens its menu
+                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        subs.forEach { s ->
+                            CompactChip(text = s, selected = selSub == s, onClick = { selSub = if (selSub == s) null else s }, onLongClick = { subMenu = s })
                         }
+                        CompactChip(text = "＋", selected = false, onClick = { addingSub = true })
                     }
                 }
                 if (tx.tx_type == "expense" && isFood) {
@@ -700,6 +696,30 @@ internal fun CategoryPickerDialog(
                 }) { Text("添加") }
             },
             dismissButton = { TextButton(onClick = { addingSub = false }) { Text("取消") } }
+        )
+    }
+    subMenu?.let { name ->
+        var items by remember { mutableStateOf<List<com.ledger.app.data.FixedItemDto>?>(null) }
+        LaunchedEffect(Unit) {
+            items = try { ApiClient.create(context).planStatus().fixed_items.filter { it.editable != false } } catch (_: Exception) { emptyList() }
+        }
+        AlertDialog(
+            onDismissRequest = { subMenu = null },
+            title = { Text(name) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("付款计入固定支出", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    items.orEmpty().forEach { f ->
+                        val on = name in f.match_sub.orEmpty()
+                        TextButton(onClick = {
+                            subMenu = null
+                            scope.launch { try { ApiClient.create(context).linkSub(com.ledger.app.data.FixedLinkRequest(name, if (on) null else f.name)) } catch (_: Exception) {} }
+                        }) { Text(if (on) "✓ " + f.name else f.name) }
+                    }
+                    TextButton(onClick = { subMenu = null; deletingSub = name }) { Text("删除这个小分类", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {}
         )
     }
     deletingSub?.let { name ->
@@ -776,10 +796,9 @@ private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, mo
             text,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
     }
 }

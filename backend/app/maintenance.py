@@ -368,3 +368,34 @@ def reclassify_fruit(db: Session) -> None:
             if any(w and w in (r.pattern or "") for w in _FRUIT):
                 r.sub = "水果/酸奶"
     db.commit()
+
+
+def split_us_nodes(db: Session) -> None:
+    """One-off: two US nodes (Kila, 干杯) are two subs, each linked to its own fixed item, instead of one 美国节点."""
+    import json
+    from app import subcats
+    for l in db.query(models.Ledger).all():
+        base = subcats.subs_of(l.id, "订阅服务")
+        if "美国节点" not in base:
+            continue
+        new = []
+        for x in base:
+            new += ["美国Kila", "美国干杯"] if x == "美国节点" else [x]
+        subcats.save_list(db, l, "订阅服务", new)
+        items = json.loads(l.fixed_items or "[]")
+        for it in items:
+            links = [x for x in (it.get("match_sub") or []) if x != "美国节点"]
+            if it["name"].endswith("Kila"):
+                links.append("美国Kila")
+            elif it["name"].endswith("干杯"):
+                links.append("美国干杯")
+            if links:
+                it["match_sub"] = links
+            else:
+                it.pop("match_sub", None)
+        l.fixed_items = json.dumps(items, ensure_ascii=False)
+        cat = db.query(models.Category).filter(models.Category.ledger_id == l.id, models.Category.name == "订阅服务").first()
+        if cat:
+            for t in db.query(models.Transaction).filter(models.Transaction.ledger_id == l.id, models.Transaction.category_id == cat.id, models.Transaction.sub == "美国节点"):
+                t.sub = "美国Kila" if "朱勇" in f"{t.merchant or ''} {t.note or ''} {t.raw_text or ''}" else "美国干杯"
+    db.commit()

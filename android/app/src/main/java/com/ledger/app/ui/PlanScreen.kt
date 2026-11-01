@@ -309,11 +309,6 @@ fun PlanScreen(
         val isNew = f === NEW_ITEM
         var name by remember { mutableStateOf(if (isNew) "" else f.name) }
         var amount by remember { mutableStateOf(if (isNew) "" else f.monthly?.toDoubleOrNull()?.takeIf { it > 0 }?.let { String.format(Locale.CHINA, "%.0f", it) } ?: "") }
-        var linked by remember { mutableStateOf(f.match_sub.orEmpty()) }
-        var subOptions by remember { mutableStateOf<List<String>>(emptyList()) }
-        LaunchedEffect(Unit) {
-            subOptions = try { ApiClient.create(context).listCategories().firstOrNull { it.name == "订阅服务" }?.subs.orEmpty() } catch (_: Exception) { emptyList() }
-        }
         AlertDialog(
             onDismissRequest = { editingItem = null },
             title = { Text(if (isNew) "新固定支出" else f.name) },
@@ -323,23 +318,13 @@ fun PlanScreen(
                     OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         label = { Text("每月金额") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
-                    if (subOptions.isNotEmpty()) {
-                        Text("关联订阅", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                            subOptions.forEach { o ->
-                                val on = o in linked
-                                androidx.compose.material3.FilterChip(selected = on, onClick = { linked = if (on) linked - o else linked + o }, label = { Text(o) })
-                            }
-                        }
-                    }
                 }
             },
             confirmButton = {
                 TextButton(enabled = name.isNotBlank(), onClick = {
                     editingItem = null
                     scope.launch {
-                        try { ApiClient.create(context).saveFixed(com.ledger.app.data.FixedInRequest(name.trim(), if (isNew) null else f.name, amount.ifBlank { "0" }, linked)) } catch (_: Exception) {}
+                        try { ApiClient.create(context).saveFixed(com.ledger.app.data.FixedInRequest(name.trim(), if (isNew) null else f.name, amount.ifBlank { "0" }, f.match_sub.orEmpty())) } catch (_: Exception) {}
                         onLoad()
                     }
                 }) { Text("保存") }
