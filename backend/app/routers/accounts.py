@@ -8,6 +8,7 @@ from app.clock import now_local
 from app.database import get_db
 from app.deps import get_current_user
 from app.fixed import load
+from app.loans import status_for as loans_status
 from app.routers.plan import pots_for
 from app.routers.trips import business_receivable
 
@@ -23,8 +24,11 @@ def _overview(db: Session, ledger_id: int) -> schemas.AccountsOverview:
     earmarked = [schemas.EarmarkedOut(name=n, amount=p["amount"], cap=p["cap"], due=p["due"], last_paid=p["last_paid"])
                  for n, p in pots.items() if p["amount"] > 0]
     spoken = sum((e.amount for e in earmarked), Decimal(0))
+    debts = [d for d in loans_status(db, ledger, now_local().date()) if d.remaining > 0]
+    owed_total = sum((d.remaining for d in debts), Decimal(0))
     return schemas.AccountsOverview(total=total, accounts=accts, receivable=owed, receivable_trips=names,
-                                    earmarked=earmarked, earmarked_total=spoken, free_total=total - spoken)
+                                    earmarked=earmarked, earmarked_total=spoken, free_total=total - spoken,
+                                    liabilities=debts, liabilities_total=owed_total, net_total=total - owed_total)
 
 
 @router.get("", response_model=schemas.AccountsOverview)

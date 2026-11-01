@@ -231,6 +231,32 @@ class ReceivableTrip(BaseModel):
     items: list[ReceivableItem]
 
 
+class LoanMove(BaseModel):
+    date: str
+    kind: str                     # borrow / repay
+    amount: Decimal
+
+
+class LoanStatus(BaseModel):
+    name: str
+    who: str
+    start: str
+    borrowed: Decimal             # what came in from them since `start` (or the typed-in principal)
+    repaid: Decimal               # what went back to them since `start`
+    remaining: Decimal
+    percent: float                # repaid / borrowed, 0..100
+    repaid_this_month: Decimal = Decimal(0)
+    monthly: Optional[Decimal] = None        # the intended monthly repayment, if set
+    months_left: Optional[int] = None
+    payoff: Optional[str] = None             # YYYY-MM at that pace
+    last_repaid: Optional[str] = None
+    recent: list[LoanMove] = []
+
+
+class LoansIn(BaseModel):
+    loans: list[dict]
+
+
 class EarmarkedOut(BaseModel):
     name: str
     amount: Decimal               # set aside so far
@@ -247,6 +273,9 @@ class AccountsOverview(BaseModel):
     earmarked: list[EarmarkedOut] = []     # money in the accounts that is already spoken for (rent fund ...)
     earmarked_total: Decimal = Decimal(0)
     free_total: Optional[Decimal] = None   # total - earmarked_total: what is really free
+    liabilities: list[LoanStatus] = []     # money owed to someone (see loans.py)
+    liabilities_total: Decimal = Decimal(0)
+    net_total: Optional[Decimal] = None    # total - liabilities_total
 
 
 class LedgerSettings(BaseModel):

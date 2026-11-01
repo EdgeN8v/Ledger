@@ -887,6 +887,45 @@ def test_plan_status_says_what_the_income_really_is(client):
     assert [(i["name"], float(i["amount"])) for i in st["income_items"]] == [("工资", 14374.85), ("公积金", 4000.0)]
 
 
+def test_money_borrowed_from_the_wife_is_a_debt_with_progress(client):
+    from datetime import timedelta
+    from app.clock import now_local
+    client.put("/auth/ledger-settings", json={"family_names": "李梅"})            # the spouse: transfers with her are not income or spending
+    today = now_local().replace(hour=15, minute=0, second=0, microsecond=0)
+
+    def day(days_ago):
+        t = today - timedelta(days=days_ago)
+        return t, f"{t.month}月{t.day}日{t.hour:02d}:{t.minute:02d}"
+
+    def came(amount, balance, days_ago):          # the real wording of a transfer arriving
+        t, stamp = day(days_ago)
+        return client.post("/ingest", json={"source": "com.android.mms", "title": "建设银行", "posted_at_ms": int(t.replace(tzinfo=CN).timestamp() * 1000),
+                                            "text": f"【建设银行】李梅于{stamp}向您账户1234转账存入{amount}元,可用余额{balance}元。"}).json()
+
+    def went(amount, balance, days_ago):
+        t, stamp = day(days_ago)
+        return client.post("/ingest", json={"source": "com.android.mms", "title": "建设银行", "posted_at_ms": int(t.replace(tzinfo=CN).timestamp() * 1000),
+                                            "text": f"【建设银行】您账户1234于{stamp}向李梅转账支出{amount}元,可用余额{balance}元。"}).json()
+
+    went(6500, 900, 200)                                                        # an old gift, before the debt
+    assert client.get("/loans").json() == []
+    assert client.put("/loans", json={"loans": [{"name": "欠老婆", "who": "李梅", "start": (today - timedelta(days=10)).date().isoformat(), "monthly": 5000}]}).status_code == 200
+    a, b = came(30000, 30900, 9), came(30000, 60900, 9)
+    assert a["transaction"]["is_transfer"] is True and b["transaction"]["is_transfer"] is True      # not income
+    st = client.get("/loans").json()[0]
+    assert float(st["borrowed"]) == 60000.0 and float(st["repaid"]) == 0.0 and float(st["remaining"]) == 60000.0 and st["percent"] == 0.0
+    assert st["months_left"] == 12 and st["payoff"]
+    went(5000, 55900, 2)
+    st = client.get("/loans").json()[0]
+    assert float(st["repaid"]) == 5000.0 and float(st["remaining"]) == 55000.0 and st["percent"] == 8.3
+    assert st["last_repaid"] and len(st["recent"]) == 3 and st["months_left"] == 11          # 55000 at 5000 a month
+    # the old 6500 gift is not counted as a repayment
+    acc = client.get("/accounts").json()
+    assert [d["who"] for d in acc["liabilities"]] == ["李梅"] and float(acc["liabilities_total"]) == 55000.0
+    assert float(acc["net_total"]) == float(acc["total"]) - 55000.0
+    assert client.put("/loans", json={"loans": [{"name": "x"}]}).status_code == 400
+
+
 def test_heavy_early_spending_does_not_falsely_flag_at_risk(client):
     # two days into a 31-day cycle, spending fast enough that naive extrapolation would blow the budget - but the
     # actual money spent so far is still well under it, so the state must stay on_track, not a scary early guess

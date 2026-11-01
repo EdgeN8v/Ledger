@@ -144,6 +144,24 @@ data class AccountDto(
     val include_in_total: Boolean
 )
 
+data class LoanMoveDto(val date: String, val kind: String, val amount: String)
+
+data class LoanStatusDto(
+    val name: String,
+    val who: String,
+    val start: String,
+    val borrowed: String,
+    val repaid: String,
+    val remaining: String,
+    val percent: Double = 0.0,
+    val repaid_this_month: String? = null,
+    val monthly: String? = null,
+    val months_left: Int? = null,
+    val payoff: String? = null,
+    val last_repaid: String? = null,
+    val recent: List<LoanMoveDto>? = null
+)
+
 data class EarmarkedDto(
     val name: String,
     val amount: String,
@@ -159,7 +177,11 @@ data class AccountsOverviewDto(
     val accounts: List<AccountDto>,
     val earmarked: List<EarmarkedDto> = emptyList(),   // money in the accounts that is already spoken for (the rent fund ...)
     val earmarked_total: String = "0",
-    val free_total: String? = null
+    val free_total: String? = null,
+    // nullable on purpose: an overview cached by an older build has no such fields and Gson then yields null
+    val liabilities: List<LoanStatusDto>? = null,       // money owed to someone (the spouse who lent for the big purchase)
+    val liabilities_total: String? = null,
+    val net_total: String? = null
 )
 
 data class AccountCreateRequest(

@@ -13,6 +13,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -78,6 +79,34 @@ fun AccountsScreen(
                         )
                     }
                     Text("可自由支配 ${money(state.overview?.free_total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (!state.overview?.liabilities.isNullOrEmpty()) {
+                    Text("负债 ${money(state.overview?.liabilities_total)} · 净资产 ${money(state.overview?.net_total)}", style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+                }
+            }
+        }
+
+        // money owed to someone (the spouse lent it for the big purchase): how much is left and how far the paying back has got
+        state.overview?.liabilities.orEmpty().forEach { d ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("💳 ${d.name}  还剩 ${money(d.remaining)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(
+                        progress = { (d.percent / 100.0).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                    )
+                    Text("已还 ${money(d.repaid)} / 共借 ${money(d.borrowed)}  (${"%.1f".format(d.percent)}%)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                    val extra = listOfNotNull(
+                        d.repaid_this_month?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }?.let { "本月已还 ${money(it)}" },
+                        if (d.monthly != null && d.months_left != null) "每月还 ${money(d.monthly)}, 还要 ${d.months_left} 个月" + (d.payoff?.let { " (约${it}还清)" } ?: "") else null,
+                        d.last_repaid?.let { "上次还款 $it" }
+                    )
+                    if (extra.isNotEmpty()) Text(extra.joinToString(" · "), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
+                    Text("${d.who}转进来的算借款, 转给${d.who}的算还款, 都不算收入和支出(${d.start} 起)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(top = 6.dp))
                 }
             }
         }

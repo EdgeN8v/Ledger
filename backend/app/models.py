@@ -42,6 +42,7 @@ class Ledger(Base):
     trips_enabled = Column(Boolean, nullable=False, default=True)   # False: flight SMS no longer open new business trips
     owner_names = Column(String, nullable=True)    # comma-separated names of the account holders: money from/to them is a transfer
     treat_budget = Column(Numeric(14, 2), nullable=True)   # monthly "eat something nice" allowance, tracked separately from the regular budget
+    loans = Column(Text, nullable=True)            # JSON list of money owed to someone (the spouse who lent for a big purchase), see loans.py
     created_at = Column(DateTime, default=now_local)
 
     members = relationship("User", back_populates="ledger")
