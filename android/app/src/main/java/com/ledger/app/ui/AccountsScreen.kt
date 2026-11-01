@@ -116,7 +116,7 @@ fun AccountsScreen(
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("已还 ${moneyWhole(d.repaid)} / ${moneyWhole(d.borrowed)}", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { monthlyFor = d; monthlyText = d.monthly?.substringBefore('.') ?: "" }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) {
-                            Text(if (d.monthly == null) "设每月还款" else "每月 ${moneyWhole(d.monthly)}")
+                            Text(if (d.monthly == null) "设每月还款 ✎" else "每月 ${moneyWhole(d.monthly)} ✎")
                         }
                     }
                 }

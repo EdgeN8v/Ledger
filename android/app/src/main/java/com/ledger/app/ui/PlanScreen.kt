@@ -173,31 +173,16 @@ fun PlanScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("固定支出 (每月先预留 ${money(st.fixed_total)})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("固定支出 · 每月预留 ${moneyWhole(st.fixed_total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     st.fixed_items.sortedByDescending { it.reserve.toDoubleOrNull() ?: 0.0 }.forEach { f ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp).clickable { marking = f }, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(f.name + (f.due_day?.let { "  (每月${it}号)" } ?: ""), style = MaterialTheme.typography.bodyMedium)
-                                if (f.pot != null && f.pot_cap != null) {
-                                    // lumpy bill (rent every 3 months): what has been set aside so far for the next one
-                                    Text("已攒 ${money(f.pot)} / ${money(f.pot_cap)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                }
-                                Text(
-                                    "历史", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.clickable {
-                                        historyFor = f.name; historyRows = null; historyError = null
-                                        scope.launch {
-                                            try { historyRows = ApiClient.create(context).fixedHistory(f.name) }
-                                            catch (e: Exception) { historyError = e.message ?: "加载失败" }
-                                        }
-                                    }
-                                )
+                        val status = when (f.state) { "paid" -> "✅ " + (f.paid_note ?: "已付"); "waiting" -> "⏳ 未付"; else -> "🔒 已预留" }
+                        val extra = if (f.pot != null && f.pot_cap != null) " · 已攒 ${moneyWhole(f.pot)}/${moneyWhole(f.pot_cap)}" else ""
+                        Column(modifier = Modifier.fillMaxWidth().clickable { marking = f }.padding(top = 12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(f.name + (f.due_day?.let { " · ${it}号" } ?: ""), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Text(moneyWhole(f.reserve), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(money(f.reserve), fontWeight = FontWeight.Medium, maxLines = 1)
-                                Text(when (f.state) { "paid" -> if (f.paid_note != null) "✅ ${f.paid_note}" else "✅ 本期已付 ${money(f.paid)}"; "waiting" -> "⏳ 本期还没付"; else -> "🔒 已预留" },
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            Text(status + extra, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -281,8 +266,15 @@ fun PlanScreen(
             title = { Text(f.name) },
             text = {
                 Column {
-                    Text("每个账期从工资到账那天(20号)开始,到下个月19号。这一期的账单没付/付过了,可以在这里标一下。", style = MaterialTheme.typography.bodySmall)
-                    if (f.state == "paid" && f.paid_note != null) Text("现在: ${f.paid_note}", modifier = Modifier.padding(top = 8.dp))
+                    if (f.state == "paid" && f.paid_note != null) Text("现在: ${f.paid_note}")
+                    TextButton(onClick = {
+                        marking = null
+                        historyFor = f.name; historyRows = null; historyError = null
+                        scope.launch {
+                            try { historyRows = ApiClient.create(context).fixedHistory(f.name) }
+                            catch (e: Exception) { historyError = e.message ?: "加载失败" }
+                        }
+                    }) { Text("📜 查看历史") }
                 }
             },
             confirmButton = {
