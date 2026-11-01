@@ -825,7 +825,7 @@ def test_rent_sinking_fund_is_taken_out_of_what_is_free(client):
 
 def test_a_subscription_is_recognised_by_its_sub_category_not_by_shop_or_amount(client):
     cats = {c["name"]: c for c in client.get("/categories").json()}
-    assert cats["订阅服务"]["subs"] == ["美国节点", "香港节点", "Claude"]
+    assert cats["订阅服务"]["subs"] == ["美国节点", "香港节点", "Claude", "域名"]
     client.put("/plan", json={"savings_target": 1000, "expected_income": 10000, "fixed_items": [
         {"name": "美国节点", "monthly": 138, "tracked": True, "category": "订阅服务", "match_amount": [138], "match_sub": ["美国节点"]},
         {"name": "香港节点", "monthly": 43, "tracked": True, "category": "订阅服务", "match_sub": ["香港节点"]}]})
@@ -1957,3 +1957,44 @@ def test_a_nameless_refund_matches_the_one_family_card_purchase_among_tied_amoun
         db.commit()
     r = _sms(client, "【建设银行】支付宝于10月18日19:09向您账户1234消费退货存入10.9元,可用余额810.9元。", 19, 9, day=18)
     assert r["transaction"]["refund_of_id"] == fam["transaction"]["id"]
+
+
+def test_a_yearly_domain_bill_stays_out_of_the_plan_and_only_reminds_near_its_date():
+    from datetime import date
+    from app.fixed import reminders
+    item = {"name": "域名 cuikexin.com", "monthly": 76, "hidden": True, "yearly": True, "paid_until": "2027-11-01",
+            "remind": {"before_days": 30, "amount": 76}, "match_text": ["阿里云"]}
+    never = lambda it: False
+    assert reminders([item], date(2026, 11, 2), never) == []                 # just bought: nothing for a year
+    assert reminders([item], date(2027, 9, 1), never) == []                  # still more than 30 days away
+    got = reminders([item], date(2027, 10, 10), never)
+    assert [r["name"] for r in got] == ["域名 cuikexin.com"] and got[0]["days_left"] == 22 and float(got[0]["amount"]) == 76.0
+    assert reminders([item], date(2027, 11, 15), never)                      # a late renewal still shows for a month
+    assert reminders([item], date(2027, 12, 5), never) == []
+
+
+def test_a_hidden_item_never_shows_as_a_plan_row_and_its_renewal_rolls_the_date_forward(client):
+    import json
+    from datetime import timedelta
+    from app.clock import now_local
+    from app.database import SessionLocal
+    from app import models
+    today = now_local()
+    due = (today.date() + timedelta(days=10))
+    db = SessionLocal()
+    led = db.query(models.Ledger).first()
+    led.fixed_items = json.dumps([{"name": "域名", "monthly": 76, "hidden": True, "yearly": True, "paid_until": due.isoformat(),
+                                   "remind": {"before_days": 30, "amount": 76}, "match_text": ["阿里云"], "category": "订阅服务"}])
+    db.commit(); db.close()
+    st = client.get("/plan/status").json()
+    assert "域名" not in {i["name"] for i in st["fixed_items"]}
+    got = client.get("/plan/reminders").json()
+    assert [r["name"] for r in got] == ["域名"]                               # within its 30 days
+    t = today
+    client.post("/ingest", json={"source": "com.android.mms", "title": "建设银行", "posted_at_ms": int(t.replace(tzinfo=CN).timestamp() * 1000),
+                                 "text": f"【建设银行】您账户1234于{t.month}月{t.day}日{t.hour:02d}:{t.minute:02d}向支付宝外部商户-阿里云计算有限公司支出76元,可用余额9000元。"})
+    assert client.get("/plan/reminders").json() == []                         # renewed: the next date is a year on
+    db = SessionLocal()
+    new = json.loads(db.query(models.Ledger).first().fixed_items)[0]["paid_until"]
+    db.close()
+    assert new > (today.date() + timedelta(days=300)).isoformat()

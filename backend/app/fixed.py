@@ -131,7 +131,8 @@ def reminders(items: list[dict], today: date, paid_this_month, key: Optional[str
         if until:                                  # paid in advance: it falls due on that date, not at the month end
             last = date.fromisoformat(until)
             left = (last - today).days
-            if left < 0 or left > before:
+            # a yearly bill (the domain) stays on for a month past its date in case the renewal is late
+            if left > before or left < (-30 if it.get("yearly") else 0):
                 continue
         else:
             months = r.get("months")

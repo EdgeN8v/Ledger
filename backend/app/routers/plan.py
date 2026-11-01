@@ -1,5 +1,5 @@
 """The savings plan: how much to keep each pay cycle, and where the cycle stands against it."""
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -85,8 +85,27 @@ def bill_reminders(db: Session = Depends(get_db), user: models.User = Depends(ge
     def paid(item) -> bool:
         return any(matches(item, t.amount, t.merchant, t.raw_text or "", None, t.sub) for t in rows)
 
+    items = load(l)
+    # a yearly bill (domain name): once its renewal is paid, the next date is a year on, and the banner stays away till then
+    rolled = False
+    for it in items:
+        until = it.get("paid_until")
+        if not (it.get("yearly") and until):
+            continue
+        due = date.fromisoformat(until)
+        paid_on = [t.occurred_at.date() for t in
+                   db.query(models.Transaction).filter(models.Transaction.ledger_id == l.id, models.Transaction.tx_type == models.TxType.expense,
+                                                       models.Transaction.is_transfer.is_(False),
+                                                       models.Transaction.occurred_at >= datetime.combine(due - timedelta(days=60), time.min)).all()
+                   if t.refund_of_id is None and matches(it, t.amount, t.merchant, t.raw_text or "", None, t.sub)]
+        if paid_on:
+            it["paid_until"] = date(max(paid_on).year + 1, max(paid_on).month, min(max(paid_on).day, 28)).isoformat()
+            rolled = True
+    if rolled:
+        l.fixed_items = json.dumps(items, ensure_ascii=False)
+        db.commit()
     y, m = current_cycle(l.cycle_start_day or 1, today)
-    return reminders(load(l), today, paid, cycle_key(y, m))
+    return reminders(items, today, paid, cycle_key(y, m))
 
 
 @router.get("/fixed-history", response_model=list[schemas.FixedHistoryEntry])
@@ -214,6 +233,8 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
     pots = pots_for(db, l, items, today)
     fixed_rows, fixed_total, matched_total = [], ZERO, ZERO
     for it in items:
+        if it.get("hidden"):
+            continue                                 # a yearly bill (domain): only its reminder ever shows, never a plan row
         r = reserve(it)
         fixed_total += r
         tracked = bool(it.get("tracked", True))
