@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ledger.app.data.AccountDto
 import com.ledger.app.viewmodel.AccountsUiState
+import kotlinx.coroutines.launch
 
 private val KINDS = listOf("bank" to "银行卡", "wallet" to "电子钱包", "cash" to "现金")
 
@@ -45,7 +46,41 @@ fun AccountsScreen(
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountDto?>(null) }
     var showReceivable by remember { mutableStateOf(false) }
+    var monthlyFor by remember { mutableStateOf<com.ledger.app.data.LoanStatusDto?>(null) }
+    var monthlyText by remember { mutableStateOf("") }
+    var monthlyError by remember { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { onRefresh() }
+
+    monthlyFor?.let { d ->
+        AlertDialog(
+            onDismissRequest = { monthlyFor = null; monthlyError = null },
+            title = { Text("每月还${d.who}多少") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = monthlyText, onValueChange = { monthlyText = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("每月计划还款(元)") }, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal)
+                    )
+                    Text("会作为固定支出算进计划, 还剩 ${money(d.remaining)}。留空 = 不设计划。随时可以再改。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                    monthlyError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch {
+                        try {
+                            com.ledger.app.data.ApiClient.create(context).setLoanMonthly(mapOf("who" to d.who, "monthly" to monthlyText.ifBlank { null }))
+                            monthlyFor = null; monthlyError = null; onRefresh()
+                        } catch (e: Exception) { monthlyError = e.message ?: "保存失败" }
+                    }
+                }) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { monthlyFor = null; monthlyError = null }) { Text("取消") } }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("资产", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -101,12 +136,16 @@ fun AccountsScreen(
                     )
                     Text("已还 ${money(d.repaid)} / 共借 ${money(d.borrowed)}  (${"%.1f".format(d.percent)}%)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                     val extra = listOfNotNull(
-                        d.repaid_this_month?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }?.let { "本月已还 ${money(it)}" },
+                        d.repaid_this_cycle?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }?.let { "本期已还 ${money(it)}" }
+                            ?: d.repaid_this_month?.takeIf { (it.toDoubleOrNull() ?: 0.0) > 0 }?.let { "本月已还 ${money(it)}" },
                         if (d.monthly != null && d.months_left != null) "每月还 ${money(d.monthly)}, 还要 ${d.months_left} 个月" + (d.payoff?.let { " (约${it}还清)" } ?: "") else null,
                         d.last_repaid?.let { "上次还款 $it" }
                     )
                     if (extra.isNotEmpty()) Text(extra.joinToString(" · "), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
-                    Text("${d.who}转进来的算借款, 转给${d.who}的算还款, 都不算收入和支出(${d.start} 起)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(top = 6.dp))
+                    TextButton(onClick = { monthlyFor = d; monthlyText = d.monthly?.substringBefore('.') ?: "" }) {
+                        Text(if (d.monthly == null) "设置每月还多少" else "改每月还款 (现在 ${money(d.monthly)})")
+                    }
+                    Text("${d.who}转进来的算借款, 转给${d.who}的算还款, 都不算收入和支出(${d.start} 起); 每月计划还款会算进「计划」的固定支出", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
             }
         }

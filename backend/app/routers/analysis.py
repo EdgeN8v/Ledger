@@ -258,7 +258,8 @@ def car_costs(range: str = "12m", db: Session = Depends(get_db), user: models.Us
         rows = (db.query(models.Transaction)
                 .filter(models.Transaction.ledger_id == user.ledger_id, models.Transaction.category_id == mine.id,
                         models.Transaction.tx_type == models.TxType.expense, models.Transaction.is_transfer.is_(False),
-                        models.Transaction.refund_of_id.is_(None), models.Transaction.occurred_at >= datetime.combine(start, datetime.min.time()))
+                        models.Transaction.refund_of_id.is_(None), models.Transaction.is_one_off.is_(False),      # a car plate is no running cost
+                        models.Transaction.occurred_at >= datetime.combine(start, datetime.min.time()))
                 .order_by(models.Transaction.occurred_at.desc()).all())
     from app.fixed import item_for, load
     fixed = load(db.get(models.Ledger, user.ledger_id))

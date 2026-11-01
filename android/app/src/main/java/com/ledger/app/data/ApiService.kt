@@ -37,6 +37,9 @@ interface ApiService {
     @POST("accounts")
     suspend fun createAccount(@Body body: AccountCreateRequest): AccountsOverviewDto
 
+    @PUT("loans/monthly")
+    suspend fun setLoanMonthly(@Body body: Map<String, @JvmSuppressWildcards Any?>): List<LoanStatusDto>
+
     @PUT("accounts/{id}")
     suspend fun updateAccount(@Path("id") id: Int, @Body body: Map<String, @JvmSuppressWildcards Any?>): AccountsOverviewDto
 

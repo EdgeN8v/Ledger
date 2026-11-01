@@ -18,6 +18,14 @@ def list_loans(db: Session = Depends(get_db), user: models.User = Depends(get_cu
     return loans.status_for(db, user.ledger, now_local().date())
 
 
+@router.put("/monthly", response_model=list[schemas.LoanStatus])
+def set_monthly(payload: schemas.LoanMonthlyIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """The page's 'how much do I pay back each month' box: changes only that number, whatever else is configured."""
+    if not loans.set_monthly(db, user.ledger, payload.who, payload.monthly):
+        raise HTTPException(404, "没有这笔借款")
+    return loans.status_for(db, user.ledger, now_local().date())
+
+
 @router.put("", response_model=list[schemas.LoanStatus])
 def set_loans(payload: schemas.LoansIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Replace the list. Each item: who (required), start (YYYY-MM-DD), name, principal, monthly."""

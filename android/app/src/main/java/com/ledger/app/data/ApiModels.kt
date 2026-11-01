@@ -105,6 +105,7 @@ data class TransactionDto(
     val family_card: Boolean = false,
     val sub: String? = null,
     val is_treat: Boolean = false,
+    val is_one_off: Boolean? = null,   // nullable: a list cached by an older build has no such field
     val source: String,
     val raw_text: String?,
     val needs_review: Boolean,
@@ -155,6 +156,7 @@ data class LoanStatusDto(
     val remaining: String,
     val percent: Double = 0.0,
     val repaid_this_month: String? = null,
+    val repaid_this_cycle: String? = null,
     val monthly: String? = null,
     val months_left: Int? = null,
     val payoff: String? = null,
@@ -228,6 +230,7 @@ data class PlanStatusDto(
     val fixed_items: List<FixedItemDto> = emptyList(),
     val spent_total: String = "0",
     val trip_total: String = "0",
+    val one_off_total: String? = null,                       // big one-time buys (a car plate ...) kept out of the daily budget
     val budget: String,
     val spent: String,
     val remaining: String,

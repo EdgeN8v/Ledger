@@ -115,6 +115,7 @@ class Transaction(Base):
     car_bucket = Column(String, nullable=True)                         # the user's own choice of car-cost kind (fuel, repair...)
     sub = Column(String, nullable=True)                                # the kind inside the category (snacks, clothes, hotel...)
     family_card = Column(Boolean, nullable=False, default=False)       # paid by someone else with the user's card (the family card)
+    is_one_off = Column(Boolean, nullable=False, default=False)        # a one-off big expense (a car plate): real money, but not part of the everyday budget or the car's running costs
     is_treat = Column(Boolean, nullable=False, default=False)          # the user tagged this as "eating something nice", drawn from treat_budget
 
     source = Column(Enum(TxSource), nullable=False, default=TxSource.manual)

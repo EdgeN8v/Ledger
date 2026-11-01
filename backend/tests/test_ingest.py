@@ -926,6 +926,56 @@ def test_money_borrowed_from_the_wife_is_a_debt_with_progress(client):
     assert client.put("/loans", json={"loans": [{"name": "x"}]}).status_code == 400
 
 
+def test_a_one_off_big_expense_is_left_out_of_the_everyday_budget_and_the_car_page(client):
+    cats = {c["name"]: c["id"] for c in client.get("/categories").json()}
+    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 1000, "expected_income": 10000})
+    base = client.get("/plan/status").json()
+    plate = client.post("/transactions", json={"tx_type": "expense", "amount": "93020", "category_id": cats["我的车"], "note": "沪牌"}).json()
+    client.post("/transactions", json={"tx_type": "expense", "amount": "200", "category_id": cats["餐饮"], "note": "午饭"})
+    st = client.get("/plan/status").json()
+    assert float(st["spent"]) == 93220.0 and st["state"] == "over"                       # untagged: wrecks the cycle
+    r = client.put(f"/transactions/{plate['id']}", json={"is_one_off": True}).json()
+    assert r["is_one_off"] is True and r["category_id"] == cats["我的车"]
+    st = client.get("/plan/status").json()
+    assert float(st["spent"]) == 200.0 and float(st["one_off_total"]) == 93020.0 and st["state"] == "on_track"
+    assert float(st["spent_total"]) == 93220.0 and float(st["budget"]) == float(base["budget"])      # still real money, budget untouched
+    car = client.get("/analysis/car").json()
+    assert sum(float(b["total"]) for b in car["buckets"]) == 0.0                                  # not a running cost
+
+
+def test_the_monthly_repayment_is_a_commitment_in_the_plan_and_can_be_changed(client):
+    from datetime import timedelta
+    from app.clock import now_local
+    client.put("/auth/ledger-settings", json={"family_names": "李梅", "cycle_start_day": 20})
+    client.put("/plan", json={"savings_target": 1000, "expected_income": 20000})
+    today = now_local()
+    client.put("/loans", json={"loans": [{"name": "欠老婆", "who": "李梅", "start": (today - timedelta(days=15)).date().isoformat()}]})
+    t = today - timedelta(days=12)
+    client.post("/ingest", json={"source": "com.android.mms", "title": "建设银行", "posted_at_ms": int(t.replace(tzinfo=CN).timestamp() * 1000),
+                                 "text": f"【建设银行】李梅于{t.month}月{t.day}日{t.hour:02d}:{t.minute:02d}向您账户1234转账存入60000元,可用余额60900元。"})
+    def rows():
+        st = client.get("/plan/status").json()
+        return st, {i["name"]: i for i in st["fixed_items"]}
+    st, by = rows()
+    assert "还款: 欠老婆" not in by and float(st["fixed_total"]) == 0.0                         # no monthly amount yet: nothing reserved
+    assert float(client.put("/loans/monthly", json={"who": "李梅", "monthly": 5000}).json()[0]["monthly"]) == 5000.0
+    st, by = rows()
+    assert float(by["还款: 欠老婆"]["reserve"]) == 5000.0 and by["还款: 欠老婆"]["state"] == "waiting" and float(st["fixed_total"]) == 5000.0
+    assert float(st["budget"]) == 20000 - 5000 - 1000                                             # reserved before anything is free
+    t = today - timedelta(hours=1)
+    client.post("/ingest", json={"source": "com.android.mms", "title": "建设银行", "posted_at_ms": int(t.replace(tzinfo=CN).timestamp() * 1000),
+                                 "text": f"【建设银行】您账户1234于{t.month}月{t.day}日{t.hour:02d}:{t.minute:02d}向李梅转账支出3000元,可用余额57900元。"})
+    st, by = rows()
+    assert float(by["还款: 欠老婆"]["paid"]) == 3000.0 and by["还款: 欠老婆"]["state"] == "paid" and "3000" in by["还款: 欠老婆"]["paid_note"]
+    assert float(st["spent"]) == 0.0                                                              # a repayment is not spending
+    loan = client.get("/loans").json()[0]
+    assert float(loan["repaid_this_cycle"]) == 3000.0 and float(loan["remaining"]) == 57000.0
+    assert client.put("/loans/monthly", json={"who": "李梅", "monthly": None}).json()[0]["monthly"] is None
+    assert "还款: 欠老婆" not in rows()[1]                                                       # cleared again
+    assert client.put("/loans/monthly", json={"who": "路人", "monthly": 1}).status_code == 404
+
+
 def test_heavy_early_spending_does_not_falsely_flag_at_risk(client):
     # two days into a 31-day cycle, spending fast enough that naive extrapolation would blow the budget - but the
     # actual money spent so far is still well under it, so the state must stay on_track, not a scary early guess

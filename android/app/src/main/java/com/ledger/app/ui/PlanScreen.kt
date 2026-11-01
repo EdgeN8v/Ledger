@@ -256,7 +256,10 @@ fun PlanScreen(
                 Column {
                     Text("本账期收入 ${money(st.income_basis)}\n− 固定支出 ${money(st.fixed_total)}\n− 要存 ${money(st.savings_target)}\n= 自由预算 ${money(st.budget)}")
                     Text("\n− 日常花销 ${money(st.spent)}\n− 出行 ${money(st.trip_total)}\n= 还能花 ${money(st.remaining)}", fontWeight = FontWeight.Bold)
-                    Text("\n账期从发工资那天(20号)算到下个月19号。发工资当天起,固定支出先扣掉,剩下的才是自由预算; 大额的一次性花销(比如车品)会一下子把它用光。哪些钱花在哪,在「统计 → 花在哪里」里看。",
+                    val oneOff = st.one_off_total
+                    if (oneOff != null && oneOff.toDoubleOrNull()?.let { it > 0 } == true)
+                        Text("\n另有一次性大额 ${money(oneOff)},不在上面的日常花销里(长按那笔记录可以勾选/取消)。", style = MaterialTheme.typography.bodySmall)
+                    Text("\n账期从发工资那天(20号)算到下个月19号。发工资当天起,固定支出先扣掉,剩下的才是自由预算; 大额的一次性花销(比如车品)可以在记录里勾「一次性大额」,就不会一下子把它用光。哪些钱花在哪,在「统计 → 花在哪里」里看。",
                         style = MaterialTheme.typography.bodySmall)
                 }
             }

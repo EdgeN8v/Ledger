@@ -84,6 +84,7 @@ class TransactionUpdate(BaseModel):
     sub: Optional[str] = None
     refund_of_id: Optional[int] = None   # the purchase this income cancels - for a refund the parser missed (no "退" in the SMS)
     is_treat: Optional[bool] = None
+    is_one_off: Optional[bool] = None
 
 
 class TransactionOut(BaseModel):
@@ -109,6 +110,7 @@ class TransactionOut(BaseModel):
     car_bucket: Optional[str] = None
     sub: Optional[str] = None
     is_treat: bool = False
+    is_one_off: bool = False
     source: TxSource
     raw_text: Optional[str]
     needs_review: bool
@@ -246,6 +248,7 @@ class LoanStatus(BaseModel):
     remaining: Decimal
     percent: float                # repaid / borrowed, 0..100
     repaid_this_month: Decimal = Decimal(0)
+    repaid_this_cycle: Decimal = Decimal(0)  # since the last pay day: the span the plan works in
     monthly: Optional[Decimal] = None        # the intended monthly repayment, if set
     months_left: Optional[int] = None
     payoff: Optional[str] = None             # YYYY-MM at that pace
@@ -255,6 +258,11 @@ class LoanStatus(BaseModel):
 
 class LoansIn(BaseModel):
     loans: list[dict]
+
+
+class LoanMonthlyIn(BaseModel):
+    who: str
+    monthly: Optional[Decimal] = None      # blank / 0 clears it
 
 
 class EarmarkedOut(BaseModel):
@@ -367,6 +375,7 @@ class PlanStatus(BaseModel):
     fixed_items: list[FixedItemStatus] = []
     spent_total: Decimal = Decimal(0)    # everything spent, fixed items included
     trip_total: Decimal = Decimal(0)     # trips: really spent, but not extrapolated into the pace forecast
+    one_off_total: Decimal = Decimal(0)  # one-off big expenses (tagged by hand): real money, left out of the everyday budget
     treat_budget: Optional[Decimal] = None
     treat_spent: Decimal = Decimal(0)
     treat_remaining: Optional[Decimal] = None

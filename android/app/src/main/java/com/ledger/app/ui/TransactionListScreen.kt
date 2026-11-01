@@ -583,6 +583,7 @@ internal fun CategoryPickerDialog(
     var selSub by remember { mutableStateOf(tx.sub) }
     var selTreat by remember { mutableStateOf(tx.is_treat) }
     var confirmingDelete by remember { mutableStateOf(false) }
+    var oneOff by remember { mutableStateOf(tx.is_one_off == true) }
     var refundSearch by remember { mutableStateOf(false) }         // null = not searched, empty = searched and found nothing
     var refundCandidates by remember { mutableStateOf<List<TransactionDto>?>(null) }
     var refundTooMany by remember { mutableStateOf(0) }            // > 0: narrow by date instead of dumping a long list
@@ -660,6 +661,22 @@ internal fun CategoryPickerDialog(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                         androidx.compose.material3.Checkbox(checked = selTreat, onCheckedChange = { selTreat = it })
                         Text("算进「吃好吃的」额度", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (tx.tx_type == "expense" && tx.refund_of_id == null && tx.trip_id == null) {
+                    // saved on the spot (not with 确认): it is a flag on the record, not part of the category choice
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = oneOff, onCheckedChange = { v ->
+                            oneOff = v
+                            scope.launch {
+                                try { ApiClient.create(context).updateTransaction(tx.id, mapOf("is_one_off" to v)) }
+                                catch (_: Exception) { oneOff = !v }
+                            }
+                        })
+                        Column {
+                            Text("一次性大额", style = MaterialTheme.typography.bodyMedium)
+                            Text("不算进日常预算和用车花费,钱照常扣", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
                 if (onEdit != null) TextButton(onClick = { onEdit(selCat, selSub, treat) }, modifier = Modifier.padding(top = 8.dp)) { Text("改金额 / 备注") }

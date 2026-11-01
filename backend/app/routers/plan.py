@@ -11,6 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 import json
 
+from app import loans as loans_mod
 from app.fixed import cycle_key, item_for, load, marked_paid, matches, pot_amount, reminders
 from app.clock import now_local
 from app.stats import current_cycle, cycle_bounds, period_data
@@ -227,6 +228,19 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         ))
     if not items:                                    # no itemised commitments: the old single "fixed expenses" figure
         fixed_total = l.fixed_expenses or ZERO
+    # money owed back (the spouse lent it for a big purchase): the intended monthly repayment is a commitment like rent,
+    # reserved before anything is free to spend. The repayment itself is a transfer, so it never shows up as spending.
+    for d in loans_mod.status_for(db, l, today):
+        if not d.monthly or end.date() <= date.fromisoformat(d.start):
+            continue
+        paid_c = loans_mod.repaid_in(db, l, d.who, d.start, start, end)
+        r = paid_c if today >= end.date() else min(max(d.monthly, paid_c), d.remaining + paid_c)
+        if r <= 0:
+            continue
+        fixed_total += r
+        fixed_rows.append(schemas.FixedItemStatus(
+            name="还款: " + d.name, reserve=r, paid=paid_c, tracked=True, note=f"每月还{d.who}, 还剩 {d.remaining}",
+            paid_note=(f"已还 ¥{paid_c} / 计划 ¥{d.monthly}" if 0 < paid_c < r else None), state="paid" if paid_c > 0 else "waiting"))
 
     # until payday the real income is not in yet: plan with the expected one, afterwards with whichever is larger
     # salary varies: once this cycle's pay has landed use what really arrived; before that use the cautious
@@ -246,7 +260,9 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
     income_items = [schemas.IncomeItem(name=n, amount=a) for n, a in sorted(parts.items(), key=lambda kv: -kv[1]) if a]
     budget = income_basis - fixed_total - target                 # what may be spent freely this cycle
     trip_total = sum((e for t, e in data.expenses if t.trip_id and not item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)), ZERO)
-    spent = data.expense - matched_total - trip_total            # everyday spending only (fixed items and trips are separate)
+    # a one-off big expense (a car plate) is real money - it stays in the totals - but it is not how fast the user spends day to day
+    one_off_total = sum((e for t, e in data.expenses if t.is_one_off and not t.trip_id and not item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub)), ZERO)
+    spent = data.expense - matched_total - trip_total - one_off_total   # everyday spending only (fixed items, trips, one-offs are separate)
     remaining = budget - spent - trip_total                      # ...but a trip is real money, so it does come off what is left
     # forecast: extrapolate the everyday pace only; a trip is a one-off that happened, not a habit
     pace = ((spent / elapsed * total_days) if elapsed else ZERO) + trip_total
@@ -276,6 +292,6 @@ def status_for(db: Session, l: models.Ledger, year: Optional[int] = None, month:
         fixed_expenses=fixed_total, savings_target=target,
         budget=budget, spent=spent, remaining=remaining, daily_allowance=allowance.quantize(Decimal("0.01")),
         projected_spend=pace.quantize(Decimal("0.01")), projected_saving=projected_save.quantize(Decimal("0.01")),
-        saved_so_far=saved_so_far, state=state, fixed_total=fixed_total, fixed_items=fixed_rows, spent_total=data.expense, trip_total=trip_total,
+        saved_so_far=saved_so_far, state=state, fixed_total=fixed_total, fixed_items=fixed_rows, spent_total=data.expense, trip_total=trip_total, one_off_total=one_off_total,
         treat_budget=l.treat_budget, treat_spent=treat_spent, treat_remaining=treat_remaining,
     )
