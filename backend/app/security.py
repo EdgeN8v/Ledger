@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 from typing import Optional
 
 from jose import jwt, JWTError
@@ -18,8 +17,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
-    payload = {"sub": subject, "exp": expire}
+    # no expiry: a family app on its own server. A token that quietly ran out after 30 days made every request fail with
+    # 401 (and the phones' background uploads with it); it stops working when the account is removed or the secret changes.
+    payload = {"sub": subject}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

@@ -5,7 +5,6 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./ledger.db"
     jwt_secret: str = "change-me-in-.env"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24 * 365  # a year, family app, low friction (30 days logged everyone out monthly)
     scheduler_enabled: bool = True     # the daily analysis job (off in tests)
     registration_open: bool = False   # open it only while creating the family accounts
     llm_api_key: str = ""

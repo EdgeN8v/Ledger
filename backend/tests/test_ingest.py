@@ -2081,3 +2081,11 @@ def test_the_combined_us_node_sub_splits_into_two_each_linked_to_its_item(client
     db.close()
     cats = {c["name"]: c for c in client.get("/categories").json()}
     assert cats["订阅服务"]["subs"] == ["美国Kila", "美国干杯", "香港节点", "Claude", "域名"]
+
+
+def test_a_login_token_never_expires(client):
+    from jose import jwt
+    from app.config import settings
+    tok = client.post("/auth/login", data={"username": "u", "password": "p"}).json()["access_token"]
+    assert "exp" not in jwt.get_unverified_claims(tok)
+    assert client.get("/plan", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
