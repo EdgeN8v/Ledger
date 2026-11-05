@@ -62,6 +62,9 @@ fun SettingsScreen(
     onLogout: () -> Unit
 ) {
     var showAccountInfo by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var serverUrl by remember { mutableStateOf(baseUrl) }
+    var editingUrl by remember { mutableStateOf(false) }
 
     com.ledger.app.ui.theme.SettingsTheme {
         Column(
@@ -79,13 +82,31 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("服务器地址", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(baseUrl, style = MaterialTheme.typography.bodyMedium)
+                        Column(modifier = Modifier.weight(1f).clickable { editingUrl = true }) {
+                            Text("服务器地址 ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(serverUrl, style = MaterialTheme.typography.bodyMedium)
                         }
                         InfoDot { showAccountInfo = true }
                     }
                 }
+            }
+
+            if (editingUrl) {
+                var draft by remember { mutableStateOf(serverUrl) }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { editingUrl = false },
+                    title = { Text("服务器地址") },
+                    text = { androidx.compose.material3.OutlinedTextField(draft, { draft = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(enabled = draft.startsWith("http"), onClick = {
+                            val fixed = if (draft.endsWith("/")) draft else "$draft/"
+                            com.ledger.app.data.Prefs.setBaseUrl(context, fixed)
+                            serverUrl = fixed
+                            editingUrl = false
+                        }) { Text("保存") }
+                    },
+                    dismissButton = { androidx.compose.material3.TextButton(onClick = { editingUrl = false }) { Text("取消") } }
+                )
             }
 
             UpdateCard()

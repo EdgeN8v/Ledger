@@ -21,8 +21,15 @@ object Prefs {
         prefs(context).edit().putString(KEY_TOKEN, token).apply()
     }
 
-    fun getBaseUrl(context: Context): String =
-        prefs(context).getString(KEY_BASE_URL, DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL
+    fun getBaseUrl(context: Context): String {
+        val saved = prefs(context).getString(KEY_BASE_URL, null) ?: return DEFAULT_BASE_URL
+        // the old third-party tunnel name (dpdns.org) is retired: an install that saved it moves to the own domain
+        if (saved.contains("dpdns.org")) {
+            prefs(context).edit().putString(KEY_BASE_URL, DEFAULT_BASE_URL).apply()
+            return DEFAULT_BASE_URL
+        }
+        return saved
+    }
 
     fun setBaseUrl(context: Context, url: String) {
         val normalized = if (url.endsWith("/")) url else "$url/"
