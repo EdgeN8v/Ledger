@@ -71,34 +71,6 @@ def register(payload: schemas.UserCreate, db: Session = Depends(get_db)):
     return schemas.Token(access_token=create_access_token(user.username))
 
 
-@router.post("/join", response_model=schemas.Token)
-def join(payload: schemas.UserJoin, db: Session = Depends(get_db)):
-    """Joins an existing ledger with its random invite code."""
-    if not settings.registration_open:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "registration is closed")
-    if db.query(models.User).filter(models.User.username == payload.username).first():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "username already taken")
-
-    ledger = db.query(models.Ledger).filter(models.Ledger.invite_code == payload.invite_code.strip()).first()
-    if not ledger:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "invalid invite code")
-
-    user = models.User(
-        username=payload.username,
-        display_name=payload.display_name,
-        password_hash=hash_password(payload.password),
-        ledger_id=ledger.id,
-    )
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "username already taken")
-
-    return schemas.Token(access_token=create_access_token(user.username))
-
-
 @router.post("/login", response_model=schemas.Token)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form.username).first()

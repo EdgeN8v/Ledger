@@ -109,13 +109,10 @@ def test_learned_merchant_category(client):
     assert tx2["category_id"] == cats["餐饮"] and tx2["needs_review"] is False
 
 
-def test_invite_code_is_not_guessable(client):
-    me = client.get("/auth/me").json()
-    assert me["invite_code"] and not me["invite_code"].isdigit()
-    r = client.post("/auth/join", json={"username": "w", "password": "p", "display_name": "W", "invite_code": "1"})
-    assert r.status_code == 404
-    r = client.post("/auth/join", json={"username": "w", "password": "p", "display_name": "W", "invite_code": me["invite_code"]})
-    assert r.status_code == 200
+def test_there_is_no_invite_code_and_nobody_can_join_the_ledger(client):
+    assert "invite_code" not in client.get("/auth/me").json()
+    r = client.post("/auth/join", json={"username": "w", "password": "p", "display_name": "W", "invite_code": "x"})
+    assert r.status_code in (404, 405)
 
 
 def test_sms_group_counter_change_is_not_a_new_record(client):

@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ledger.app.viewmodel.AuthUiState
 
-private val TABS = listOf("登录", "创建账本", "加入账本")
+private val TABS = listOf("登录", "创建账本")
 
 @Composable
 fun LoginScreen(
@@ -45,7 +45,6 @@ fun LoginScreen(
     initialBaseUrl: String,
     onLogin: (username: String, password: String) -> Unit,
     onRegister: (username: String, password: String, displayName: String, ledgerName: String) -> Unit,
-    onJoin: (username: String, password: String, displayName: String, inviteCode: String) -> Unit,
     onBaseUrlChange: (String) -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -54,7 +53,6 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var ledgerName by remember { mutableStateOf("") }
-    var inviteCode by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -134,9 +132,6 @@ fun LoginScreen(
                     if (tab == 1) {
                         LabeledField("账本名称, 如 我们家", ledgerName, topPadding = 12.dp) { ledgerName = it }
                     }
-                    if (tab == 2) {
-                        LabeledField("账本邀请码", inviteCode, topPadding = 12.dp) { inviteCode = it }
-                    }
 
                     state.error?.let {
                         Text(
@@ -149,11 +144,7 @@ fun LoginScreen(
 
                     Button(
                         onClick = {
-                            when (tab) {
-                                0 -> onLogin(username, password)
-                                1 -> onRegister(username, password, displayName, ledgerName)
-                                else -> onJoin(username, password, displayName, inviteCode)
-                            }
+                            if (tab == 0) onLogin(username, password) else onRegister(username, password, displayName, ledgerName)
                         },
                         enabled = !state.loading,
                         shape = MaterialTheme.shapes.small,

@@ -14,19 +14,11 @@ class UserCreate(BaseModel):
     ledger_name: Optional[str] = None  # set only when creating a brand-new ledger
 
 
-class UserJoin(BaseModel):
-    username: str
-    password: str
-    display_name: str
-    invite_code: str  # random per-ledger code, shown in the owner's Settings screen
-
-
 class UserOut(BaseModel):
     id: int
     username: str
     display_name: str
     ledger_id: int
-    invite_code: Optional[str] = None
     cycle_start_day: int = 1
 
     class Config:

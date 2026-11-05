@@ -58,10 +58,8 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(
     baseUrl: String,
-    inviteCode: String?,
     onLogout: () -> Unit
 ) {
-    var showAccountInfo by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var serverUrl by remember { mutableStateOf(baseUrl) }
     var editingUrl by remember { mutableStateOf(false) }
@@ -86,7 +84,6 @@ fun SettingsScreen(
                             Text("服务器地址 ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(serverUrl, style = MaterialTheme.typography.bodyMedium)
                         }
-                        InfoDot { showAccountInfo = true }
                     }
                 }
             }
@@ -128,22 +125,6 @@ fun SettingsScreen(
             ) {
                 Text("退出登录")
             }
-        }
-
-        if (showAccountInfo) {
-            AlertDialog(
-                onDismissRequest = { showAccountInfo = false },
-                confirmButton = {
-                    TextButton(onClick = { showAccountInfo = false }) { Text("知道了") }
-                },
-                title = { Text("账本邀请码") },
-                text = {
-                    Text(
-                        "${inviteCode ?: "-"}\n\n把这个号码发给家人,家人在登录页选「加入账本」输入它就能加进同一个账本、共享记录。",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            )
         }
     }
 }

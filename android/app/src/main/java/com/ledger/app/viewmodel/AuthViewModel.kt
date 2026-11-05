@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ledger.app.data.ApiClient
-import com.ledger.app.data.JoinRequest
 import com.ledger.app.data.Prefs
 import com.ledger.app.data.RegisterRequest
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,13 +32,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         runAuthCall {
             ApiClient.create(getApplication())
                 .register(RegisterRequest(username, password, displayName, ledgerName))
-        }
-    }
-
-    fun join(username: String, password: String, displayName: String, inviteCode: String) {
-        runAuthCall {
-            ApiClient.create(getApplication())
-                .join(JoinRequest(username, password, displayName, inviteCode))
         }
     }
 

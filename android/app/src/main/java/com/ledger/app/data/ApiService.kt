@@ -15,9 +15,6 @@ interface ApiService {
     @POST("auth/register")
     suspend fun register(@Body body: RegisterRequest): TokenResponse
 
-    @POST("auth/join")
-    suspend fun join(@Body body: JoinRequest): TokenResponse
-
     @FormUrlEncoded
     @POST("auth/login")
     suspend fun login(

@@ -207,7 +207,6 @@ fun LedgerApp() {
                     initialBaseUrl = authViewModel.getBaseUrl(),
                     onLogin = authViewModel::login,
                     onRegister = authViewModel::register,
-                    onJoin = authViewModel::join,
                     onBaseUrlChange = authViewModel::setBaseUrl
                 )
                 LaunchedEffect(authState.loggedIn) {
@@ -342,7 +341,6 @@ fun LedgerApp() {
                             )
                             else -> SettingsScreen(
                                 baseUrl = authViewModel.getBaseUrl(),
-                                inviteCode = txState.inviteCode,
                                 onLogout = {
                                     authViewModel.logout()
                                     navController.navigate("login") {

@@ -15,13 +15,6 @@ data class RegisterRequest(
     val ledger_name: String? = null
 )
 
-data class JoinRequest(
-    val username: String,
-    val password: String,
-    val display_name: String,
-    val invite_code: String
-)
-
 data class UserDto(
     val id: Int,
     val username: String,
