@@ -63,6 +63,15 @@ fun SettingsScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     var serverUrl by remember { mutableStateOf(baseUrl) }
     var editingUrl by remember { mutableStateOf(false) }
+    // which address the app is really using right now (only while it follows the shared address table)
+    var inUse by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(serverUrl) {
+        inUse = if (com.ledger.app.data.Prefs.isAutoAddress(context)) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.ledger.app.data.EndpointTable.init(context)
+            com.ledger.app.data.EndpointTable.refreshNow()
+            (com.ledger.app.data.EndpointTable.resolve(force = true) ?: "连不上") + "  · 地址表 v" + com.ledger.app.data.EndpointTable.version()
+        } else null
+    }
 
     com.ledger.app.ui.theme.SettingsTheme {
         Column(
@@ -82,7 +91,7 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f).clickable { editingUrl = true }) {
                             Text("服务器地址 ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(serverUrl, style = MaterialTheme.typography.bodyMedium)
+                            Text(inUse ?: serverUrl, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

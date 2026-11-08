@@ -86,6 +86,9 @@ object EndpointTable {
         return null
     }
 
+    /** Version of the cached table (0 = never read), for the settings page. */
+    fun version(): Int = table?.optInt("version", 0) ?: 0
+
     /** Forget the remembered choice (a request just failed): the next call picks again. */
     fun forget() {
         picked = null
