@@ -95,8 +95,9 @@ fun SettingsScreen(
                     title = { Text("服务器地址") },
                     text = { androidx.compose.material3.OutlinedTextField(draft, { draft = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
                     confirmButton = {
-                        androidx.compose.material3.TextButton(enabled = draft.startsWith("http"), onClick = {
-                            val fixed = if (draft.endsWith("/")) draft else "$draft/"
+                        androidx.compose.material3.TextButton(enabled = draft.isEmpty() || draft.startsWith("http"), onClick = {
+                            // blank = back to the built-in address, which follows the shared address table
+                            val fixed = if (draft.isEmpty()) com.ledger.app.BuildConfig.DEFAULT_SERVER else if (draft.endsWith("/")) draft else "$draft/"
                             com.ledger.app.data.Prefs.setBaseUrl(context, fixed)
                             serverUrl = fixed
                             editingUrl = false

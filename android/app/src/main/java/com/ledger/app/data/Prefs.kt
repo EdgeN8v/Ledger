@@ -31,6 +31,9 @@ object Prefs {
         return saved
     }
 
+    /** True while the address is the built-in one (not hand-typed): it then follows the shared address table. */
+    fun isAutoAddress(context: Context): Boolean = getBaseUrl(context) == DEFAULT_BASE_URL
+
     fun setBaseUrl(context: Context, url: String) {
         val normalized = if (url.endsWith("/")) url else "$url/"
         prefs(context).edit().putString(KEY_BASE_URL, normalized).apply()

@@ -6,8 +6,6 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
@@ -15,23 +13,12 @@ object ApiClient {
     // One client for the whole app: keeps connections open, so a screen does not pay a new TCP handshake per request.
     @Volatile private var shared: OkHttpClient? = null
 
-    private var lanChecked = 0L
-    private var lanUp = false
-
-    /** At home the box answers directly on its LAN address; away from home that address is unreachable.
-     *  A 400 ms TCP probe, remembered for a minute, decides - so the public/DDNS route (slow, via the router) is skipped at home. */
-    @Synchronized
-    private fun lanReachable(): Boolean {
-        val lan = Prefs.LAN_URL.toHttpUrlOrNull() ?: return false
-        val now = System.currentTimeMillis()
-        if (now - lanChecked < 60_000) return lanUp
-        lanUp = try {
-            Socket().use { it.connect(InetSocketAddress(lan.host, lan.port), 400); true }
-        } catch (_: Exception) {
-            false
-        }
-        lanChecked = System.currentTimeMillis()
-        return lanUp
+    /** The address in use stopped answering: re-read the table, pick again, try once more. */
+    private fun retryElsewhere(context: Context, chain: okhttp3.Interceptor.Chain, e: java.io.IOException): okhttp3.Response {
+        if (!Prefs.isAutoAddress(context)) throw e
+        EndpointTable.forget()
+        EndpointTable.refreshInBackground(force = true)
+        return chain.proceed(chain.request())
     }
 
     fun http(context: Context): OkHttpClient = client(context.applicationContext)
@@ -45,7 +32,13 @@ object ApiClient {
                 // traffic to the other radio (Wi-Fi <-> mobile data) once; if that fails too, say plainly that neither
                 // path has IPv6 right now, rather than leaking OkHttp's raw English exception.
                 try {
-                    chain.proceed(chain.request())
+                    try {
+                        chain.proceed(chain.request())
+                    } catch (e: java.net.ConnectException) {
+                        retryElsewhere(context, chain, e)
+                    } catch (e: java.net.SocketTimeoutException) {
+                        retryElsewhere(context, chain, e)
+                    }
                 } catch (e: java.net.UnknownHostException) {
                     val switched = NetFallback.bindToOther(context.applicationContext)
                     if (!switched) {
@@ -63,10 +56,13 @@ object ApiClient {
                 val token = Prefs.getToken(context)
                 val b = request.newBuilder()
                 if (token != null) b.addHeader("Authorization", "Bearer $token")
-                // only for the built-in server address; a hand-typed one is respected
-                val lan = Prefs.LAN_URL.toHttpUrlOrNull()
-                if (lan != null && Prefs.getBaseUrl(context) == com.ledger.app.BuildConfig.DEFAULT_SERVER && lanReachable()) {
-                    b.url(request.url.newBuilder().scheme(lan.scheme).host(lan.host).port(lan.port).build())
+                // the built-in address follows the shared address table (home network first, then the domains); a hand-typed one is respected
+                if (Prefs.isAutoAddress(context)) {
+                    EndpointTable.init(context)
+                    EndpointTable.refreshInBackground()
+                    EndpointTable.resolve()?.toHttpUrlOrNull()?.let { t ->
+                        b.url(request.url.newBuilder().scheme(t.scheme).host(t.host).port(t.port).build())
+                    }
                 }
                 request = b.build()
                 chain.proceed(request)
