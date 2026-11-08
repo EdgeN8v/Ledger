@@ -63,14 +63,25 @@ fun SettingsScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     var serverUrl by remember { mutableStateOf(baseUrl) }
     var editingUrl by remember { mutableStateOf(false) }
-    // which address the app is really using right now (only while it follows the shared address table)
+    // which address the app is really using right now (only while it follows the shared address table), re-checked every 15 s
     var inUse by remember { mutableStateOf<String?>(null) }
-    androidx.compose.runtime.LaunchedEffect(serverUrl) {
-        inUse = if (com.ledger.app.data.Prefs.isAutoAddress(context)) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            com.ledger.app.data.EndpointTable.init(context)
-            com.ledger.app.data.EndpointTable.refreshNow()
-            (com.ledger.app.data.EndpointTable.resolve(force = true) ?: "连不上") + "  · 地址表 v" + com.ledger.app.data.EndpointTable.version()
-        } else null
+    var reachable by remember { mutableStateOf<Boolean?>(null) }
+    var tick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(serverUrl, tick) {
+        if (!com.ledger.app.data.Prefs.isAutoAddress(context)) { inUse = null; reachable = null; return@LaunchedEffect }
+        var first = true
+        while (true) {
+            reachable = null
+            val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.ledger.app.data.EndpointTable.init(context)
+                if (first) com.ledger.app.data.EndpointTable.refreshNow()
+                com.ledger.app.data.EndpointTable.resolve(force = true)
+            }
+            first = false
+            inUse = (found ?: "连不上") + "  · 地址表 v" + com.ledger.app.data.EndpointTable.version()
+            reachable = found != null
+            kotlinx.coroutines.delay(15_000)
+        }
     }
 
     com.ledger.app.ui.theme.SettingsTheme {
@@ -92,6 +103,12 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f).clickable { editingUrl = true }) {
                             Text("服务器地址 ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(inUse ?: serverUrl, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        if (inUse != null) {
+                            if (reachable == true) Text("✓", color = com.ledger.app.ui.theme.IncomeColor, style = MaterialTheme.typography.titleMedium)
+                            else if (reachable == false) Text("✗", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                            Text("↻", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable { tick++ }.padding(start = 12.dp))
                         }
                     }
                 }
