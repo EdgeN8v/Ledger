@@ -40,8 +40,8 @@ object EndpointTable {
     private const val EXTERNAL_PROBE_MS = 3000
 
     /** Used while the table has no `ledger` entry (not registered yet, or never read). */
-    private val FALLBACK_LAN = listOf("http://192.168.31.131:8000")
-    private val FALLBACK_WAN get() = listOf(com.ledger.app.BuildConfig.DEFAULT_SERVER.trim().trimEnd('/'))
+    private val FALLBACK_LAN = listOf("http://192.168.31.61:8000", "http://192.168.31.131:8000")
+    private val FALLBACK_WAN get() = listOf("http://pi.cuikexin.com:8000", com.ledger.app.BuildConfig.DEFAULT_SERVER.trim().trimEnd('/')).distinct()
 
     private var prefs: SharedPreferences? = null
     @Volatile private var table: JSONObject? = null
