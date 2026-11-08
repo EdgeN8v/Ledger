@@ -24,7 +24,10 @@ object Prefs {
     fun getBaseUrl(context: Context): String {
         val saved = prefs(context).getString(KEY_BASE_URL, null) ?: return DEFAULT_BASE_URL
         // the old third-party tunnel name (dpdns.org) is retired: an install that saved it moves to the own domain
-        if (saved.contains("dpdns.org")) {
+        // ... and so is a hand-typed address of one of our own machines (a phone that had the Pi's domain typed in stayed on
+        // it for good): those follow the shared address table too
+        val own = listOf("pi.cuikexin.com", "nas.cuikexin.com", "192.168.31.61", "192.168.31.131").any { saved.contains("://$it:8000") }
+        if (saved.contains("dpdns.org") || (own && saved != DEFAULT_BASE_URL)) {
             prefs(context).edit().putString(KEY_BASE_URL, DEFAULT_BASE_URL).apply()
             return DEFAULT_BASE_URL
         }
