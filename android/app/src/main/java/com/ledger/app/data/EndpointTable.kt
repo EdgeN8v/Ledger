@@ -36,7 +36,7 @@ object EndpointTable {
     private const val EXTERNAL_SEED_MS = 3000
     private const val REFRESH_EVERY_MS = 5 * 60_000L
     private const val PICK_KEEP_MS = 60_000L
-    private const val LOCAL_PROBE_MS = 600
+    private const val LOCAL_PROBE_MS = 1000
     private const val EXTERNAL_PROBE_MS = 3000
 
     /** Used while the table has no `ledger` entry (not registered yet, or never read). */
@@ -84,6 +84,19 @@ object EndpointTable {
         }
         picked = null
         return null
+    }
+
+    /** Every candidate probed once, with how it went: for the settings page's detail view. */
+    fun probeReport(): List<String> = candidates().map { (base, ms) ->
+        val t0 = System.currentTimeMillis()
+        val r = try {
+            val conn = URL("$base/health").openConnection() as HttpURLConnection
+            try {
+                conn.connectTimeout = ms; conn.readTimeout = 3000
+                "HTTP ${conn.responseCode}"
+            } finally { conn.disconnect() }
+        } catch (e: Exception) { e.javaClass.simpleName + (e.message?.let { ": " + it.take(40) } ?: "") }
+        "$base  ${System.currentTimeMillis() - t0}ms  $r"
     }
 
     /** Version of the cached table (0 = never read), for the settings page. */

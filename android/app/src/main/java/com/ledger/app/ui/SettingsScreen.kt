@@ -1,6 +1,7 @@
 package com.ledger.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,9 +53,11 @@ import com.ledger.app.capture.SmsInboxScanner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import java.text.SimpleDateFormat
+import kotlinx.coroutines.launch
 import java.util.Date
 import java.util.Locale
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(
     baseUrl: String,
@@ -67,6 +70,8 @@ fun SettingsScreen(
     var inUse by remember { mutableStateOf<String?>(null) }
     var reachable by remember { mutableStateOf<Boolean?>(null) }
     var tick by remember { mutableStateOf(0) }
+    var report by remember { mutableStateOf<List<String>?>(null) }
+    val uiScope = androidx.compose.runtime.rememberCoroutineScope()
     androidx.compose.runtime.LaunchedEffect(serverUrl, tick) {
         if (!com.ledger.app.data.Prefs.isAutoAddress(context)) { inUse = null; reachable = null; return@LaunchedEffect }
         var first = true
@@ -108,12 +113,23 @@ fun SettingsScreen(
                             if (reachable == true) Text("✓", color = com.ledger.app.ui.theme.IncomeColor, style = MaterialTheme.typography.titleMedium)
                             else if (reachable == false) Text("✗", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
                             Text("↻", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable { tick++ }.padding(start = 12.dp))
+                                modifier = Modifier.combinedClickable(onClick = { tick++ }, onLongClick = {
+                                    report = emptyList()
+                                    uiScope.launch { report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.ledger.app.data.EndpointTable.probeReport() } }
+                                }).padding(start = 12.dp))
                         }
                     }
                 }
             }
 
+            report?.let { lines ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { report = null },
+                    title = { Text("各地址探测") },
+                    text = { Text(if (lines.isEmpty()) "探测中…" else lines.joinToString("\n\n"), style = MaterialTheme.typography.bodySmall) },
+                    confirmButton = { androidx.compose.material3.TextButton(onClick = { report = null }) { Text("关闭") } }
+                )
+            }
             if (editingUrl) {
                 var draft by remember { mutableStateOf(serverUrl) }
                 androidx.compose.material3.AlertDialog(
