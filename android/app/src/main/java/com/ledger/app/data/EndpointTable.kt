@@ -99,6 +99,9 @@ object EndpointTable {
         "$base  ${System.currentTimeMillis() - t0}ms  $r"
     }
 
+    /** The address chosen last time, if any: lets the settings page show it at once instead of the default. */
+    fun current(): String? = picked
+
     /** Version of the cached table (0 = never read), for the settings page. */
     fun version(): Int = table?.optInt("version", 0) ?: 0
 

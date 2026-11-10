@@ -67,8 +67,13 @@ fun SettingsScreen(
     var serverUrl by remember { mutableStateOf(baseUrl) }
     var editingUrl by remember { mutableStateOf(false) }
     // which address the app is really using right now (only while it follows the shared address table), re-checked every 15 s
-    var inUse by remember { mutableStateOf<String?>(null) }
-    var reachable by remember { mutableStateOf<Boolean?>(null) }
+    var inUse by remember {
+        mutableStateOf<String?>(
+            com.ledger.app.data.EndpointTable.current()?.takeIf { com.ledger.app.data.Prefs.isAutoAddress(context) }
+                ?.let { it + "  · 地址表 v" + com.ledger.app.data.EndpointTable.version() }
+        )
+    }
+    var reachable by remember { mutableStateOf<Boolean?>(if (inUse != null) true else null) }
     var tick by remember { mutableStateOf(0) }
     var report by remember { mutableStateOf<List<String>?>(null) }
     val uiScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -76,7 +81,7 @@ fun SettingsScreen(
         if (!com.ledger.app.data.Prefs.isAutoAddress(context)) { inUse = null; reachable = null; return@LaunchedEffect }
         var first = true
         while (true) {
-            reachable = null
+            if (inUse == null) reachable = null
             val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 com.ledger.app.data.EndpointTable.init(context)
                 if (first) com.ledger.app.data.EndpointTable.refreshNow()
