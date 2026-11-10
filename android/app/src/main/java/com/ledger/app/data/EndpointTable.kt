@@ -48,6 +48,7 @@ object EndpointTable {
     @Volatile private var lastTryMs = 0L
     @Volatile private var picked: String? = null
     @Volatile private var pickedAtMs = 0L
+    @Volatile private var lastGood: String? = null
     private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
 
     @Synchronized
@@ -78,6 +79,8 @@ object EndpointTable {
         for ((base, timeout) in candidates()) {
             if (healthy(base, timeout)) {
                 picked = base
+                lastGood = base
+                prefs?.edit()?.putString("last_good", base)?.apply()
                 pickedAtMs = System.currentTimeMillis()
                 return base
             }
@@ -100,7 +103,7 @@ object EndpointTable {
     }
 
     /** The address chosen last time, if any: lets the settings page show it at once instead of the default. */
-    fun current(): String? = picked
+    fun current(): String? = picked ?: lastGood ?: prefs?.getString("last_good", null)
 
     /** Version of the cached table (0 = never read), for the settings page. */
     fun version(): Int = table?.optInt("version", 0) ?: 0

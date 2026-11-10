@@ -69,7 +69,7 @@ fun SettingsScreen(
     // which address the app is really using right now (only while it follows the shared address table), re-checked every 15 s
     var inUse by remember {
         mutableStateOf<String?>(
-            com.ledger.app.data.EndpointTable.current()?.takeIf { com.ledger.app.data.Prefs.isAutoAddress(context) }
+            run { com.ledger.app.data.EndpointTable.init(context); com.ledger.app.data.EndpointTable.current() }?.takeIf { com.ledger.app.data.Prefs.isAutoAddress(context) }
                 ?.let { it + "  · 地址表 v" + com.ledger.app.data.EndpointTable.version() }
         )
     }
@@ -112,7 +112,7 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f).clickable { editingUrl = true }) {
                             Text("服务器地址 ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(inUse ?: serverUrl, style = MaterialTheme.typography.bodyMedium)
+                            Text(inUse ?: if (com.ledger.app.data.Prefs.isAutoAddress(context)) "检测中…" else serverUrl, style = MaterialTheme.typography.bodyMedium)
                         }
                         if (inUse != null) {
                             if (reachable == true) Text("✓", color = com.ledger.app.ui.theme.IncomeColor, style = MaterialTheme.typography.titleMedium)
