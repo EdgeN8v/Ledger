@@ -20,7 +20,6 @@ data class DetailRequest(
     val dateTo: String,
     val expenseOnly: Boolean = true,
     val tripId: Int? = null,
-    val businessOnly: Boolean = false,
     val sub: String? = null          // one sub-category of the category; "__none__" = not sorted into one yet
 )
 
@@ -67,7 +66,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         val cid = r.categoryId ?: return
         viewModelScope.launch {
             try {
-                val got = api().subTotals(cid, r.dateFrom, r.dateTo, !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()))
+                val got = api().subTotals(cid, r.dateFrom, r.dateTo)
                 _state.value = _state.value.copy(subs = got)
             } catch (_: Exception) {
             }
@@ -108,8 +107,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun cacheKey(r: DetailRequest, sort: String) =
-        "detail_" + (listOf(r.categoryId, r.sub, r.query, r.dateFrom, r.dateTo, r.expenseOnly, r.tripId, r.businessOnly, sort,
-            com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())).joinToString("|")).hashCode()
+        "detail_" + (listOf(r.categoryId, r.sub, r.query, r.dateFrom, r.dateTo, r.expenseOnly, r.tripId, sort).joinToString("|")).hashCode()
 
     fun setSort(sort: String) {
         if (sort == _state.value.sort) return
@@ -124,8 +122,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         val r = s.request ?: return emptyList()
         return api().listTransactions(
             dateFrom = if (r.tripId != null) null else r.dateFrom, dateTo = if (r.tripId != null) null else r.dateTo, categoryId = r.categoryId, sub = r.sub,
-            txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId, businessOnly = r.businessOnly,
-            excludeBusiness = r.tripId == null && !com.ledger.app.data.Prefs.getIncludeBusiness(getApplication()),
+            txType = if (r.expenseOnly) "expense" else null, kind = "normal", q = r.query, tripId = r.tripId,
             sort = s.sort, limit = limit, offset = offset
         )
     }
@@ -244,10 +241,10 @@ class TripsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun create(name: String, start: String, end: String, kind: String = "personal", daily: String? = null, commute: String? = null) {
+    fun create(name: String, start: String, end: String) {
         viewModelScope.launch {
             try {
-                api().createTrip(com.ledger.app.data.TripInRequest(name, start, end, kind, daily, commute))
+                api().createTrip(com.ledger.app.data.TripInRequest(name, start, end))
                 load()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "创建失败")
@@ -255,42 +252,13 @@ class TripsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun update(t: com.ledger.app.data.TripDto, name: String, start: String, end: String, daily: String?, commute: String?) {
+    fun update(t: com.ledger.app.data.TripDto, name: String, start: String, end: String) {
         viewModelScope.launch {
             try {
-                api().updateTrip(t.id, com.ledger.app.data.TripInRequest(name, start, end, t.kind, daily, commute))
+                api().updateTrip(t.id, com.ledger.app.data.TripInRequest(name, start, end))
                 load()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "修改失败")
-            }
-        }
-    }
-
-    /** Recent incoming money, for picking "this deposit was the employer paying the trip back". */
-    suspend fun recentIncomes(): List<com.ledger.app.data.TransactionDto> = try {
-        api().listTransactions(txType = "income", limit = 30)
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    fun settle(tripId: Int, txId: Int) {
-        viewModelScope.launch {
-            try {
-                api().settleTrip(tripId, com.ledger.app.data.SettleRequest(txId))
-                load()
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message ?: "操作失败")
-            }
-        }
-    }
-
-    fun unsettle(tripId: Int) {
-        viewModelScope.launch {
-            try {
-                api().unsettleTrip(tripId)
-                load()
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message ?: "操作失败")
             }
         }
     }

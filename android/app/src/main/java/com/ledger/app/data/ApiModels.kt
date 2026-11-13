@@ -90,9 +90,7 @@ data class TransactionDto(
     val sources: String? = null,
     val refund_of_id: Int? = null,
     val refunded_amount: String? = null,
-    val is_reimbursement: Boolean = false,
     val trip_id: Int? = null,
-    val trip_kind: String? = null,
     val trip_name: String? = null,
     val is_transfer: Boolean = false,
     val family_card: Boolean = false,
@@ -166,8 +164,6 @@ data class EarmarkedDto(
 )
 
 data class AccountsOverviewDto(
-    val receivable: String = "0",
-    val receivable_trips: List<String> = emptyList(),
     val total: String,
     val accounts: List<AccountDto>,
     val earmarked: List<EarmarkedDto> = emptyList(),   // money in the accounts that is already spoken for (the rent fund ...)
@@ -244,10 +240,7 @@ data class TripCategoryDto(val name: String, val icon: String?, val total: Strin
 data class TripDto(
     val id: Int, val name: String, val start_date: String, val end_date: String,
     val total: String, val count: Int, val by_category: List<TripCategoryDto>,
-    val kind: String = "personal", val days: Int = 1, val flights: List<String> = emptyList(), val return_booked: String? = null, val open_end: Boolean = false, val long_trip: Boolean = false, val daily_allowance: String? = null,
-    val commute_allowance: String? = null, val allowance_total: String = "0",
-    val expected_reimbursement: String = "0", val settled: Boolean = false,
-    val received_amount: String? = null, val allowance_gain: String? = null, val difference: String? = null
+    val days: Int = 1, val flights: List<String> = emptyList()
 )
 
 data class TripSuggestionDto(val start_date: String, val end_date: String, val reason: String, val estimate: String)
@@ -256,20 +249,10 @@ data class TripRefRequest(val start_date: String, val end_date: String)
 
 data class TripInRequest(
     val name: String, val start_date: String, val end_date: String,
-    val kind: String = "personal", val daily_allowance: String? = null, val commute_allowance: String? = null,
     val auto_tag: Boolean? = null           // null: keep as it is (edit) / on (new)
 )
 
 data class BillReminderDto(val name: String, val amount: String, val due_date: String, val days_left: Int, val note: String? = null)
-
-data class ReceivableItemDto(val date: String, val merchant: String? = null, val amount: String)
-
-data class ReceivableTripDto(
-    val trip_id: Int, val name: String, val start_date: String, val end_date: String, val open_end: Boolean = false,
-    val advanced: String, val allowance: String, val expected: String, val items: List<ReceivableItemDto>
-)
-
-data class SettleRequest(val transaction_id: Int)
 
 data class FixedItemDto(
     val name: String,

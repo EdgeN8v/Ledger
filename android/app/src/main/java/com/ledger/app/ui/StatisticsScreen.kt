@@ -131,8 +131,7 @@ fun StatisticsScreen(onOpenDetail: (com.ledger.app.viewmodel.DetailRequest) -> U
                             com.ledger.app.viewmodel.DetailRequest(
                                 title = category.category_name,
                                 categoryId = category.category_id?.takeIf { it > 0 },
-                                query = null, dateFrom = from, dateTo = to,
-                                businessOnly = category.category_id == -2
+                                query = null, dateFrom = from, dateTo = to
                             )
                         )
                     }

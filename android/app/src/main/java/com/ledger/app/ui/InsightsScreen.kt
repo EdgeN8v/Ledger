@@ -156,7 +156,7 @@ private fun CycleBody(
     SectionCard("花在哪些类别") {
         c.categories.forEach { cat ->
             CategoryBar(cat) {
-                onOpenDetail(com.ledger.app.viewmodel.DetailRequest(cat.name, cat.category_id?.takeIf { it > 0 }, null, c.period_start, c.period_end, businessOnly = cat.category_id == -2))
+                onOpenDetail(com.ledger.app.viewmodel.DetailRequest(cat.name, cat.category_id?.takeIf { it > 0 }, null, c.period_start, c.period_end))
             }
         }
         Text("点一个类别, 看这期间这一类的每一笔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))

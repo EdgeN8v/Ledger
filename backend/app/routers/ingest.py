@@ -19,7 +19,7 @@ from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
 from app.maintenance import WALLET_ONLY_NOTE, sweep_wallet_only
 from app.merchants import UNNAMED_DEDUCTION, is_unnamed_deduction, rule_applies
-from app.flights import MILEAGE, looks_like_ticket, note_return_ticket, parse_flights, store_flights, sync_flight_trips
+from app.flights import MILEAGE, is_issued_note, looks_like_ticket, parse_flights, store_flights
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -299,7 +299,7 @@ def ingest(
 
     ticket = parse_flights(text, posted)
     mileage = bool(MILEAGE.search(text))
-    ctrip = (not ticket) and note_return_ticket(db, user.ledger_id, text, posted)
+    ctrip = (not ticket) and is_issued_note(text)
     parsed = None if (ticket or mileage or ctrip) else parse_message(source, title, text, posted)
     zero = parsed is not None and parsed.amount is not None and parsed.amount <= 0      # "已支付 ¥0.00" is not a payment
     if zero:
@@ -436,8 +436,6 @@ def ingest(
     db.add(ev)
     db.commit()
     sweep_wallet_only(db, user.ledger_id)
-    if status == "flight":
-        sync_flight_trips(db, user.ledger_id)
     if tx:
         db.refresh(tx)
     return schemas.IngestResult(status=status, event_id=ev.id, transaction=tx,

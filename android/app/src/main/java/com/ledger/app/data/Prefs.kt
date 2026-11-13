@@ -42,13 +42,6 @@ object Prefs {
         prefs(context).edit().putString(KEY_BASE_URL, normalized).apply()
     }
 
-    /** Statistics view: also count business-trip advances (they cancel out once reimbursed). Off = your everyday spending. */
-    fun getIncludeBusiness(context: Context): Boolean = prefs(context).getBoolean("include_business", false)
-
-    fun setIncludeBusiness(context: Context, value: Boolean) {
-        prefs(context).edit().putBoolean("include_business", value).apply()
-    }
-
     /** Upper bound for the offline cache (MB). The oldest cached answers are deleted when it is exceeded. */
     fun getCacheLimitMb(context: Context): Int = prefs(context).getInt("cache_limit_mb", 20)
 

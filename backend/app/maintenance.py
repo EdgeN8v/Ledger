@@ -41,7 +41,7 @@ def sweep_wallet_only(db: Session, ledger_id: Optional[int] = None) -> int:
 def ensure_columns(db: Session) -> None:
     """create_all adds tables but never columns: add the ones introduced later (additive only)."""
     from sqlalchemy import inspect, text
-    wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL"), ("return_booked_on", "VARCHAR")],
+    wanted = {"trips": [("auto_key", "VARCHAR"), ("dates_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("open_end", "BOOLEAN DEFAULT FALSE NOT NULL")],
               "ledgers": [("sub_lists", "TEXT"), ("loans", "TEXT"), ("home_city", "VARCHAR"), ("family_names", "VARCHAR"), ("trips_enabled", "BOOLEAN DEFAULT TRUE NOT NULL"), ("treat_budget", "NUMERIC(14,2)")],
               "categories": [("sort_order", "INTEGER")],
               "transactions": [("category_locked", "BOOLEAN DEFAULT FALSE NOT NULL"), ("family_card", "BOOLEAN DEFAULT FALSE NOT NULL"), ("car_bucket", "VARCHAR"), ("sub", "VARCHAR"), ("is_treat", "BOOLEAN DEFAULT FALSE NOT NULL"), ("is_one_off", "BOOLEAN DEFAULT FALSE NOT NULL")],
@@ -399,3 +399,11 @@ def split_us_nodes(db: Session) -> None:
             for t in db.query(models.Transaction).filter(models.Transaction.ledger_id == l.id, models.Transaction.category_id == cat.id, models.Transaction.sub == "美国节点"):
                 t.sub = "美国Kila" if "朱勇" in f"{t.merchant or ''} {t.note or ''} {t.raw_text or ''}" else "美国干杯"
     db.commit()
+
+
+def retire_business_trips(db: Session) -> None:
+    """Reimbursement tracking is gone: trips that were business trips become ordinary trips (their purchases now
+    count as the spending they were). Safe to run any number of times."""
+    n = db.query(models.Trip).filter(models.Trip.kind != "personal").update({models.Trip.kind: "personal"}, synchronize_session=False)
+    if n:
+        db.commit()

@@ -78,8 +78,6 @@ def list_transactions(
     q: Optional[str] = None,               # substring of merchant / note / message text
     needs_review: Optional[bool] = None,
     trip_id: Optional[int] = None,
-    business_only: bool = False,           # only purchases that belong to business trips
-    exclude_business: bool = False,       # hide purchases that belong to business trips (they are not your spending)
     sort: str = "time_desc",              # time_desc / time_asc / amount_desc / amount_asc
     limit: int = 50,
     offset: int = 0,
@@ -118,23 +116,16 @@ def list_transactions(
         query = query.filter(T.needs_review == needs_review)
     if trip_id:
         query = query.filter(T.trip_id == trip_id)
-    if business_only:
-        biz_ids = [x.id for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business")]
-        query = query.filter(T.trip_id.in_(biz_ids or [-1]))
-    if exclude_business:
-        biz = [x.id for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business")]
-        if biz:
-            query = query.filter(T.trip_id.is_(None) | ~T.trip_id.in_(biz) | (T.is_reimbursement.is_(True)))
     order = {
         "time_asc": (T.occurred_at.asc(), T.id.asc()),
         "amount_desc": (T.amount.desc(), T.occurred_at.desc()),
         "amount_asc": (T.amount.asc(), T.occurred_at.desc()),
     }.get(sort, (T.occurred_at.desc(), T.id.desc()))
     rows = query.order_by(*order).offset(max(offset, 0)).limit(min(max(limit, 1), 500)).all()
-    trip_info = {x.id: (x.kind, x.name) for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id)}
+    trip_info = {x.id: x.name for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id)}
     for t in rows:
         t.refunded_amount = refunded_amount(db, t.id) if t.tx_type == models.TxType.expense else Decimal(0)
-        t.trip_kind, t.trip_name = trip_info.get(t.trip_id, (None, None))
+        t.trip_name = trip_info.get(t.trip_id)
     return rows
 
 
@@ -297,7 +288,6 @@ def sub_totals(
     category_id: int,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    exclude_business: bool = False,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -310,10 +300,6 @@ def sub_totals(
         q = q.filter(T.occurred_at >= datetime.strptime(date_from, "%Y-%m-%d"))
     if date_to:
         q = q.filter(T.occurred_at < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
-    if exclude_business:
-        biz = [x.id for x in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business")]
-        if biz:
-            q = q.filter(T.trip_id.is_(None) | ~T.trip_id.in_(biz) | (T.is_reimbursement.is_(True)))
     refunds = refunded_map(db, user.ledger_id)
     totals: dict = {}
     for t in q.all():
@@ -347,26 +333,21 @@ def delete_transaction(
 def monthly_summary(
     year: int,
     month: int,
-    include_business: bool = False,      # also count business-trip advances (cancelled again once reimbursed)
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     """Pay-cycle summary. Transfers are ignored and a returned purchase stops counting as spending, see app/stats.py."""
     start_day = user.ledger.cycle_start_day or 1
     p_start, p_end = cycle_bounds(start_day, year, month)
-    data = period_data(db, user.ledger_id, p_start, p_end, include_business=include_business)
+    data = period_data(db, user.ledger_id, p_start, p_end)
     cats = {c.id: c.name for c in db.query(models.Category).filter(models.Category.ledger_id == user.ledger_id)}
-    cats[-2] = "出差垫付"
     buckets: dict[tuple, Decimal] = {}
     for t, eff in data.expenses:
-        k = (-2 if t.trip_id in data.business_ids else t.category_id, models.TxType.expense)   # business advances: their own line
+        k = (t.category_id, models.TxType.expense)
         buckets[k] = buckets.get(k, Decimal(0)) + eff
     for r in data.standalone_refunds:
         k = (r.category_id, models.TxType.expense)
         buckets[k] = buckets.get(k, Decimal(0)) - r.amount
-    for _t, amount in data.reimbursements:
-        k = (-2, models.TxType.expense)
-        buckets[k] = buckets.get(k, Decimal(0)) - amount
     for t in data.incomes:
         k = (t.category_id, models.TxType.income)
         buckets[k] = buckets.get(k, Decimal(0)) + t.amount

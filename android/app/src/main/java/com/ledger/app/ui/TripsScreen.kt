@@ -40,11 +40,8 @@ private fun md(d: String) = d.substring(5).replace('-', '月') + "日"
 fun TripsScreen(
     state: TripsUiState,
     onLoad: () -> Unit,
-    onCreate: (name: String, start: String, end: String, kind: String, daily: String?, commute: String?) -> Unit,
-    onEdit: (TripDto, name: String, start: String, end: String, daily: String?, commute: String?) -> Unit,
-    onSettle: (tripId: Int, txId: Int) -> Unit,
-    onUnsettle: (Int) -> Unit,
-    loadIncomes: suspend () -> List<com.ledger.app.data.TransactionDto>,
+    onCreate: (name: String, start: String, end: String) -> Unit,
+    onEdit: (TripDto, name: String, start: String, end: String) -> Unit,
     onDelete: (Int) -> Unit,
     onDismiss: (String, String) -> Unit,
     onOpenDetail: (DetailRequest) -> Unit
@@ -52,12 +49,11 @@ fun TripsScreen(
     LaunchedEffect(Unit) { onLoad() }
     var creating by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var deleting by remember { mutableStateOf<TripDto?>(null) }
-    var settling by remember { mutableStateOf<TripDto?>(null) }
     var editing by remember { mutableStateOf<TripDto?>(null) }
 
     Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
-            "出行和旅游单独算: 自己的旅行钱照样计入账期支出, 但不会被当成日常的花法去推算月底。出差垫的钱不算你的开销, 记成\"待报销\"。",
+            "出行和旅游单独算: 旅行的钱照样计入账期支出, 但不会被当成日常的花法去推算月底。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -81,15 +77,7 @@ fun TripsScreen(
             }
         }
 
-        if (state.trips.any { it.kind == "business" }) {
-            Text("✈️ 出差 (垫付的钱早晚要还回来)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 20.dp))
-        }
-        (state.trips.filter { it.kind == "business" } + state.trips.filter { it.kind != "business" }).forEachIndexed { index, t ->
-            if (t.kind != "business" && index == state.trips.count { it.kind == "business" }) {
-                Text("🚗 自己出行", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 20.dp))
-            }
+        state.trips.forEach { t ->
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
@@ -99,7 +87,7 @@ fun TripsScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(t.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text((if (t.open_end) "${md(t.start_date)} 出发 · " + (if (t.return_booked != null) "回程票已出, 日期待填" else "回程未订") else "${md(t.start_date)} – ${md(t.end_date)}") + " · ${t.count} 笔", style = MaterialTheme.typography.bodySmall,
+                            Text("${md(t.start_date)} – ${md(t.end_date)} · ${t.count} 笔", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(money(t.total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
@@ -109,33 +97,14 @@ fun TripsScreen(
                         Text("✈ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 2.dp))
                     }
-                    if (t.kind == "business") {
-                        Text(
-                            if (t.settled) "✅ 已报销到账 ${money(t.received_amount)}; 其中只有补贴 ${money(t.allowance_gain)} 记为收入, 垫付的钱是还给你自己的" +
-                                (if ((t.difference?.toDoubleOrNull() ?: 0.0) < -0.5) ", 还差 ${money(t.difference?.removePrefix("-"))} 没收到" else "")
-                            else if (t.open_end && t.return_booked != null) "🛬 回程票已出票(${t.return_booked.substring(5).replace('-', '月')}日收到通知), 但短信里没写回来的日期: 点下面「修改」填一下, 补贴就会算上。现在只记垫付 ${money(t.total)}"
-                            else if (t.open_end) "🛫 回程票还没订: 回来的日期定了再算补贴, 现在只记垫付 ${money(t.total)}"
-                            else if (t.long_trip) "🧾 长差(${t.days}天): 补贴由单位另行发放, 不计入; 垫付 ${money(t.total)}"
-                            else "🧾 出差垫付 ${money(t.total)} + 补贴 ${money(t.allowance_total)} = 待报销 ${money(t.expected_reimbursement)}",
-                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
-                            color = if (t.settled) com.ledger.app.ui.theme.IncomeColor else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                        if (!t.settled && !t.open_end && !t.long_trip) Text("补贴: 每天 ${money(t.daily_allowance)} × ${t.days} 天 + 通勤 ${money(t.commute_allowance)}",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                     t.by_category.forEach {
                         Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("${it.icon ?: ""} ${it.name}", style = MaterialTheme.typography.bodyMedium)
                             Text(money(it.total), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    if (t.kind == "business") {
-                        if (t.settled) TextButton(onClick = { onUnsettle(t.id) }) { Text("撤销到账") }
-                        else Button(onClick = { settling = t }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("报销已到账") }
-                    }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { editing = t }, modifier = Modifier.weight(1f)) { Text("✏️ 修改日期/补贴") }
+                        OutlinedButton(onClick = { editing = t }, modifier = Modifier.weight(1f)) { Text("✏️ 修改") }
                         TextButton(onClick = { deleting = t }) { Text("取消这次") }
                     }
                 }
@@ -157,9 +126,6 @@ fun TripsScreen(
         var name by remember { mutableStateOf(n0) }
         var start by remember { mutableStateOf(s0) }
         var end by remember { mutableStateOf(e0) }
-        var business by remember { mutableStateOf(false) }
-        var daily by remember { mutableStateOf("180") }
-        var commute by remember { mutableStateOf("80") }
         val context = LocalContext.current
         fun pick(current: String, onPick: (String) -> Unit) {
             val d = LocalDate.parse(current)
@@ -170,32 +136,19 @@ fun TripsScreen(
             title = { Text("新建出行") },
             text = {
                 Column {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        androidx.compose.material3.FilterChip(selected = !business, onClick = { business = false }, label = { Text("自己出行") })
-                        androidx.compose.material3.FilterChip(selected = business, onClick = { business = true }, label = { Text("出差") })
-                    }
-                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(if (business) "名字, 如 北京出差" else "名字, 如 中秋去黄山") },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("名字, 如 中秋去黄山") }, modifier = Modifier.fillMaxWidth())
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { pick(start) { start = it; if (end < it) end = it } }, modifier = Modifier.weight(1f)) { Text("从 ${md(start)}") }
                         OutlinedButton(onClick = { pick(end) { end = if (it < start) start else it } }, modifier = Modifier.weight(1f)) { Text("到 ${md(end)}") }
                     }
-                    if (business) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(daily, { daily = it }, singleLine = true, label = { Text("每天补贴") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴") }, modifier = Modifier.weight(1f))
-                        }
-                    }
-                    Text(if (business) "出差垫付只算机票和酒店(公司会报销), 不计入你的月开销, 记成待报销; 打车、吃饭是你自己的钱, 靠补贴(每天+通勤)来抵, 补贴到账后算你的收入。日期从出发那天到回家那天。"
-                        else "这段日子里的油费、过路费、停车、吃饭、门票会自动归进来; 房租等固定支出不会。",
+                    Text("这段日子里的油费、过路费、停车、吃饭、门票会自动归进来; 房租等固定支出不会。",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp))
                 }
             },
             confirmButton = { TextButton(onClick = {
                 creating = null
-                onCreate(name.ifBlank { if (business) "出差" else "出行" }, start, end, if (business) "business" else "personal",
-                    if (business) daily.trim().ifEmpty { null } else null, if (business) commute.trim().ifEmpty { null } else null)
+                onCreate(name.ifBlank { "出行" }, start, end)
             }) { Text("创建") } },
             dismissButton = { TextButton(onClick = { creating = null }) { Text("取消") } }
         )
@@ -204,8 +157,6 @@ fun TripsScreen(
         var name by remember(t.id) { mutableStateOf(t.name) }
         var start by remember(t.id) { mutableStateOf(t.start_date) }
         var end by remember(t.id) { mutableStateOf(t.end_date) }
-        var daily by remember(t.id) { mutableStateOf(t.daily_allowance?.removeSuffix(".00") ?: "") }
-        var commute by remember(t.id) { mutableStateOf(t.commute_allowance?.removeSuffix(".00") ?: "") }
         val context = LocalContext.current
         fun pick(current: String, onPick: (String) -> Unit) {
             val d = LocalDate.parse(current)
@@ -221,48 +172,13 @@ fun TripsScreen(
                         OutlinedButton(onClick = { pick(start) { start = it; if (end < it) end = it } }, modifier = Modifier.weight(1f)) { Text("从 ${md(start)}") }
                         OutlinedButton(onClick = { pick(end) { end = if (it < start) start else it } }, modifier = Modifier.weight(1f)) { Text("到 ${md(end)}") }
                     }
-                    if (t.kind == "business") {
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(daily, { daily = it }, singleLine = true, label = { Text("每天补贴") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴") }, modifier = Modifier.weight(1f))
-                        }
-                        Text("回来的日期变了就改「到」那一天, 补贴会按新的天数重新算。",
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp))
-                    }
                 }
             },
             confirmButton = { TextButton(onClick = {
                 editing = null
-                onEdit(t, name.ifBlank { t.name }, start, end, daily.trim().ifEmpty { null }, commute.trim().ifEmpty { null })
+                onEdit(t, name.ifBlank { t.name }, start, end)
             }) { Text("保存") } },
             dismissButton = { TextButton(onClick = { editing = null }) { Text("取消") } }
-        )
-    }
-    settling?.let { t ->
-        var incomes by remember(t.id) { mutableStateOf<List<com.ledger.app.data.TransactionDto>?>(null) }
-        LaunchedEffect(t.id) { incomes = loadIncomes() }
-        AlertDialog(
-            onDismissRequest = { settling = null },
-            title = { Text("哪一笔是报销到账?") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    Text("应收 ${money(t.expected_reimbursement)}。选公司打给你的那笔进账:", style = MaterialTheme.typography.bodySmall)
-                    val list = incomes
-                    if (list == null) Text("加载中…", modifier = Modifier.padding(top = 8.dp))
-                    else if (list.isEmpty()) Text("最近没有进账记录", modifier = Modifier.padding(top = 8.dp))
-                    else list.forEach { tx ->
-                        TextButton(onClick = { settling = null; onSettle(t.id, tx.id) }, modifier = Modifier.fillMaxWidth()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(tx.occurred_at.take(10) + "  " + (tx.merchant ?: tx.note ?: ""), maxLines = 1, modifier = Modifier.weight(1f))
-                                Text("+¥" + tx.amount)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { settling = null }) { Text("取消") } }
         )
     }
     deleting?.let { t ->
@@ -276,51 +192,3 @@ fun TripsScreen(
     }
 }
 
-
-/** Small "new business trip" form, shared by the long-press menu: name, dates, allowances. */
-@Composable
-fun NewBusinessTripDialog(
-    startDate: String,
-    onDismiss: () -> Unit,
-    onCreate: (name: String, start: String, end: String, daily: String?, commute: String?, autoTag: Boolean) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var start by remember { mutableStateOf(startDate) }
-    var end by remember { mutableStateOf(LocalDate.parse(startDate).plusDays(2).toString()) }
-    var daily by remember { mutableStateOf("180") }
-    var commute by remember { mutableStateOf("80") }
-    var autoTag by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    fun pick(current: String, onPick: (String) -> Unit) {
-        val d = LocalDate.parse(current)
-        DatePickerDialog(context, { _, y, m, day -> onPick(LocalDate.of(y, m + 1, day).toString()) }, d.year, d.monthValue - 1, d.dayOfMonth).show()
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("新建出差") },
-        text = {
-            Column {
-                OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("名字, 如 北京出差") }, modifier = Modifier.fillMaxWidth())
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { pick(start) { start = it; if (end < it) end = it } }, modifier = Modifier.weight(1f)) { Text("从 ${md(start)}") }
-                    OutlinedButton(onClick = { pick(end) { end = if (it < start) start else it } }, modifier = Modifier.weight(1f)) { Text("到 ${md(end)}") }
-                }
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(daily, { daily = it }, singleLine = true, label = { Text("每天补贴") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(commute, { commute = it }, singleLine = true, label = { Text("通勤补贴(一次)") }, modifier = Modifier.weight(1f))
-                }
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("这段日期里别的机票、酒店也自动归入", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    androidx.compose.material3.Switch(autoTag, { autoTag = it })
-                }
-                Text("关着的话只归入你长按的这一笔; 日期用来按天数算补贴。打车、吃饭不用管, 算你自己的。",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp))
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onCreate(name.ifBlank { "出差" }, start, end, daily.trim().ifEmpty { null }, commute.trim().ifEmpty { null }, autoTag) }) { Text("创建并归入") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
-}

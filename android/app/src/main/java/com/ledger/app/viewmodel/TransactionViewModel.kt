@@ -38,7 +38,6 @@ data class TransactionUiState(
     val inviteCode: String? = null,
     val cycleStartDay: Int = 1,
     val cycleSummary: MonthSummaryDto? = null,
-    val businessTrips: List<com.ledger.app.data.TripDto> = emptyList(),
     val filter: TxFilter = TxFilter(),
     val syncing: Boolean = false,
     val message: String? = null,
@@ -63,8 +62,7 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 categories = com.ledger.app.data.DiskCache.get<List<CategoryDto>>(app, "categories") ?: emptyList(),
                 inviteCode = com.ledger.app.data.DiskCache.get<String>(app, "invite"),
                 cycleStartDay = com.ledger.app.data.DiskCache.get<Int>(app, "cycle_start") ?: 1,
-                cycleSummary = com.ledger.app.data.DiskCache.get<MonthSummaryDto>(app, "cycle_summary_" + com.ledger.app.data.Prefs.getIncludeBusiness(app)),
-                businessTrips = com.ledger.app.data.DiskCache.get<List<com.ledger.app.data.TripDto>>(app, "business_trips") ?: emptyList()
+                cycleSummary = com.ledger.app.data.DiskCache.get<MonthSummaryDto>(app, "cycle_summary"),
             )
         }
     }
@@ -126,15 +124,13 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 )
                 val me = api().me()
                 val categories = api().listCategories()
-                val trips = try { api().listTrips().filter { it.kind == "business" } } catch (_: Exception) { emptyList() }
                 _state.value = _state.value.copy(
-                    inviteCode = me.invite_code, cycleStartDay = me.cycle_start_day, categories = categories, businessTrips = trips
+                    inviteCode = me.invite_code, cycleStartDay = me.cycle_start_day, categories = categories
                 )
                 val app = getApplication<Application>()
                 com.ledger.app.data.DiskCache.put(app, "categories", categories)
                 com.ledger.app.data.DiskCache.put(app, "invite", me.invite_code)
                 com.ledger.app.data.DiskCache.put(app, "cycle_start", me.cycle_start_day)
-                com.ledger.app.data.DiskCache.put(app, "business_trips", trips)
                 if (!_state.value.filter.isActive) com.ledger.app.data.DiskCache.put(app, "tx_page", page)
                 loadCycleSummary(me.cycle_start_day)
             } catch (e: Exception) {
@@ -150,10 +146,9 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             var y = today.year
             var m = today.monthValue
             if (today.dayOfMonth < startDay) { m -= 1; if (m < 1) { m = 12; y -= 1 } }
-            val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
-            val sum = api().monthlySummary(y, m, inc)
+            val sum = api().monthlySummary(y, m)
             _state.value = _state.value.copy(cycleSummary = sum)
-            com.ledger.app.data.DiskCache.put(getApplication<Application>(), "cycle_summary_" + inc, sum)
+            com.ledger.app.data.DiskCache.put(getApplication<Application>(), "cycle_summary", sum)
         } catch (_: Exception) {
         }
     }
@@ -238,33 +233,6 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 reloadLoaded()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "修改失败")
-            }
-        }
-    }
-
-    /** tripId = null takes the purchase out of its trip. */
-    fun setBusinessTrip(tx: TransactionDto, tripId: Int?) {
-        viewModelScope.launch {
-            try {
-                if (tripId == null) tx.trip_id?.let { api().removeFromTrip(it, tx.id) } else api().addToTrip(tripId, tx.id)
-                reloadLoaded()
-                _state.value = _state.value.copy(message = if (tripId == null) "已移出出差" else "已归入出差, 待报销")
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message ?: "操作失败")
-            }
-        }
-    }
-
-    /** First business purchase before any trip exists: make the trip and put the purchase into it, in one step. */
-    fun newBusinessTripWith(tx: TransactionDto, name: String, start: String, end: String, daily: String?, commute: String?, autoTag: Boolean) {
-        viewModelScope.launch {
-            try {
-                val trip = api().createTrip(com.ledger.app.data.TripInRequest(name, start, end, "business", daily, commute, autoTag))
-                api().addToTrip(trip.id, tx.id)
-                refresh()
-                _state.value = _state.value.copy(message = "已建好「${name}」并归入, 待报销")
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(error = e.message ?: "操作失败")
             }
         }
     }

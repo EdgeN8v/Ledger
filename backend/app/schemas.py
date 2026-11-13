@@ -97,9 +97,7 @@ class TransactionOut(BaseModel):
     refund_of_id: Optional[int] = None
     refunded_amount: Decimal = Decimal(0)
     is_refund: bool = False
-    is_reimbursement: bool = False
     trip_id: Optional[int] = None
-    trip_kind: Optional[str] = None
     trip_name: Optional[str] = None
     is_transfer: bool = False
     family_card: bool = False
@@ -211,24 +209,6 @@ class AccountOut(BaseModel):
         from_attributes = True
 
 
-class ReceivableItem(BaseModel):
-    date: str
-    merchant: Optional[str] = None
-    amount: Decimal
-
-
-class ReceivableTrip(BaseModel):
-    trip_id: int
-    name: str
-    start_date: str
-    end_date: str
-    open_end: bool = False
-    advanced: Decimal                      # what you paid out (after refunds)
-    allowance: Decimal                     # commute + daily x days
-    expected: Decimal
-    items: list[ReceivableItem]
-
-
 class LoanMove(BaseModel):
     date: str
     kind: str                     # borrow / repay
@@ -270,8 +250,6 @@ class EarmarkedOut(BaseModel):
 
 
 class AccountsOverview(BaseModel):
-    receivable: Decimal = Decimal(0)   # business trips waiting to be paid back (not part of the total)
-    receivable_trips: list[str] = []
     total: Decimal                # sum of balances of accounts counted in the total
     accounts: list[AccountOut]
     earmarked: list[EarmarkedOut] = []     # money in the accounts that is already spoken for (rent fund ...)
@@ -500,10 +478,7 @@ class TripIn(BaseModel):
     name: str
     start_date: str
     end_date: str
-    kind: str = "personal"                 # personal / business
     auto_tag: Optional[bool] = None        # None = keep as is on update, on for a new trip
-    daily_allowance: Optional[Decimal] = None
-    commute_allowance: Optional[Decimal] = None
 
 
 class TripCategory(BaseModel):
@@ -520,20 +495,8 @@ class TripOut(BaseModel):
     total: Decimal
     count: int
     by_category: list[TripCategory]
-    kind: str = "personal"
     days: int = 1
     flights: list[str] = []
-    return_booked: Optional[str] = None   # day the ticket home was issued, when only that is known (the date is not in the SMS)
-    open_end: bool = False        # the way back is not booked yet: the end date is a placeholder, no allowance is counted
-    long_trip: bool = False       # a month or more: allowances are paid on the employer's own schedule, not counted here
-    daily_allowance: Optional[Decimal] = None
-    commute_allowance: Optional[Decimal] = None
-    allowance_total: Decimal = Decimal(0)
-    expected_reimbursement: Decimal = Decimal(0)   # advanced money + allowances
-    settled: bool = False
-    received_amount: Optional[Decimal] = None
-    allowance_gain: Optional[Decimal] = None   # what counts as income: the allowances
-    difference: Optional[Decimal] = None      # paid back minus (advanced + allowances): negative = still owed
 
 
 class TripSuggestion(BaseModel):
@@ -548,5 +511,3 @@ class TripSuggestionRef(BaseModel):
     end_date: str
 
 
-class SettleIn(BaseModel):
-    transaction_id: int

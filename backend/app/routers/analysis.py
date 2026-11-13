@@ -34,12 +34,9 @@ def _prev_cycle(year: int, month: int) -> tuple[int, int]:
 
 def _by_category(data, cats):
     by = defaultdict(lambda: [ZERO, 0])
-    for _t, amount in data.reimbursements:
-        by[-2][0] -= amount
     for t, eff in data.expenses:
-        cid = -2 if t.trip_id in data.business_ids else t.category_id
-        by[cid][0] += eff
-        by[cid][1] += 1
+        by[t.category_id][0] += eff
+        by[t.category_id][1] += 1
     for r in data.standalone_refunds:
         by[r.category_id][0] -= r.amount
     return {cid: v for cid, v in by.items() if v[0] != 0}
@@ -49,23 +46,21 @@ def _by_category(data, cats):
 def analyse_cycle(
     year: Optional[int] = None,
     month: Optional[int] = None,
-    include_business: bool = False,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    return cycle_analysis(db, user.ledger, year, month, include_business)
+    return cycle_analysis(db, user.ledger, year, month)
 
 
-def cycle_analysis(db: Session, l: models.Ledger, year: Optional[int] = None, month: Optional[int] = None,
-                   include_business: bool = False) -> schemas.CycleAnalysis:
+def cycle_analysis(db: Session, l: models.Ledger, year: Optional[int] = None, month: Optional[int] = None) -> schemas.CycleAnalysis:
     sd = l.cycle_start_day or 1
     if not year or not month:
         year, month = current_cycle(sd)
     start, end = cycle_bounds(sd, year, month)
-    data = period_data(db, l.id, start, end, include_business)
+    data = period_data(db, l.id, start, end)
     py, pm = _prev_cycle(year, month)
     pstart, pend = cycle_bounds(sd, py, pm)
-    prev = period_data(db, l.id, pstart, pend, include_business)
+    prev = period_data(db, l.id, pstart, pend)
     cats = {c.id: c for c in db.query(models.Category).filter(models.Category.ledger_id == l.id)}
 
     cur_by, prev_by = _by_category(data, cats), _by_category(prev, cats)
@@ -75,7 +70,7 @@ def cycle_analysis(db: Session, l: models.Ledger, year: Optional[int] = None, mo
         c = cats.get(cid)
         before = prev_by.get(cid, [ZERO, 0])[0]
         categories.append(schemas.CategoryStat(
-            category_id=cid, name=c.name if c else ("出差垫付" if cid == -2 else "未分类"), icon=c.icon if c else ("🧾" if cid == -2 else "❓"),
+            category_id=cid, name=c.name if c else "未分类", icon=c.icon if c else "❓",
             total=amt, count=n, share=float(amt / total), previous_total=before,
             change_pct=float((amt - before) / before * 100) if before > 0 else None,
         ))
@@ -170,7 +165,6 @@ def _insights(data, prev, categories, shops, biggest, small, small_total, elapse
 @router.get("/year", response_model=schemas.YearAnalysis)
 def analyse_year(
     year: Optional[int] = None,
-    include_business: bool = False,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -185,7 +179,7 @@ def analyse_year(
         start, end = cycle_bounds(sd, year, m)
         if start > __import__("datetime").datetime.now():
             break
-        d = period_data(db, l.id, start, end, include_business)
+        d = period_data(db, l.id, start, end)
         if d.income == 0 and d.expense == 0 and not d.expenses:
             continue
         months.append(schemas.CycleRow(

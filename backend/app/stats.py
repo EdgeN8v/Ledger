@@ -17,25 +17,6 @@ from sqlalchemy.orm import Session
 from app import models
 
 
-LONG_TRIP_DAYS = 20      # a trip of a month or two is paid out by the employer on its own schedule: no allowance maths
-
-
-def trip_days(trip) -> int:
-    return (datetime.strptime(trip.end_date, "%Y-%m-%d") - datetime.strptime(trip.start_date, "%Y-%m-%d")).days + 1
-
-
-def is_long_trip(trip) -> bool:
-    return trip_days(trip) > LONG_TRIP_DAYS
-
-
-def trip_allowance(trip) -> Decimal:
-    """What the allowances of a business trip add up to (commute once + daily x days). Nothing while the way back is
-    not booked (the length is unknown) and nothing for a long trip: that money comes whenever the employer pays it."""
-    if getattr(trip, "open_end", False) or is_long_trip(trip):
-        return Decimal(0)
-    return (trip.commute_allowance or Decimal(0)) + (trip.daily_allowance or Decimal(0)) * trip_days(trip)
-
-
 def cycle_bounds(start_day: int, year: int, month: int) -> tuple[datetime, datetime]:
     """[start, end) of the budget month that STARTS in (year, month) on start_day."""
     start = datetime(year, month, start_day)
@@ -73,11 +54,9 @@ class PeriodData:
     expenses: list = field(default_factory=list)
     incomes: list = field(default_factory=list)
     standalone_refunds: list = field(default_factory=list)
-    business_ids: set = field(default_factory=set)       # ids of business trips (their purchases form their own line in the include view)
-    reimbursements: list = field(default_factory=list)   # (transaction, amount) paid back by the employer (include_business view)
 
 
-def period_data(db: Session, ledger_id: int, start: datetime, end: datetime, include_business: bool = False) -> PeriodData:
+def period_data(db: Session, ledger_id: int, start: datetime, end: datetime) -> PeriodData:
     T = models.Transaction
     refunds = refunded_map(db, ledger_id)
     rows = (
@@ -86,31 +65,9 @@ def period_data(db: Session, ledger_id: int, start: datetime, end: datetime, inc
         .all()
     )
     out = PeriodData(start=start, end=end)
-    # Business trips: the money is the employer's. What was advanced is neither spending nor income; when it is
-    # paid back only the allowances (commute + daily x days) count, as income; the rest is the user's own money coming home.
-    business = {tr.id: tr for tr in db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business")}
-    advanced = {}
-    out.business_ids = set(business)
-    if business:
-        for bt in db.query(T).filter(T.trip_id.in_(list(business)), T.tx_type == models.TxType.expense, T.is_transfer.is_(False)).all():
-            advanced[bt.trip_id] = advanced.get(bt.trip_id, Decimal(0)) + (bt.amount - refunds.get(bt.id, Decimal(0)))
     for t in rows:
         if t.refund_of_id:
             continue                      # accounted for inside its purchase
-        if t.trip_id in business and t.tx_type == models.TxType.expense and not include_business:
-            continue
-        if t.is_reimbursement and t.trip_id in business and include_business:
-            # the whole trip counts as spending in this view, so the money coming back simply cancels it
-            out.reimbursements.append((t, t.amount))
-            out.expense -= t.amount
-            continue
-        if t.is_reimbursement and t.trip_id in business:
-            trip = business[t.trip_id]
-            gain = trip_allowance(trip)       # 80 + 180 x days
-            if gain > 0:
-                out.incomes.append(t)
-                out.income += gain
-            continue
         if t.tx_type == models.TxType.expense:
             eff = t.amount - refunds.get(t.id, Decimal(0))
             if eff > 0:

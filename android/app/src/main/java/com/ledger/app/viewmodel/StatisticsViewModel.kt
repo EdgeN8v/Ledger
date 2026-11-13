@@ -41,10 +41,9 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
                     if (now.get(Calendar.DAY_OF_MONTH) < startDay) { m -= 1; if (m < 1) { m = 12; y -= 1 } }
                     _state.value = _state.value.copy(year = y, month = m, initialised = true)
                 }
-                val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
-                val key = "stat_" + _state.value.year + "_" + _state.value.month + "_" + inc
+                val key = "stat_" + _state.value.year + "_" + _state.value.month
                 com.ledger.app.data.DiskCache.get<MonthSummaryDto>(getApplication<Application>(), key)?.let { _state.value = _state.value.copy(loading = false, summary = it) }
-                val summary = api().monthlySummary(_state.value.year, _state.value.month, inc)
+                val summary = api().monthlySummary(_state.value.year, _state.value.month)
                 _state.value = _state.value.copy(loading = false, summary = summary)
                 com.ledger.app.data.DiskCache.put(getApplication<Application>(), key, summary)
             } catch (e: Exception) {

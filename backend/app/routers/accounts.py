@@ -10,7 +10,6 @@ from app.deps import get_current_user
 from app.fixed import load
 from app.loans import status_for as loans_status
 from app.routers.plan import pots_for
-from app.routers.trips import business_receivable
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -18,7 +17,6 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 def _overview(db: Session, ledger_id: int) -> schemas.AccountsOverview:
     accts = db.query(models.Account).filter(models.Account.ledger_id == ledger_id).order_by(models.Account.id).all()
     total = sum((a.balance or Decimal(0) for a in accts if a.include_in_total), Decimal(0))
-    owed, names = business_receivable(db, ledger_id)
     ledger = db.get(models.Ledger, ledger_id)
     pots = pots_for(db, ledger, load(ledger), now_local().date())
     earmarked = [schemas.EarmarkedOut(name=n, amount=p["amount"], cap=p["cap"], due=p["due"], last_paid=p["last_paid"])
@@ -26,8 +24,7 @@ def _overview(db: Session, ledger_id: int) -> schemas.AccountsOverview:
     spoken = sum((e.amount for e in earmarked), Decimal(0))
     debts = [d for d in loans_status(db, ledger, now_local().date()) if d.remaining > 0]
     owed_total = sum((d.remaining for d in debts), Decimal(0))
-    return schemas.AccountsOverview(total=total, accounts=accts, receivable=owed, receivable_trips=names,
-                                    earmarked=earmarked, earmarked_total=spoken, free_total=total - spoken,
+    return schemas.AccountsOverview(total=total, accounts=accts, earmarked=earmarked, earmarked_total=spoken, free_total=total - spoken,
                                     liabilities=debts, liabilities_total=owed_total, net_total=total - owed_total)
 
 

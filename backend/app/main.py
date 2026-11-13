@@ -30,9 +30,10 @@ with SessionLocal() as _db:
     relink_orphan_refunds(_db)
     sync_refund_categories(_db)
     from app.subcats import load_lists
-    from app.maintenance import split_us_nodes
+    from app.maintenance import retire_business_trips, split_us_nodes
     load_lists(_db)
     split_us_nodes(_db)
+    retire_business_trips(_db)
     classify_all(_db)
     flag_family_card(_db)
     rename_old_subs(_db)

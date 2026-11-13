@@ -109,7 +109,6 @@ class Transaction(Base):
     refund_of_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)  # set on a refund: the expense it cancels
     is_refund = Column(Boolean, default=False)     # money coming back from a return/refund (not income)
     trip_manual = Column(Boolean, default=False)       # the user put it into the trip by hand (survives date edits)
-    is_reimbursement = Column(Boolean, default=False)   # income that is the employer paying a business trip back
     trip_id = Column(Integer, ForeignKey("trips.id"), nullable=True)   # part of a trip: kept out of the daily pace forecast
     is_transfer = Column(Boolean, default=False)   # money moved between the user's own accounts: not income/expense
     category_locked = Column(Boolean, nullable=False, default=False)   # the user chose the category: nothing re-files it
@@ -207,15 +206,9 @@ class Trip(Base):
     name = Column(String, nullable=False)
     start_date = Column(String, nullable=False)    # YYYY-MM-DD
     end_date = Column(String, nullable=False)
-    kind = Column(String, nullable=False, default="personal")      # personal / business
+    kind = Column(String, nullable=False, default="personal")      # always personal now (business trips were retired)
     auto_tag = Column(Boolean, nullable=False, default=True)      # pull in everything bought inside the date range
-    daily_allowance = Column(Numeric(12, 2), nullable=True)       # business: per-day allowance owed by the employer
-    commute_allowance = Column(Numeric(12, 2), nullable=True)     # business: one-off commuting allowance
-    settled_at = Column(DateTime, nullable=True)                  # business: when the employer paid it back
-    received_amount = Column(Numeric(14, 2), nullable=True)
-    reimbursement_tx_id = Column(Integer, nullable=True)
     auto_key = Column(String, nullable=True)                      # made from flight SMS: first flight of the journey
-    return_booked_on = Column(String, nullable=True)              # a ticket back home was issued on this day, its date unknown
     open_end = Column(Boolean, nullable=False, default=False)     # flights say the way back is not known yet
     dates_locked = Column(Boolean, nullable=False, default=False)  # the user edited the dates: flights no longer move them
     created_at = Column(DateTime, default=now_local)

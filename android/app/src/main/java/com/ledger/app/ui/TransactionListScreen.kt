@@ -109,14 +109,11 @@ fun TransactionListScreen(
     onFilterChange: (TxFilter) -> Unit,
     onSetCategory: (txId: Int, categoryId: Int, sub: String?, isTreat: Boolean) -> Unit,
     onLinkRefund: (incomeId: Int, purchaseId: Int) -> Unit = { _, _ -> },
-    onSetTrip: (TransactionDto, Int?) -> Unit = { _, _ -> },
-    onNewBusinessTrip: (TransactionDto, String, String, String, String?, String?, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onEditTransaction: (TransactionDto) -> Unit,
     onDeleteTransaction: (txId: Int) -> Unit = {},
     isListening: Boolean
 ) {
     var pickFor by remember { mutableStateOf<TransactionDto?>(null) }
-    var newTripFor by remember { mutableStateOf<TransactionDto?>(null) }
     val listState = rememberLazyListState()
     val refreshing = state.loading || state.syncing
     val pullState = rememberPullRefreshState(refreshing = refreshing, onRefresh = onRefresh)
@@ -247,13 +244,6 @@ fun TransactionListScreen(
         }
     }
 
-    newTripFor?.let { tx ->
-        NewBusinessTripDialog(
-            startDate = tx.occurred_at.take(10),
-            onDismiss = { newTripFor = null },
-            onCreate = { name, start, end, daily, commute, autoTag -> newTripFor = null; onNewBusinessTrip(tx, name, start, end, daily, commute, autoTag) }
-        )
-    }
     pickFor?.let { tx ->
         CategoryPickerDialog(
             tx = tx,
@@ -813,7 +803,6 @@ internal fun TransactionRow(
     fullText: Boolean = false          // drill-down screens: every line in full, wrapped, never cut off with an ellipsis
 ) {
     val badgeColor = CategoryBadgeColors[Math.floorMod(category?.id ?: 0, CategoryBadgeColors.size)]
-    val biz = tx.trip_kind == "business" && !tx.is_reimbursement
     val title = tx.merchant?.takeIf { it.isNotBlank() } ?: tx.note?.takeIf { it.isNotBlank() } ?: (category?.name ?: "未分类")
     val clock = if (tx.occurred_at.length >= 16) tx.occurred_at.substring(11, 16) else ""
     val time = if (showDate && tx.occurred_at.length >= 10)
@@ -832,7 +821,7 @@ internal fun TransactionRow(
         ) {
             Surface(shape = CircleShape, color = badgeColor, modifier = Modifier.size(40.dp)) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Text(if (biz) "🧾" else if (tx.is_reimbursement) "💼" else if (tx.is_transfer) "⇄" else (category?.icon ?: "❓"), fontSize = 18.sp)
+                    Text(if (tx.is_transfer) "⇄" else (category?.icon ?: "❓"), fontSize = 18.sp)
                 }
             }
             // weight(1f) + single-line ellipsis: a long merchant name can never squeeze the amount into a column
@@ -848,7 +837,7 @@ internal fun TransactionRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         (if (tx.family_card) "👛亲情卡 · " else "") +
-                            (if (biz) "出差垫付 · ${tx.trip_name ?: ""}" else if (tx.is_reimbursement) "出差报销" else if (tx.is_transfer) "转账" else (category?.name ?: "未分类") + (tx.sub?.let { "·$it" } ?: "")) + " · " + time +
+                            (if (tx.is_transfer) "转账" else (category?.name ?: "未分类") + (tx.sub?.let { "·$it" } ?: "")) + " · " + time +
                             (if (!tx.note.isNullOrBlank() && tx.note != tx.merchant && !tx.is_transfer) (if (fullText) "\n" else " · ") + tx.note else "") +
                             (if (fullText && !tx.account_hint.isNullOrBlank()) "\n付款: " + tx.account_hint else ""),
                         style = MaterialTheme.typography.bodySmall,
@@ -874,14 +863,6 @@ internal fun TransactionRow(
                     }
                 }
                 when {
-                    biz -> Text(
-                        "待报销, 不计入你的开销", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    tx.is_reimbursement -> Text(
-                        "公司报销到账: 只有补贴算收入", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
                     refunded > 0 -> Text(
                         (if (fullyRefunded) "↩ 已退货, 不计入支出" else "↩ 已部分退款 ¥" + String.format(Locale.CHINA, "%.2f", refunded) + ", 其余计入支出"),
                         style = MaterialTheme.typography.labelSmall,

@@ -1,29 +1,13 @@
-"""Airline ticket SMS -> flights -> business trips.
-
-Business travel here is flown with China Southern (CZ), China Eastern (MU, FM = Shanghai Airlines) and, rarely,
-Spring (9C). Their confirmation SMS say when the ticket was ordered, when it leaves and from where to where, so a
-trip no longer has to be created by hand:
-
-  * a trip starts with a flight that leaves the HOME city and ends with the flight that lands back there;
-  * until the return flight is known the trip is open and runs up to today;
-  * a trip is made only when the user PAID for tickets or a hotel: a ticket someone else paid for costs nothing, so
-    there is nothing to record (it is stored as a flight, but never becomes a trip or a transaction);
-  * the flights live in their own table, independent of the SMS inbox on the phone: deleting the message later
-    changes nothing here.
-"""
+"""Airline ticket SMS -> flights, kept in their own table (independent of the SMS inbox on the phone). They are
+only a record now: they no longer open trips or turn into transactions."""
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app import models
-from app.clock import now_local
 
-DEFAULT_HOME = "上海"
-AIRLINE_PAY = re.compile(r"南方航空|南航|东方航空|东航|东美航旅|春秋|航空|机票")      # a payment to an airline / ticket seller (not any travel site)
-HISTORY_DAYS = 14                                    # older finished journeys are not turned into trips
 AIRLINES = ("CZ", "MU", "FM", "9C")                 # the carriers business travel is booked with
 MILEAGE = re.compile(r"感谢您于\d{4}-\d{2}-\d{2}\s*乘坐.{2,12}航班.*累积里程")      # after-flight mileage note: not a payment
 
@@ -118,24 +102,9 @@ def looks_like_ticket(text: str) -> bool:
 CTRIP_ISSUED = re.compile(r"订单尾号(\d+)[，,]\s*([^，,\-－]{1,12}?)[-－]([^，,\-－]{1,12}?)[，,][^，,]*?机票出票成功")
 
 
-def note_return_ticket(db: Session, ledger_id: int, text: str, posted: datetime) -> bool:
-    """'Order ...: Beijing-Shanghai, ticket issued' while an away trip is open: the way back is booked even though the
-    message does not say when. The trip stays open (no allowance is invented) but is marked, so the app can ask for the date."""
-    m = CTRIP_ISSUED.search(text)
-    if not m:
-        return False
-    ledger = db.get(models.Ledger, ledger_id)
-    home = city_of(getattr(ledger, "home_city", None) or DEFAULT_HOME)
-    if city_of(m.group(3)) != home or city_of(m.group(2)) == home:
-        return True                                           # a ticket message, just not a ticket home
-    trip = (db.query(models.Trip)
-            .filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business", models.Trip.open_end.is_(True),
-                    models.Trip.start_date <= posted.date().isoformat())
-            .order_by(models.Trip.start_date.desc()).first())
-    if trip:
-        trip.return_booked_on = posted.date().isoformat()
-        db.commit()
-    return True
+def is_issued_note(text: str) -> bool:
+    """'Order ...: Beijing-Shanghai, ticket issued': a ticket message that is not a payment and carries no flight details."""
+    return bool(CTRIP_ISSUED.search(text))
 
 
 def store_flights(db: Session, ledger_id: int, flights: list[dict]) -> int:
@@ -157,123 +126,3 @@ def store_flights(db: Session, ledger_id: int, flights: list[dict]) -> int:
         added += 1
     db.flush()
     return added
-
-
-def _journeys(flights: list, home: str) -> list[dict]:
-    """Home -> ... -> home chains. Flights that start away from home with no known departure (the tail of a trip that
-    began before the data does) are not made into a trip: their start date is unknown."""
-    out, cur = [], None
-    for f in flights:
-        if cur is not None and f.origin != cur[-1].dest:
-            out.append({"flights": cur, "closed": False, "broken": True})   # a leg is missing between these two: stop at the last known landing
-            cur = None
-        if cur is None:
-            if f.origin == home:
-                cur = [f]
-            continue
-        cur.append(f)
-        if f.dest == home:
-            out.append({"flights": cur, "closed": True})
-            cur = None
-    if cur:
-        out.append({"flights": cur, "closed": False})
-    return out
-
-
-def _paid_by_user(db: Session, ledger, fl: list, start: date, end: date, trip_id: Optional[int] = None) -> bool:
-    """A trip exists because the user PAID for tickets or a hotel. Tickets booked and paid by someone else cost nothing
-    and leave nothing to record. Evidence: a payment of exactly the ticket price around the order day, a flight / hotel
-    booking payment around the order day, or one during the trip itself."""
-    from app.routers.trips import BOOKING
-    T = models.Transaction
-    day = datetime.min.time()
-    for f in fl:
-        lo, hi = datetime.combine(f.ordered_on - timedelta(days=1), day), datetime.combine(f.ordered_on + timedelta(days=2), day)
-        rows = (db.query(T).filter(T.ledger_id == ledger.id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
-                                   T.refund_of_id.is_(None), (T.trip_id.is_(None) | (T.trip_id == trip_id)), T.occurred_at >= lo, T.occurred_at < hi).all())
-        for t in rows:
-            if (f.price and t.amount == f.price) or AIRLINE_PAY.search(f"{t.merchant or ''} {t.raw_text or ''}"):
-                return True
-    rows = (db.query(T).filter(T.ledger_id == ledger.id, T.tx_type == models.TxType.expense, T.is_transfer.is_(False),
-                               T.refund_of_id.is_(None), (T.trip_id.is_(None) | (T.trip_id == trip_id)),
-                               T.occurred_at >= datetime.combine(start, day), T.occurred_at < datetime.combine(end + timedelta(days=1), day)).all())
-    return any(BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}") for t in rows)
-
-
-def sync_flight_trips(db: Session, ledger_id: int) -> None:
-    """Create / extend the business trips that the stored flights describe. Safe to run any number of times."""
-    from app.routers.trips import retag                        # lazy: trips imports this module too
-
-    ledger = db.get(models.Ledger, ledger_id)
-    home = city_of(getattr(ledger, "home_city", None) or DEFAULT_HOME)
-    flights = (db.query(models.Flight).filter(models.Flight.ledger_id == ledger_id).order_by(models.Flight.depart_at).all())
-    if not flights:
-        return
-    today = now_local().date()
-    trips = db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business").all()
-    by_key = {t.auto_key: t for t in trips if t.auto_key}
-    dismissed = {d.end_date[5:] for d in db.query(models.TripDismissal).filter(models.TripDismissal.ledger_id == ledger_id,
-                                                                              models.TripDismissal.end_date.like("auto:%"))}
-    last_biz = next((t for t in sorted(trips, key=lambda t: t.start_date, reverse=True) if t.daily_allowance or t.commute_allowance), None)
-    changed = []
-    for j in _journeys(flights, home):
-        fl = j["flights"]
-        start = fl[0].depart_at.date()
-        last = fl[-1].arrive_at.date()
-        end = last if (j["closed"] or j.get("broken")) else max(start, today)
-        key = f"{fl[0].flight_no}@{start:%Y%m%d}"
-        if key in dismissed:
-            continue
-        trip = by_key.get(key)
-        if trip is None:                                       # a trip the user already made by hand for these days
-            trip = next((t for t in trips if not t.auto_key and abs((datetime.strptime(t.start_date, "%Y-%m-%d").date() - start).days) <= 3), None)
-            if trip:
-                trip.auto_key = key
-        away = [f.dest for f in fl if f.dest != home]
-        if (trip is not None and trip.name.startswith("出差·") and not trip.dates_locked and trip.settled_at is None
-                and not db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id,
-                                                            (models.Transaction.trip_manual.is_(True)) | (models.Transaction.is_reimbursement.is_(True))).first()
-                and not _paid_by_user(db, ledger, fl, start, end, trip.id)):
-            # made by an earlier version before "only what the user paid for": nothing was spent, so nothing to record
-            db.query(models.Flight).filter(models.Flight.trip_id == trip.id).update({"trip_id": None})
-            db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id).update({"trip_id": None})
-            db.delete(trip)
-            db.flush()
-            continue
-        if trip is None and getattr(ledger, "trips_enabled", True) is False:
-            continue                                           # the user no longer fronts business trips: do not open new ones
-        if trip is None and ((j["closed"] and last < today - timedelta(days=HISTORY_DAYS)) or (not j["closed"] and last < today - timedelta(days=30))):
-            continue                                           # history: it was reimbursed long ago, do not bring it back as "to be reimbursed"
-        if trip is None and not _paid_by_user(db, ledger, fl, start, end):
-            continue                                           # nothing was spent by the user: nothing to record
-        if trip is None:
-            trip = models.Trip(ledger_id=ledger_id, name="出差·" + (away[-1] if away else "外地"), start_date=start.isoformat(), end_date=end.isoformat(),
-                               kind="business", auto_tag=True, auto_key=key,
-                               daily_allowance=last_biz.daily_allowance if last_biz else Decimal(180),
-                               commute_allowance=last_biz.commute_allowance if last_biz else Decimal(80))
-            db.add(trip)
-            db.flush()
-            trip.open_end = not j["closed"]
-            changed.append(trip)
-        elif trip.settled_at is None and not trip.dates_locked:
-            if (trip.start_date, trip.end_date) != (start.isoformat(), end.isoformat()):
-                trip.start_date, trip.end_date = start.isoformat(), end.isoformat()
-                changed.append(trip)
-            trip.open_end = not j["closed"]
-        for f in fl:
-            f.trip_id = trip.id
-        # the ticket payment: the only way a ticket becomes money. Same amount as the order, around the order day.
-        for f in fl:
-            if not f.price:
-                continue
-            lo = datetime.combine(f.ordered_on - timedelta(days=1), datetime.min.time())
-            hi = datetime.combine(f.ordered_on + timedelta(days=2), datetime.min.time())
-            tx = (db.query(models.Transaction)
-                  .filter(models.Transaction.ledger_id == ledger_id, models.Transaction.tx_type == models.TxType.expense,
-                          models.Transaction.amount == f.price, models.Transaction.occurred_at >= lo, models.Transaction.occurred_at < hi,
-                          models.Transaction.trip_id.is_(None)).first())
-            if tx:
-                tx.trip_id, tx.trip_manual = trip.id, True        # hand-picked class: a later retag must not drop it
-    db.commit()
-    for t in changed:
-        retag(db, t)

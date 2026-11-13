@@ -58,20 +58,11 @@ interface ApiService {
     @PUT("trips/{id}")
     suspend fun updateTrip(@Path("id") id: Int, @Body body: TripInRequest): TripDto
 
-    @GET("trips/receivable")
-    suspend fun receivable(): List<ReceivableTripDto>
-
     @POST("trips/{id}/add/{tx}")
     suspend fun addToTrip(@Path("id") id: Int, @Path("tx") tx: Int): TripDto
 
     @POST("trips/{id}/remove/{tx}")
     suspend fun removeFromTrip(@Path("id") id: Int, @Path("tx") tx: Int)
-
-    @POST("trips/{id}/settle")
-    suspend fun settleTrip(@Path("id") id: Int, @Body body: SettleRequest): TripDto
-
-    @POST("trips/{id}/unsettle")
-    suspend fun unsettleTrip(@Path("id") id: Int): TripDto
 
     @DELETE("trips/{id}")
     suspend fun deleteTrip(@Path("id") id: Int)
@@ -116,10 +107,10 @@ interface ApiService {
     suspend fun fixedHistory(@Query("name") name: String, @Query("cycles") cycles: Int = 6): List<FixedHistoryEntryDto>
 
     @GET("analysis/cycle")
-    suspend fun analysisCycle(@Query("year") year: Int?, @Query("month") month: Int?, @Query("include_business") includeBusiness: Boolean = false): CycleAnalysisDto
+    suspend fun analysisCycle(@Query("year") year: Int?, @Query("month") month: Int?): CycleAnalysisDto
 
     @GET("analysis/year")
-    suspend fun analysisYear(@Query("year") year: Int, @Query("include_business") includeBusiness: Boolean = false): YearAnalysisDto
+    suspend fun analysisYear(@Query("year") year: Int): YearAnalysisDto
 
     @GET("auth/me")
     suspend fun me(): UserDto
@@ -159,8 +150,6 @@ interface ApiService {
         @Query("q") q: String? = null,
         @Query("needs_review") needsReview: Boolean? = null,
         @Query("trip_id") tripId: Int? = null,
-        @Query("exclude_business") excludeBusiness: Boolean = false,
-        @Query("business_only") businessOnly: Boolean = false,
         @Query("sort") sort: String? = null,
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0
@@ -170,8 +159,7 @@ interface ApiService {
     suspend fun subTotals(
         @Query("category_id") categoryId: Int,
         @Query("date_from") dateFrom: String? = null,
-        @Query("date_to") dateTo: String? = null,
-        @Query("exclude_business") excludeBusiness: Boolean = false
+        @Query("date_to") dateTo: String? = null
     ): List<SubTotalDto>
 
     @PUT("transactions/{id}")
@@ -188,5 +176,5 @@ interface ApiService {
     suspend fun deleteTransaction(@Path("id") id: Int)
 
     @GET("transactions/summary/monthly")
-    suspend fun monthlySummary(@Query("year") year: Int, @Query("month") month: Int, @Query("include_business") includeBusiness: Boolean = false): MonthSummaryDto
+    suspend fun monthlySummary(@Query("year") year: Int, @Query("month") month: Int): MonthSummaryDto
 }

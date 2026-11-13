@@ -39,13 +39,6 @@ class AccountsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** What the "to be reimbursed" figure is made of. */
-    suspend fun receivable(): List<com.ledger.app.data.ReceivableTripDto> = try {
-        api().receivable()
-    } catch (e: Exception) {
-        emptyList()
-    }
-
     fun add(name: String, kind: String, balance: String?) {
         viewModelScope.launch {
             try {

@@ -8,6 +8,7 @@ os.environ["SCHEDULER_ENABLED"] = "false"
 import pytest
 from fastapi.testclient import TestClient
 
+from app import models
 from app.database import Base, engine
 from app.main import app
 from app.parsers import parse_message, looks_financial
@@ -1097,89 +1098,6 @@ def test_travel_agency_and_airline_purchases_are_travel_not_entertainment(client
         assert cats[r["transaction"]["category_id"]] == "交通/酒店", shop
 
 
-def test_business_trip_is_receivable_not_spending_until_paid_back(client):
-    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
-    pay = lambda d, h, shop, amt: _sms(client, f"【某银行】您账户1234于10月{d}日{h}:00向{shop}支出{amt}元,可用余额9000元。", h, 0, day=d)
-    pay(7, 11, "支付宝外部商户-携程旅行网", 1200)        # flights, booked before departure
-    pay(9, 7, "微信支付-滴滴出行", 45)                    # taxi to the airport: the user's own money (the commute allowance covers it)
-    pay(10, 12, "微信支付-某酒店", 680)                   # hotel
-    pay(10, 20, "微信支付-某面馆", 60)                    # meals on the trip: also the user's own (daily allowance)
-    pay(12, 21, "微信支付-出租车", 60)                    # taxi home
-    pay(15, 12, "微信支付-某面馆", 30)                    # ordinary life after the trip
-    trip = client.post("/trips", json={"name": "北京出差", "start_date": "2026-10-07", "end_date": "2026-10-12", "kind": "business",
-                                       "daily_allowance": 180, "commute_allowance": 80}).json()
-    assert trip["count"] == 2 and float(trip["total"]) == 1880.0             # only the flight and the hotel
-    assert trip["days"] == 6 and float(trip["allowance_total"]) == 80 + 180 * 6
-    assert float(trip["expected_reimbursement"]) == 1880.0 + 1160.0
-    # spending = taxis + meals only (45 + 60 + 60 + 30); the advance is not spending
-    s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
-    assert float(s["total_expense"]) == 195.0
-    acc = client.get("/accounts").json()
-    assert float(acc["receivable"]) == 3040.0 and "北京出差" in acc["receivable_trips"][0]
-    inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 25, 9, 0),
-        "text": "【某银行】您账户1234于10月25日09:00存入3040元,可用余额12000元。附言：报销。"}).json()["transaction"]
-    done = client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]}).json()
-    assert done["settled"] is True and float(done["allowance_gain"]) == 1160.0 and float(done["difference"]) == 0.0
-    assert float(client.get("/accounts").json()["receivable"]) == 0.0
-    sep = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
-    octo = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
-    assert float(sep["total_expense"]) == 195.0 and float(sep["total_income"]) == 0.0
-    assert float(octo["total_income"]) == 1160.0 and float(octo["total_expense"]) == 0.0              # the allowances are the income
-    client.post(f"/trips/{trip['id']}/unsettle")
-    assert float(client.get("/accounts").json()["receivable"]) == 3040.0
-
-def test_business_income_is_exactly_the_allowances_even_if_the_payout_differs(client):
-    client.put("/auth/ledger-settings", json={"cycle_start_day": 1})
-    _sms(client, "【某银行】您账户1234于10月3日10:00向支付宝外部商户-携程旅行网支出1000元,可用余额9000元。", 10, 0, day=3)
-    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-03", "end_date": "2026-10-04", "kind": "business",
-                                       "daily_allowance": 180, "commute_allowance": 80}).json()
-    # the company pays 2000: 1000 of it is the user's own money, income is the allowances 80 + 180 x 2 = 440, regardless
-    inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 20, 9, 0),
-        "text": "【某银行】您账户1234于10月20日09:00存入2000元,可用余额11000元。"}).json()["transaction"]
-    done = client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]}).json()
-    assert float(done["allowance_gain"]) == 440.0 and float(done["difference"]) == 2000.0 - (1000.0 + 440.0)
-    s = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 10}).json()
-    assert float(s["total_income"]) == 440.0 and float(s["total_expense"]) == 0.0
-    listed = client.get("/transactions", params={"limit": 10}).json()
-    flight = [t for t in listed if t["merchant"] and "携程" in t["merchant"]][0]
-    assert flight["trip_kind"] == "business" and flight["trip_name"] == "出差"
-
-
-def test_manual_tag_and_the_two_views_of_business_spending(client):
-    client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
-    flight = _sms(client, "【某银行】您账户1234于10月7日11:26向支付宝外部商户-携程旅行网支出748.95元,可用余额9000元。", 11, 26, day=7)["transaction"]
-    _sms(client, "【某银行】您账户1234于10月8日12:00向美团外卖-某面馆支出30元,可用余额8970元。", 12, 0, day=8)
-    # a business trip whose date range (even with the booking lead) does NOT cover the flight: the user adds it by hand
-    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-11-05", "end_date": "2026-11-06", "kind": "business",
-                                       "daily_allowance": 180, "commute_allowance": 80}).json()
-    assert trip["count"] == 0
-    after = client.post(f"/trips/{trip['id']}/add/{flight['id']}").json()
-    assert float(after["total"]) == 748.95
-    client.put("/trips/%d" % trip["id"], json={"name": "出差", "start_date": "2026-11-05", "end_date": "2026-11-07", "kind": "business",
-                                              "daily_allowance": 180, "commute_allowance": 80})        # editing dates keeps the hand-picked one
-    assert float(client.get("/trips").json()[0]["total"]) == 748.95
-    # view A (default): the advance is not spending
-    a = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9}).json()
-    assert float(a["total_expense"]) == 30.0
-    # view B: it is counted...
-    b = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9, "include_business": True}).json()
-    assert float(b["total_expense"]) == 778.95
-    # ...and once reimbursed (748.95 + 80 + 180 x 3 = 1368.95 paid back) the trip cancels out
-    inc = client.post("/ingest", json={"source": "sms", "title": "x", "posted_at_ms": ms(2026, 10, 15, 9, 0),
-        "text": "【某银行】您账户1234于10月15日09:00存入1368.95元,可用余额9000元。"}).json()["transaction"]
-    client.post(f"/trips/{trip['id']}/settle", json={"transaction_id": inc["id"]})
-    b = client.get("/transactions/summary/monthly", params={"year": 2026, "month": 9, "include_business": True}).json()
-    assert float(b["total_expense"]) == 30.0 - 620.0           # 30 meal + 748.95 advance - 1368.95 paid back
-    biz = [c for c in b["by_category"] if c["category_name"] == "出差垫付"]
-    assert biz and float(biz[0]["total"]) == 748.95 - 1368.95            # its own line, net of the money paid back
-    assert not any(c["category_name"] == "交通/酒店" for c in b["by_category"])   # not mixed into the road category
-    x = client.get("/analysis/cycle", params={"year": 2026, "month": 9, "include_business": True}).json()
-    assert float(x["total_expense"]) == 30.0 - 620.0
-    assert [t["merchant"] for t in client.get("/transactions", params={"business_only": True, "tx_type": "expense"}).json()] == ["支付宝外部商户-携程旅行网"]
-    y = client.get("/analysis/year", params={"year": 2026, "include_business": True}).json()
-    assert y["months"]
-
-
 def test_hema_goes_to_food(client):
     cats = {c["id"]: c["name"] for c in client.get("/categories").json()}
     r = _sms(client, "【某银行】您账户1234于10月7日12:00向支付宝-盒马支出29.9元,可用余额900元。", 12, 0, day=7)
@@ -1190,29 +1108,12 @@ def test_a_trip_without_auto_tag_takes_only_what_the_user_adds(client):
     client.put("/auth/ledger-settings", json={"cycle_start_day": 20})
     flight = _sms(client, "【某银行】您账户1234于10月7日11:26向支付宝外部商户-携程旅行网支出748.95元,可用余额9000元。", 11, 26, day=7)["transaction"]
     _sms(client, "【某银行】您账户1234于10月7日12:30向美团外卖-某面馆支出30元,可用余额8000元。", 12, 30, day=7)
-    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-07", "end_date": "2026-10-09", "kind": "business",
+    trip = client.post("/trips", json={"name": "出差", "start_date": "2026-10-07", "end_date": "2026-10-09",
                                        "auto_tag": False}).json()
     assert trip["count"] == 0                                    # the meal inside the date range is NOT swallowed
     assert client.post(f"/trips/{trip['id']}/add/{flight['id']}").json()["count"] == 1
     on = client.post("/trips", json={"name": "自动", "start_date": "2026-10-07", "end_date": "2026-10-07", "kind": "personal"}).json()
     assert on["count"] >= 1                                      # default behaviour unchanged for ordinary trips
-
-
-def test_editing_a_trip_keeps_auto_tag_and_receivable_lists_its_items(client):
-    trip = client.post("/trips", json={"name": "Demo business", "start_date": "2026-03-10", "end_date": "2026-03-11",
-                                       "kind": "business", "daily_allowance": "100", "commute_allowance": "50",
-                                       "auto_tag": False}).json()
-    tx = client.post("/transactions", json={"amount": "800", "tx_type": "expense", "note": "Demo Air 机票",
-                                            "occurred_at": "2026-03-10T08:00:00"}).json()
-    assert client.post(f"/trips/{trip['id']}/add/{tx['id']}").status_code == 200
-    # the user comes back a day later: dates change, the trip must not start auto-tagging
-    r = client.put(f"/trips/{trip['id']}", json={"name": "Demo business", "start_date": "2026-03-10", "end_date": "2026-03-12",
-                                                 "kind": "business", "daily_allowance": "100", "commute_allowance": "50"})
-    assert r.status_code == 200 and r.json()["days"] == 3
-    rec = client.get("/trips/receivable").json()
-    assert len(rec) == 1 and rec[0]["trip_id"] == trip["id"]
-    assert float(rec[0]["advanced"]) == 800 and float(rec[0]["allowance"]) == 350 and float(rec[0]["expected"]) == 1150
-    assert [i["merchant"] for i in rec[0]["items"]] == ["Demo Air 机票"]
 
 
 def test_bill_reminders_show_five_days_ahead_and_vanish_when_paid(client):
@@ -1233,12 +1134,6 @@ def test_bill_reminders_show_five_days_ahead_and_vanish_when_paid(client):
     assert client.get("/plan/reminders").status_code == 200
 
 
-def test_business_trip_picks_up_a_ticket_booked_before_departure(client):
-    _sms(client, "【某银行】您账户1234于10月10日20:00向支付宝外部商户-携程旅行网支出900元,可用余额9000元。", 20, 0, day=10)
-    trip = client.post("/trips", json={"name": "Demo biz", "start_date": "2026-10-11", "end_date": "2026-10-12", "kind": "business"}).json()
-    assert float(trip["total"]) == 900            # bought the day before departure
-
-
 CSAIR = ("【南航】您的机票已于2026-10-07支付成功。乘机人张三，票号7840000000001， 10月08日 CZ1234航班经济舱，上海(上海虹桥国际机场) 航站楼T2 08:35-"
          "北京(北京大兴国际机场)  10:45。为保障您的出行，请于航班起飞前30分钟前完成乘机登记手续。")
 AGENT_OUT = ("【某航旅】尊敬的客户：您已成功预定10月12日北京首都到上海虹桥T2，东航MU1000，21:00起飞-23:10到达，经济舱，乘机人张三(证件号码:110000000000000000)，"
@@ -1255,6 +1150,7 @@ def _pay(client, merchant, amount, day=7):
     return _sms(client, f"【某银行】您账户1234于10月{day}日09:00向支付宝外部商户-{merchant}支出{amount}元,可用余额9000元。", 9, 0, day=day)
 
 
+
 def test_flight_sms_parse():
     from app.flights import parse_flights
     f = parse_flights(CSAIR, datetime(2026, 10, 7, 10, 0))
@@ -1262,64 +1158,6 @@ def test_flight_sms_parse():
     two = parse_flights(AGENT_SITE, datetime(2026, 10, 7, 10, 0))
     assert [(x["flight_no"], x["origin"], x["dest"]) for x in two] == [("MU2000", "上海", "兰州"), ("MU2001", "兰州", "嘉峪关")]
     assert float(two[0]["price"]) == 1108
-
-
-def test_no_payment_no_trip_and_a_payment_makes_one(client):
-    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    r = _flight_sms(client, CSAIR)
-    assert r["status"] == "flight" and r["transaction"] is None            # a ticket is not money
-    assert client.get("/trips").json() == []                                # nobody paid: nothing to record
-    _pay(client, "南方航空", 748.95)                                         # the user pays for the ticket
-    trips = client.get("/trips").json()
-    assert len(trips) == 1 and trips[0]["kind"] == "business" and trips[0]["start_date"] == "2026-10-08" and trips[0]["name"] == "出差·北京"
-    assert trips[0]["flights"] == ["10-08 08:35 CZ1234 上海→北京"] and float(trips[0]["total"]) == 748.95
-    assert trips[0]["open_end"] is True and float(trips[0]["allowance_total"]) == 0     # way back not booked yet
-    _flight_sms(client, AGENT_OUT, day=8)                                   # return ticket: closes the trip on the day it lands
-    t = client.get("/trips").json()[0]
-    assert t["end_date"] == "2026-10-12" and t["days"] == 5 and t["open_end"] is False and float(t["allowance_total"]) == 80 + 180 * 5
-    assert _flight_sms(client, CSAIR)["status"] == "duplicate"
-    assert len(client.get("/trips").json()) == 1
-
-
-def test_a_ticket_payment_matched_by_price_and_deleting_the_trip_sticks(client):
-    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    _flight_sms(client, AGENT_OUT.replace("10月12日北京首都到上海虹桥T2，东航MU1000", "10月09日上海虹桥T2到北京首都，东航MU1000"), day=7)
-    assert client.get("/trips").json() == []
-    _pay(client, "某旅行社", 1208)                                           # exactly the ticket price near the order day
-    trip = client.get("/trips").json()[0]
-    assert float(trip["total"]) == 1208
-    assert client.delete(f"/trips/{trip['id']}").status_code == 204
-    assert client.get("/trips").json() == []
-
-
-def test_someone_elses_ticket_is_not_ours(client):
-    client.put("/auth/ledger-settings", json={"owner_names": "李四"})
-    _flight_sms(client, CSAIR)
-    _pay(client, "南方航空", 700)
-    assert client.get("/trips").json() == []
-
-
-def test_editing_the_dates_of_a_flight_trip_sticks_and_long_stays_count_no_allowance(client):
-    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    _flight_sms(client, CSAIR)
-    _pay(client, "南方航空", 748.95)
-    t = client.get("/trips").json()[0]
-    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-10-20", "kind": "business",
-                                          "daily_allowance": 180, "commute_allowance": 80})
-    _flight_sms(client, AGENT_OUT, day=8)                                    # would end the trip on the 12th
-    t = client.get("/trips").json()[0]
-    assert t["end_date"] == "2026-10-20" and t["open_end"] is False
-    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-11-20", "kind": "business",
-                                          "daily_allowance": 180, "commute_allowance": 80})
-    t = client.get("/trips").json()[0]
-    assert t["long_trip"] is True and float(t["allowance_total"]) == 0
-
-
-def test_old_flight_chains_do_not_become_trips(client):
-    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    jul = AGENT_OUT.replace("10月12日北京首都到上海虹桥T2，东航MU1000", "07月18日上海虹桥T2到银川T3，上航FM9225")
-    client.post("/ingest", json={"source": "sms", "title": "x", "text": jul, "posted_at_ms": ms(2026, 7, 14, 6, 10)})
-    assert client.get("/trips").json() == []
 
 
 def test_mileage_notes_are_not_failed_payments(client):
@@ -1333,26 +1171,6 @@ def test_a_posting_booked_by_others_leaves_no_trace(client):
     _pay(client, "某超市", 25)                                                # ordinary spending is not evidence of anything
     assert client.get("/trips").json() == []
     assert client.get("/transactions").json()[0]["amount"] == "25.00" or float(client.get("/transactions").json()[0]["amount"]) == 25
-
-
-def test_an_unpaid_auto_trip_from_an_older_version_is_cleaned_up(client):
-    from app.database import SessionLocal
-    from app import models
-    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    _flight_sms(client, CSAIR)
-    _pay(client, "南方航空", 748.95)
-    t = client.get("/trips").json()[0]
-    # the payment disappears (e.g. it was deleted): no payment, no trip
-    tx = client.get("/transactions").json()[0]
-    client.delete(f"/transactions/{tx['id']}")
-    assert client.get("/trips").json() == []
-
-
-def test_a_random_travel_site_payment_is_no_evidence_for_a_ticket_booked_by_others(client):
-    client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    _flight_sms(client, AGENT_SITE, day=7)
-    _pay(client, "携程旅行网", 146, day=7)                                    # the user paid something small at a travel site that day
-    assert client.get("/trips").json() == []
 
 
 def test_fixed_items_can_be_marked_paid_for_the_cycle_or_ahead(client):
@@ -1504,25 +1322,12 @@ def test_an_unreadable_ticket_message_is_kept_so_a_rule_can_be_written_from_it(c
     ad = _flight_sms(client, "【某航空】升级公务舱优惠，航班CA1234机票立减200元", day=8)
     assert ad["status"] == "ignored"
 
-
-def test_a_travel_site_ticket_message_marks_the_way_back_as_booked_without_inventing_a_date(client):
+def test_a_travel_site_ticket_message_is_not_a_payment_and_opens_no_trip(client):
     client.put("/auth/ledger-settings", json={"owner_names": "张三"})
-    _flight_sms(client, CSAIR)
-    _pay(client, "南方航空", 748.95)
-    t = client.get("/trips").json()[0]
-    assert t["open_end"] is True and t["return_booked"] is None
     r = _flight_sms(client, "【携程】订单尾号38874087，首都-虹桥，机票出票成功，出行必读：https://sdp.example.com/x ，拒收请回复R", day=9)
     assert r["status"] == "flight"
-    t = client.get("/trips").json()[0]
-    assert t["open_end"] is True and t["return_booked"] == "2026-10-09" and float(t["allowance_total"]) == 0
-    # the user fills in the day he is back: the hint goes away and the allowance is counted
-    client.put(f"/trips/{t['id']}", json={"name": t["name"], "start_date": "2026-10-08", "end_date": "2026-10-13", "kind": "business",
-                                          "daily_allowance": 180, "commute_allowance": 80})
-    t = client.get("/trips").json()[0]
-    assert t["return_booked"] is None and t["open_end"] is False and float(t["allowance_total"]) == 80 + 180 * 6
-    # a ticket that is not a way home changes nothing
-    other = _flight_sms(client, "【携程】订单尾号1，上海-北京，机票出票成功，出行必读", day=9, h=11)
-    assert other["status"] == "flight"
+    assert client.get("/trips").json() == [] and client.get("/transactions").json() == []
+
 
 
 def test_importing_a_statement_adds_once_and_skips_what_sms_already_saw(client):
@@ -2086,3 +1891,17 @@ def test_a_login_token_never_expires(client):
     tok = client.post("/auth/login", data={"username": "u", "password": "p"}).json()["access_token"]
     assert "exp" not in jwt.get_unverified_claims(tok)
     assert client.get("/plan", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
+
+
+def test_retiring_business_trips_turns_them_into_plain_trips(client):
+    from app.database import SessionLocal
+    from app.maintenance import retire_business_trips
+    t = client.post("/trips", json={"name": "出差", "start_date": "2026-10-07", "end_date": "2026-10-09"}).json()
+    db = SessionLocal()
+    try:
+        db.query(models.Trip).filter(models.Trip.id == t["id"]).update({"kind": "business"})
+        db.commit()
+        retire_business_trips(db)
+        assert db.get(models.Trip, t["id"]).kind == "personal"
+    finally:
+        db.close()

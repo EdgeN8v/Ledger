@@ -126,13 +126,12 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
     fun loadCycle() {
         viewModelScope.launch {
             val s0 = _state.value
-            val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
-            val ckey = "cycle_" + s0.selYear + "_" + s0.selMonth + "_" + inc
+            val ckey = "cycle_" + s0.selYear + "_" + s0.selMonth
             val cc = if (s0.cycle == null) com.ledger.app.data.DiskCache.get<CycleAnalysisDto>(getApplication<Application>(), ckey) else null
             _state.value = s0.copy(loading = s0.cycle == null && cc == null, error = null, cycle = s0.cycle ?: cc)
             try {
                 val s = _state.value
-                val c = if (s.selMonth == 0) api().analysisCycle(null, null, inc) else api().analysisCycle(s.selYear, s.selMonth, inc)
+                val c = if (s.selMonth == 0) api().analysisCycle(null, null) else api().analysisCycle(s.selYear, s.selMonth)
                 com.ledger.app.data.DiskCache.put(getApplication<Application>(), ckey, c)
                 _state.value = _state.value.copy(loading = false, cycle = c, selYear = c.year, selMonth = c.month)
             } catch (e: Exception) {
@@ -165,12 +164,11 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
 
     fun loadYear(year: Int = _state.value.selYear) {
         viewModelScope.launch {
-            val inc = com.ledger.app.data.Prefs.getIncludeBusiness(getApplication())
-            val ykey = "year_" + year + "_" + inc
+            val ykey = "year_" + year
             val cy = com.ledger.app.data.DiskCache.get<YearAnalysisDto>(getApplication<Application>(), ykey)
             _state.value = _state.value.copy(loading = _state.value.year == null && cy == null, error = null, year = cy ?: _state.value.year, selYear = year)
             try {
-                val ya = api().analysisYear(year, inc)
+                val ya = api().analysisYear(year)
                 com.ledger.app.data.DiskCache.put(getApplication<Application>(), ykey, ya)
                 _state.value = _state.value.copy(loading = false, year = ya, selYear = year)
             } catch (e: Exception) {

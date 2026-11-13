@@ -39,13 +39,11 @@ private val KINDS = listOf("bank" to "银行卡", "wallet" to "电子钱包", "c
 fun AccountsScreen(
     state: AccountsUiState,
     onRefresh: () -> Unit,
-    loadReceivable: suspend () -> List<com.ledger.app.data.ReceivableTripDto>,
     onAdd: (name: String, kind: String, balance: String?) -> Unit,
     onUpdate: (id: Int, balance: String?, includeInTotal: Boolean?) -> Unit
 ) {
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AccountDto?>(null) }
-    var showReceivable by remember { mutableStateOf(false) }
     var monthlyFor by remember { mutableStateOf<com.ledger.app.data.LoanStatusDto?>(null) }
     var monthlyText by remember { mutableStateOf("") }
     var monthlyError by remember { mutableStateOf<String?>(null) }
@@ -99,8 +97,6 @@ fun AccountsScreen(
                     }
                     if (ov?.earmarked.orEmpty().isNotEmpty()) Text("可自由支配 ${moneyWhole(ov?.free_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
                     if (!ov?.liabilities.isNullOrEmpty()) Text("负债 ${moneyWhole(ov?.liabilities_total)} · 净资产 ${moneyWhole(ov?.net_total)}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
-                    val owed = ov?.receivable?.toDoubleOrNull() ?: 0.0
-                    if (owed > 0) TextButton(onClick = { showReceivable = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("待报销 ${moneyWhole(ov?.receivable)} ›") }
                 }
             }
         }
@@ -138,41 +134,6 @@ fun AccountsScreen(
             }
         }
         item { TextButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) { Text("+ 添加账户") } }
-    }
-
-    if (showReceivable) {
-        var trips by remember { mutableStateOf<List<com.ledger.app.data.ReceivableTripDto>?>(null) }
-        LaunchedEffect(Unit) { trips = loadReceivable() }
-        AlertDialog(
-            onDismissRequest = { showReceivable = false },
-            confirmButton = { TextButton(onClick = { showReceivable = false }) { Text("知道了") } },
-            title = { Text("待报销怎么算的") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                    val list = trips
-                    if (list == null) Text("加载中…")
-                    else if (list.isEmpty()) Text("没有待报销的出差")
-                    else list.forEach { t ->
-                        Text(if (t.open_end) "${t.name}  ${t.start_date.drop(5)} 出发 · 回程未订" else "${t.name}  ${t.start_date.drop(5)} – ${t.end_date.drop(5)}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                        t.items.forEach {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(it.date.drop(5) + "  " + (it.merchant ?: ""), style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
-                                Text(moneyWhole(it.amount), style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("垫付小计", style = MaterialTheme.typography.bodySmall); Text(moneyWhole(t.advanced), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(if (t.open_end) "补贴(回程定了再算)" else "补贴(每天×天数+通勤)", style = MaterialTheme.typography.bodySmall); Text(if (t.open_end) "-" else moneyWhole(t.allowance), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("应收", fontWeight = FontWeight.Bold); Text(moneyWhole(t.expected), fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        )
     }
 
     if (adding) {

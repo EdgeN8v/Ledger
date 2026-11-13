@@ -276,16 +276,12 @@ fun LedgerApp() {
                                 onFilterChange = { transactionViewModel.setFilter(it) },
                                 onSetCategory = { id, cat, sub, isTreat -> transactionViewModel.setCategory(id, cat, sub, isTreat) },
                                 onLinkRefund = { incomeId, purchaseId -> transactionViewModel.linkRefund(incomeId, purchaseId) },
-                                onSetTrip = { tx, tripId -> transactionViewModel.setBusinessTrip(tx, tripId) },
-                                onNewBusinessTrip = { tx, name, start, end, daily, commute, autoTag -> transactionViewModel.newBusinessTripWith(tx, name, start, end, daily, commute, autoTag) },
                                 onEditTransaction = { tx -> editingTransaction = tx; navController.navigate("add") },
                                 onDeleteTransaction = { id -> transactionViewModel.deleteTransaction(id) },
                                 isListening = isListening
                             )
                             1 -> {
                                 var statMode by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
-                                var includeBiz by remember { mutableStateOf(com.ledger.app.data.Prefs.getIncludeBusiness(context)) }
-                                var bizVersion by remember { mutableIntStateOf(0) }
                                 androidx.compose.foundation.layout.Column {
                                     androidx.compose.foundation.layout.Row(
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -297,21 +293,9 @@ fun LedgerApp() {
                                                 selected = statMode == i, onClick = { statMode = i }, label = { Text(label) }
                                             )
                                         }
-                                        androidx.compose.material3.FilterChip(
-                                            selected = includeBiz,
-                                            onClick = {
-                                                includeBiz = !includeBiz
-                                                com.ledger.app.data.Prefs.setIncludeBusiness(context, includeBiz)
-                                                bizVersion++
-                                                insightsViewModel.loadCycle()
-                                                insightsViewModel.loadYear()
-                                                transactionViewModel.refresh()
-                                            },
-                                            label = { Text(if (includeBiz) "含出差" else "不含出差") }
-                                        )
                                     }
                                     when (statMode) {
-                                        0 -> androidx.compose.runtime.key(bizVersion) { StatisticsScreen(onOpenDetail = { detailViewModel.open(it) }) }
+                                        0 -> StatisticsScreen(onOpenDetail = { detailViewModel.open(it) })
                                         1 -> {
                                             androidx.compose.runtime.LaunchedEffect(Unit) { reportViewModel.load() }
                                             CycleInsights(
@@ -321,8 +305,8 @@ fun LedgerApp() {
                                             )
                                         }
                                         2 -> TripsScreen(
-                                            tripsState, tripsViewModel::load, tripsViewModel::create, tripsViewModel::update, tripsViewModel::settle, tripsViewModel::unsettle,
-                                            tripsViewModel::recentIncomes, tripsViewModel::delete, tripsViewModel::dismiss,
+                                            tripsState, tripsViewModel::load, tripsViewModel::create, tripsViewModel::update,
+                                            tripsViewModel::delete, tripsViewModel::dismiss,
                                             onOpenDetail = { detailViewModel.open(it) }
                                         )
                                         3 -> com.ledger.app.ui.CarScreen(carState, carViewModel::load, carViewModel::setBucket)
@@ -335,7 +319,6 @@ fun LedgerApp() {
                             3 -> AccountsScreen(
                                 state = accountsState,
                                 onRefresh = accountsViewModel::refresh,
-                                loadReceivable = accountsViewModel::receivable,
                                 onAdd = accountsViewModel::add,
                                 onUpdate = accountsViewModel::update
                             )

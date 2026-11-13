@@ -16,17 +16,12 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
 from app.deps import get_current_user
-from app.clock import now_local
 from app.fixed import item_for, load
-from app.stats import refunded_map, is_long_trip, trip_allowance
-from app.flights import sync_flight_trips
+from app.stats import refunded_map
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 ZERO = Decimal(0)
 TRIP_CATEGORIES = ("交通/酒店", "我的车", "餐饮", "娱乐", "其他支出")        # what a trip pulls in by default
-# What an employer actually pays back on a business trip: bookings and lodging. Taxis and meals are covered by the
-# allowances (which come back as income), so they stay the user's own spending.
-BOOKING = re.compile(r"机票|航空|南航|东航|春秋|海航|国航|吉祥|携程|飞猪|同程|去哪儿|途牛|12306|铁路|高铁|火车|酒店|宾馆|民宿|客栈|住宿|如家|汉庭|全季|亚朵")
 STRONG = re.compile(r"ETC|高速|景区|景点|门票|酒店|民宿|旅行社|旅游|携程|飞猪|宾馆|客栈|度假")
 FUEL = re.compile(r"加油|海油|石化|石油|充电|服务区")
 
@@ -38,14 +33,8 @@ def _d(s: str) -> date:
         raise HTTPException(400, "date must be YYYY-MM-DD")
 
 
-BOOKING_LEAD_DAYS = 14      # flights and hotels are booked well before the trip starts
-
-
-def _eligible(db: Session, ledger: models.Ledger, start: date, end: date, business: bool = False):
-    """Expenses inside the range that look like travel spending and are not already in another trip / fixed item.
-    For a business trip the range reaches back BOOKING_LEAD_DAYS: the ticket is bought before the day of departure."""
-    if business:
-        start = start - timedelta(days=BOOKING_LEAD_DAYS)
+def _eligible(db: Session, ledger: models.Ledger, start: date, end: date):
+    """Expenses inside the range that look like travel spending and are not already in another trip / fixed item."""
     cats = {c.id: c.name for c in db.query(models.Category).filter(models.Category.ledger_id == ledger.id)}
     items = load(ledger)
     T = models.Transaction
@@ -58,10 +47,7 @@ def _eligible(db: Session, ledger: models.Ledger, start: date, end: date, busine
     )
     out = []
     for t in rows:
-        if business:
-            if not BOOKING.search(f"{t.merchant or ''} {t.raw_text or ''}"):
-                continue                               # taxis and meals are the user's own spending
-        elif cats.get(t.category_id) not in TRIP_CATEGORIES:
+        if cats.get(t.category_id) not in TRIP_CATEGORIES:
             continue
         if item_for(items, t.amount, t.merchant, t.raw_text or "", t.occurred_at, t.sub):
             continue                                   # rent, parking subscription... are fixed items
@@ -76,11 +62,7 @@ def _days(trip: models.Trip) -> int:
 def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
     refunds = refunded_map(db, trip.ledger_id)
     cats = {c.id: c for c in db.query(models.Category).filter(models.Category.ledger_id == trip.ledger_id)}
-    rows = (
-        db.query(models.Transaction)
-        .filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(False))
-        .all()
-    )
+    rows = db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id).all()
     total, by = ZERO, defaultdict(lambda: ZERO)
     for t in rows:
         eff = t.amount - refunds.get(t.id, ZERO)
@@ -88,11 +70,7 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
             continue
         total += eff
         by[t.category_id] += eff
-    business = trip.kind == "business"
-    days = _days(trip)
     legs = db.query(models.Flight).filter(models.Flight.trip_id == trip.id).order_by(models.Flight.depart_at).all()
-    allowance = trip_allowance(trip) if business else ZERO
-    settled = trip.settled_at is not None
     return schemas.TripOut(
         id=trip.id, name=trip.name, start_date=trip.start_date, end_date=trip.end_date, total=total, count=len(rows),
         by_category=[
@@ -100,56 +78,15 @@ def _summary(db: Session, trip: models.Trip) -> schemas.TripOut:
             for c, v in sorted(by.items(), key=lambda kv: kv[1], reverse=True)
         ],
         flights=[f"{f.depart_at:%m-%d %H:%M} {f.flight_no} {f.origin}→{f.dest}" for f in legs],
-        return_booked=trip.return_booked_on if (business and trip.open_end) else None,
-        open_end=bool(business and trip.open_end), long_trip=bool(business and is_long_trip(trip)),
-        kind=trip.kind or "personal", days=days, daily_allowance=trip.daily_allowance, commute_allowance=trip.commute_allowance,
-        allowance_total=allowance, expected_reimbursement=(total + allowance) if business else ZERO, settled=settled,
-        received_amount=trip.received_amount if settled else None,
-        allowance_gain=allowance if settled else None,
-        difference=(trip.received_amount - (total + allowance)) if (settled and trip.received_amount is not None) else None,
+        days=_days(trip),
     )
-
-
-def business_receivable(db: Session, ledger_id: int):
-    """Money the employer still owes: for every unsettled business trip, what was advanced plus the allowances."""
-    sync_flight_trips(db, ledger_id)
-    names, total = [], ZERO
-    for t in db.query(models.Trip).filter(models.Trip.ledger_id == ledger_id, models.Trip.kind == "business",
-                                          models.Trip.settled_at.is_(None)).all():
-        s = _summary(db, t)
-        total += s.expected_reimbursement
-        names.append(f"{t.name} ¥{s.expected_reimbursement:,.0f}")
-    return total, names
-
-
-@router.get("/receivable", response_model=list[schemas.ReceivableTrip])
-def receivable_breakdown(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """What the 'to be reimbursed' figure on the assets tab is made of: per unsettled business trip, the purchases and the allowances."""
-    sync_flight_trips(db, user.ledger_id)
-    refunds = refunded_map(db, user.ledger_id)
-    out = []
-    for t in db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business",
-                                          models.Trip.settled_at.is_(None)).order_by(models.Trip.start_date.desc()).all():
-        s = _summary(db, t)
-        rows = (db.query(models.Transaction)
-                .filter(models.Transaction.trip_id == t.id, models.Transaction.is_reimbursement.is_(False),
-                        models.Transaction.tx_type == models.TxType.expense, models.Transaction.refund_of_id.is_(None))
-                .order_by(models.Transaction.occurred_at).all())
-        items = []
-        for x in rows:
-            eff = x.amount - refunds.get(x.id, ZERO)
-            if eff > 0:
-                items.append(schemas.ReceivableItem(date=x.occurred_at.strftime("%Y-%m-%d"), merchant=x.merchant or x.note, amount=eff))
-        out.append(schemas.ReceivableTrip(trip_id=t.id, name=t.name, start_date=t.start_date, end_date=t.end_date,
-                                          open_end=s.open_end, advanced=s.total, allowance=s.allowance_total, expected=s.expected_reimbursement, items=items))
-    return out
 
 
 def retag(db: Session, trip: models.Trip) -> None:
     ledger = db.get(models.Ledger, trip.ledger_id)
-    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(False),
+    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id,
                                         models.Transaction.trip_manual.is_(False)).update({"trip_id": None})
-    for t in (_eligible(db, ledger, _d(trip.start_date), _d(trip.end_date), business=trip.kind == "business") if trip.auto_tag else []):
+    for t in (_eligible(db, ledger, _d(trip.start_date), _d(trip.end_date)) if trip.auto_tag else []):
         if t.trip_id is None:
             t.trip_id = trip.id
     db.commit()
@@ -157,7 +94,6 @@ def retag(db: Session, trip: models.Trip) -> None:
 
 @router.get("", response_model=list[schemas.TripOut])
 def list_trips(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    sync_flight_trips(db, user.ledger_id)          # an open trip grows with every day until the return flight is known
     trips = db.query(models.Trip).filter(models.Trip.ledger_id == user.ledger_id).order_by(models.Trip.start_date.desc()).all()
     return [_summary(db, t) for t in trips]
 
@@ -166,11 +102,8 @@ def list_trips(db: Session = Depends(get_db), user: models.User = Depends(get_cu
 def create_trip(payload: schemas.TripIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     if _d(payload.end_date) < _d(payload.start_date):
         raise HTTPException(400, "end before start")
-    if payload.kind not in ("personal", "business"):
-        raise HTTPException(400, "kind must be personal or business")
     trip = models.Trip(ledger_id=user.ledger_id, name=payload.name.strip() or "出行",
-                       start_date=payload.start_date, end_date=payload.end_date, kind=payload.kind,
-                       daily_allowance=payload.daily_allowance, commute_allowance=payload.commute_allowance,
+                       start_date=payload.start_date, end_date=payload.end_date,
                        auto_tag=True if payload.auto_tag is None else payload.auto_tag)
     db.add(trip)
     db.commit()
@@ -184,10 +117,7 @@ def update_trip(trip_id: int, payload: schemas.TripIn, db: Session = Depends(get
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id, models.Trip.ledger_id == user.ledger_id).first()
     if not trip:
         raise HTTPException(404, "trip not found")
-    if (trip.start_date, trip.end_date) != (payload.start_date, payload.end_date):
-        trip.dates_locked, trip.open_end, trip.return_booked_on = True, False, None                   # the user knows better than the tickets (e.g. a changed return)
     trip.name, trip.start_date, trip.end_date = payload.name.strip() or trip.name, payload.start_date, payload.end_date
-    trip.kind, trip.daily_allowance, trip.commute_allowance = payload.kind, payload.daily_allowance, payload.commute_allowance
     if payload.auto_tag is not None:
         trip.auto_tag = payload.auto_tag
     db.commit()
@@ -201,38 +131,12 @@ def delete_trip(trip_id: int, db: Session = Depends(get_db), user: models.User =
     trip = db.query(models.Trip).filter(models.Trip.id == trip_id, models.Trip.ledger_id == user.ledger_id).first()
     if not trip:
         raise HTTPException(404, "trip not found")
-    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id).update({"trip_id": None, "is_reimbursement": False})
+    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id).update({"trip_id": None})
     if trip.auto_key:                              # made from tickets: do not make it again
         db.add(models.TripDismissal(ledger_id=trip.ledger_id, start_date=trip.start_date, end_date="auto:" + trip.auto_key))
     db.query(models.Flight).filter(models.Flight.trip_id == trip.id).update({"trip_id": None})
     db.delete(trip)
     db.commit()
-
-
-@router.post("/{trip_id}/settle", response_model=schemas.TripOut)
-def settle(trip_id: int, payload: schemas.SettleIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """The employer paid the business trip back: pick the incoming transaction that was it."""
-    trip = db.query(models.Trip).filter(models.Trip.id == trip_id, models.Trip.ledger_id == user.ledger_id, models.Trip.kind == "business").first()
-    tx = db.query(models.Transaction).filter(models.Transaction.id == payload.transaction_id, models.Transaction.ledger_id == user.ledger_id,
-                                             models.Transaction.tx_type == models.TxType.income).first()
-    if not trip or not tx:
-        raise HTTPException(404, "trip or income transaction not found")
-    tx.is_reimbursement, tx.trip_id, tx.needs_review, tx.is_transfer = True, trip.id, False, False
-    trip.settled_at, trip.received_amount, trip.reimbursement_tx_id = now_local(), tx.amount, tx.id
-    db.commit()
-    return _summary(db, trip)
-
-
-@router.post("/{trip_id}/unsettle", response_model=schemas.TripOut)
-def unsettle(trip_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    trip = db.query(models.Trip).filter(models.Trip.id == trip_id, models.Trip.ledger_id == user.ledger_id).first()
-    if not trip:
-        raise HTTPException(404, "trip not found")
-    db.query(models.Transaction).filter(models.Transaction.trip_id == trip.id, models.Transaction.is_reimbursement.is_(True)).update(
-        {"trip_id": None, "is_reimbursement": False})
-    trip.settled_at = trip.received_amount = trip.reimbursement_tx_id = None
-    db.commit()
-    return _summary(db, trip)
 
 
 @router.post("/{trip_id}/add/{tx_id}", response_model=schemas.TripOut)
