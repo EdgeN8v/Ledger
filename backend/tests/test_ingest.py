@@ -1905,3 +1905,9 @@ def test_retiring_business_trips_turns_them_into_plain_trips(client):
         assert db.get(models.Trip, t["id"]).kind == "personal"
     finally:
         db.close()
+
+
+def test_a_bank_transfer_out_to_the_spouse_by_name_is_a_transfer_not_spending(client):
+    client.put("/auth/ledger-settings", json={"family_names": "马方怡,兔兔"})
+    r = _sms(client, "【建设银行】您账户8714于10月7日15:32向马方怡电子汇出支出10000元,可用余额22394.14元。", 15, 32, day=7)
+    assert r["transaction"]["is_transfer"] is True

@@ -407,3 +407,33 @@ def retire_business_trips(db: Session) -> None:
     n = db.query(models.Trip).filter(models.Trip.kind != "personal").update({models.Trip.kind: "personal"}, synchronize_session=False)
     if n:
         db.commit()
+
+
+_BANK_SUFFIX = ("电子汇出", "电子汇入", "汇出", "汇入", "转账", "转入", "转出")
+
+
+def is_own_name(names: list[str], merchant) -> bool:
+    """Money to/from the account holder's own name (or the spouse's) is a move between own accounts. Banks write the
+    payee as the bare name, '微信转账-兔兔' or 'name + 电子汇出'."""
+    if not merchant:
+        return False
+    m = merchant.strip()
+    tail = m.split("-")[-1].strip()
+    return any(n == m or (n == tail and m.startswith(("微信转账", "转账"))) or (m.startswith(n) and m[len(n):] in _BANK_SUFFIX) for n in names)
+
+
+def flag_own_name_transfers(db: Session) -> None:
+    """Payments to / from the user's own or the spouse's name that were filed as spending or income (e.g. '马方怡电子汇出')
+    become transfers. Safe to run any number of times."""
+    n = 0
+    for l in db.query(models.Ledger).all():
+        names = [x.strip() for x in f"{l.owner_names or ''},{l.family_names or ''}".split(",") if x.strip()]
+        if not names:
+            continue
+        for t in db.query(models.Transaction).filter(models.Transaction.ledger_id == l.id, models.Transaction.is_transfer.is_(False),
+                                                     models.Transaction.refund_of_id.is_(None), models.Transaction.merchant.isnot(None)):
+            if is_own_name(names, t.merchant):
+                t.is_transfer, t.needs_review = True, False
+                n += 1
+    if n:
+        db.commit()

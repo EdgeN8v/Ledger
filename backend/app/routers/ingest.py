@@ -19,6 +19,7 @@ from app.fixed import category_name_for, load
 from app.refunds import link_refund, relink_orphans
 from app.maintenance import WALLET_ONLY_NOTE, sweep_wallet_only
 from app.merchants import UNNAMED_DEDUCTION, is_unnamed_deduction, rule_applies
+from app.maintenance import is_own_name
 from app.flights import MILEAGE, is_issued_note, looks_like_ticket, parse_flights, store_flights
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -172,9 +173,7 @@ def _is_own_name(db: Session, ledger_id: int, merchant: Optional[str]) -> bool:
         return False
     ledger = db.get(models.Ledger, ledger_id)
     names = [n.strip() for n in f"{ledger.owner_names or ''},{getattr(ledger, 'family_names', None) or ''}".split(",") if n.strip()]
-    m = merchant.strip()
-    tail = m.split("-")[-1].strip()                           # "微信转账-兔兔" -> "兔兔"
-    return any(n == m or (n == tail and m.startswith(("微信转账", "转账"))) for n in names)
+    return is_own_name(names, merchant)
 
 
 def _update_balance(db: Session, ledger_id: int, parsed: Parsed, when) -> None:
