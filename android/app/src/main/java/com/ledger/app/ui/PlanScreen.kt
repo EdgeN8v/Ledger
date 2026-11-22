@@ -43,7 +43,9 @@ import java.util.Locale
 /** Whole yuan, for pages where the cents are only noise. */
 internal fun moneyWhole(v: String?): String {
     val d = v?.toDoubleOrNull() ?: return "-"
-    return (if (d < 0) "-" else "") + "¥" + String.format(Locale.CHINA, "%,.0f", kotlin.math.abs(d))
+    // only the decimals that exist: 20750.04 -> 20,750.04, 20750.5 -> 20,750.5, 20750.00 -> 20,750
+    val body = String.format(Locale.CHINA, "%,.2f", kotlin.math.abs(d)).trimEnd('0').trimEnd('.')
+    return (if (d < 0 && body != "0") "-" else "") + "¥" + body
 }
 
 internal fun money(v: String?, signed: Boolean = false): String {
