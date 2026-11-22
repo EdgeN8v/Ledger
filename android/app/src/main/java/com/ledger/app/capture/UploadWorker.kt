@@ -21,15 +21,9 @@ class UploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
 
     override suspend fun doWork(): Result {
         try { ReaderHealth.healAll(applicationContext) } catch (_: Exception) {}
-        val primary = ApiClient.create(applicationContext)
-        val lan = ApiClient.create(applicationContext, com.ledger.app.data.Prefs.LAN_URL)
+        val primary = ApiClient.create(applicationContext)     // the address follows the shared address table (home network first when at home)
         suspend fun send(req: IngestRequest) {
-            try {
-                primary.ingest(req)
-            } catch (e: java.io.IOException) {
-                if (com.ledger.app.data.Prefs.LAN_URL.isBlank()) throw e
-                lan.ingest(req)   // same server, reached over the home network
-            }
+            primary.ingest(req)
         }
         while (true) {
             val batch = CaptureQueue.peek(applicationContext, 20)

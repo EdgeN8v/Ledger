@@ -10,7 +10,6 @@ object Prefs {
     private const val KEY_BASE_URL = "base_url"
     private val DEFAULT_BASE_URL = com.ledger.app.BuildConfig.DEFAULT_SERVER
     /** Optional second address tried when the main one cannot be reached (e.g. the DDNS name does not resolve on home WiFi). Empty = none. */
-    val LAN_URL: String get() = com.ledger.app.BuildConfig.LAN_SERVER
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)

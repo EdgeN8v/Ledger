@@ -70,9 +70,6 @@ object DailyReminder {
 
         val report = try {
             ApiClient.create(c).latestReport()
-        } catch (e: java.io.IOException) {
-            if (Prefs.LAN_URL.isBlank()) return
-            try { ApiClient.create(c, Prefs.LAN_URL).latestReport() } catch (_: Exception) { return }
         } catch (_: Exception) {
             return
         }

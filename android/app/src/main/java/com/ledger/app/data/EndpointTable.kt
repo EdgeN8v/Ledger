@@ -65,25 +65,52 @@ object EndpointTable {
             .filter { it.startsWith("http://") || it.startsWith("https://") }.distinct()
     }
 
-    /** Where to try the ledger server, in order: home-network addresses first, then the internet ones. */
+    /** True when this phone has an address in the same /24 as one of the home-network addresses (i.e. it is on the home Wi-Fi). */
+    private fun atHome(lan: List<String>): Boolean = try {
+        val prefixes = lan.mapNotNull { runCatching { java.net.URI(it).host }.getOrNull() }
+            .filter { h -> h.count { it == '.' } == 3 && h.all { it.isDigit() || it == '.' } }.map { it.substringBeforeLast('.') + "." }.toSet()
+        java.net.NetworkInterface.getNetworkInterfaces().toList().any { ni ->
+            ni.isUp && ni.inetAddresses.toList().any { a -> a is java.net.Inet4Address && prefixes.any { a.hostAddress?.startsWith(it) == true } }
+        }
+    } catch (_: Exception) {
+        true
+    }
+
+    /** Where to try the ledger server, in order: home-network addresses first (only when at home: away from home they cost a timeout each), then the internet ones. */
     private fun candidates(): List<Pair<String, Int>> {
         val lan = urls(SERVICE, "lan").ifEmpty { FALLBACK_LAN }
         val wan = urls(SERVICE, "wan").ifEmpty { FALLBACK_WAN }
-        return (lan.map { it to LOCAL_PROBE_MS } + wan.map { it to EXTERNAL_PROBE_MS }).distinctBy { it.first }
+        val home = if (atHome(lan)) lan else emptyList()
+        return (home.map { it to LOCAL_PROBE_MS } + wan.map { it to EXTERNAL_PROBE_MS }).distinctBy { it.first }
+    }
+
+    /** The address is a home-network one (private IPv4): a short connect timeout is enough. */
+    fun isLocal(base: String): Boolean = base.removePrefix("http://").removePrefix("https://").let {
+        it.startsWith("192.168.") || it.startsWith("10.") || it.startsWith("172.16.")
     }
 
     /** The first ledger address that answers `/health`, remembered for a minute; null if none does. */
     fun resolve(force: Boolean = false): String? {
         val now = System.currentTimeMillis()
         picked?.let { if (!force && now - pickedAtMs < PICK_KEEP_MS) return it }
-        for ((base, timeout) in candidates()) {
-            if (healthy(base, timeout)) {
-                picked = base
-                lastGood = base
-                prefs?.edit()?.putString("last_good", base)?.apply()
-                pickedAtMs = System.currentTimeMillis()
-                return base
+        // every candidate is asked at once; the first one in priority order that answers wins, so a dead home address
+        // never delays a working one by its timeout
+        val list = candidates()
+        val pool = Executors.newFixedThreadPool(list.size.coerceAtLeast(1))
+        try {
+            val results = list.map { (base, timeout) -> pool.submit(java.util.concurrent.Callable { healthy(base, timeout) }) }
+            for ((i, f) in results.withIndex()) {
+                if (runCatching { f.get() }.getOrDefault(false)) {
+                    val base = list[i].first
+                    picked = base
+                    lastGood = base
+                    prefs?.edit()?.putString("last_good", base)?.apply()
+                    pickedAtMs = System.currentTimeMillis()
+                    return base
+                }
             }
+        } finally {
+            pool.shutdownNow()
         }
         picked = null
         return null
