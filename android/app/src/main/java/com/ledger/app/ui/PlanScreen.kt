@@ -311,22 +311,49 @@ fun PlanScreen(
         val isNew = f === NEW_ITEM
         var name by remember { mutableStateOf(if (isNew) "" else f.name) }
         var amount by remember { mutableStateOf(if (isNew) "" else f.monthly?.toDoubleOrNull()?.takeIf { it > 0 }?.let { String.format(Locale.CHINA, "%.0f", it) } ?: "") }
+        val originalSubs = f.match_sub.orEmpty()
+        var linked by remember { mutableStateOf(originalSubs.toSet()) }
+        var cats by remember { mutableStateOf(com.ledger.app.data.DiskCache.get<List<com.ledger.app.data.CategoryDto>>(context, "categories").orEmpty()) }
+        var addingSub by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            try { cats = ApiClient.create(context).listCategories() } catch (_: Exception) {}
+        }
         AlertDialog(
             onDismissRequest = { editingItem = null },
             title = { Text(if (isNew) "新固定支出" else f.name) },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(name, { name = it.take(20) }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("名称") })
                     OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         label = { Text("每月金额") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+                    Text("付款计入这一项的小分类", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp))
+                    cats.filter { it.tx_type == "expense" && it.subs.orEmpty().isNotEmpty() }.forEach { c ->
+                        Text("${c.icon ?: ""} ${c.name}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp))
+                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            c.subs.orEmpty().forEach { sub ->
+                                androidx.compose.material3.FilterChip(selected = sub in linked, onClick = { linked = if (sub in linked) linked - sub else linked + sub },
+                                    label = { Text(sub, maxLines = 1) })
+                            }
+                        }
+                    }
+                    TextButton(onClick = { addingSub = true }) { Text("＋ 新建小分类") }
                 }
             },
             confirmButton = {
                 TextButton(enabled = name.isNotBlank(), onClick = {
                     editingItem = null
                     scope.launch {
-                        try { ApiClient.create(context).saveFixed(com.ledger.app.data.FixedInRequest(name.trim(), if (isNew) null else f.name, amount.ifBlank { "0" }, f.match_sub.orEmpty())) } catch (_: Exception) {}
+                        try {
+                            val api = ApiClient.create(context)
+                            api.saveFixed(com.ledger.app.data.FixedInRequest(name.trim(), if (isNew) null else f.name, amount.ifBlank { "0" }, originalSubs))
+                            // one sub pays for one item: linking moves it here from wherever it was, unlinking frees it
+                            (linked - originalSubs.toSet()).forEach { api.linkSub(com.ledger.app.data.FixedLinkRequest(it, name.trim())) }
+                            (originalSubs.toSet() - linked).forEach { api.linkSub(com.ledger.app.data.FixedLinkRequest(it, null)) }
+                        } catch (_: Exception) {}
                         onLoad()
                     }
                 }) { Text("保存") }
@@ -338,6 +365,36 @@ fun PlanScreen(
                 }
             }
         )
+    if (addingSub) {
+        var subName by remember { mutableStateOf("") }
+        var catId by remember { mutableStateOf<Int?>(null) }
+        val cats2 = cats.filter { it.tx_type == "expense" }
+        AlertDialog(
+            onDismissRequest = { addingSub = false },
+            title = { Text("新小分类") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    OutlinedTextField(subName, { subName = it.take(8) }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("名称") })
+                    CategoryGrid(cats2, catId, "expense", onPick = { catId = it })
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = subName.isNotBlank() && catId != null, onClick = {
+                    addingSub = false
+                    scope.launch {
+                        try {
+                            val api = ApiClient.create(context)
+                            api.addSub(catId!!, com.ledger.app.data.SubRequest(subName.trim()))
+                            cats = api.listCategories()
+                            linked = linked + subName.trim()
+                            CategoryHub.onChanged?.invoke()
+                        } catch (_: Exception) {}
+                    }
+                }) { Text("添加") }
+            },
+            dismissButton = { TextButton(onClick = { addingSub = false }) { Text("取消") } }
+        )
+    }
     }
     deletingItem?.let { name ->
         AlertDialog(
