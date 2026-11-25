@@ -1924,3 +1924,13 @@ def test_a_bank_transfer_out_to_the_spouse_by_name_is_a_transfer_not_spending(cl
     client.put("/auth/ledger-settings", json={"family_names": "马方怡,兔兔"})
     r = _sms(client, "【建设银行】您账户8714于10月7日15:32向马方怡电子汇出支出10000元,可用余额22394.14元。", 15, 32, day=7)
     assert r["transaction"]["is_transfer"] is True
+
+
+def test_a_phone_can_send_its_popup_trace_to_be_read_later(client):
+    from app.database import SessionLocal
+    from app import models
+    assert client.post("/diag/popup", json={"device": "abcdef123", "lines": ["11-25 23:51:22 notice alipay", "11-25 23:51:23 show 111.34"]}).json() == {"ok": True}
+    db = SessionLocal()
+    rows = db.query(models.DeviceLog).order_by(models.DeviceLog.id).all()
+    db.close()
+    assert [r.text for r in rows][-2:] == ["11-25 23:51:22 notice alipay", "11-25 23:51:23 show 111.34"] and rows[-1].device == "abcdef12"

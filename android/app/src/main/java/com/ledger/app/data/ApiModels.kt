@@ -391,3 +391,5 @@ data class JdImportDto(
     val orders: Int = 0, val matched: Int = 0, val unmatched: Int = 0, val noted: Int = 0, val recategorized: Int = 0, val subbed: Int = 0,
     val unmatched_list: List<JdUnmatchedDto> = emptyList()
 )
+
+data class DiagLogRequest(val device: String?, val lines: List<String>)

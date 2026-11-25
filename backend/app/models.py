@@ -279,3 +279,16 @@ class CarOdometer(Base):
     ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
     on_date = Column(Date, nullable=False)
     km = Column(Integer, nullable=False)
+
+
+class DeviceLog(Base):
+    """Short diagnostic lines a phone sends about itself (why a payment popup did or did not appear), so they can be read
+    without cabling the phone to a computer. Only the app's own trace, never message contents beyond a few characters."""
+    __tablename__ = "device_logs"
+
+    id = Column(Integer, primary_key=True)
+    ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=False)
+    device = Column(String, nullable=True)
+    kind = Column(String, nullable=False, default="popup")
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=now_local)

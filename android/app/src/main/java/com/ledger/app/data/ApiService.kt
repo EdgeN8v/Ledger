@@ -121,6 +121,9 @@ interface ApiService {
     @POST("categories/{id}/subs")
     suspend fun addSub(@Path("id") id: Int, @Body body: SubRequest): CategoryDto
 
+    @POST("diag/popup")
+    suspend fun sendPopupLog(@Body body: DiagLogRequest): Map<String, Boolean>
+
     @GET("categories/{id}/subs/deleted")
     suspend fun deletedSubs(@Path("id") id: Int): List<String>
 
