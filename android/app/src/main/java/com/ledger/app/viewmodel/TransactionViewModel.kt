@@ -204,7 +204,7 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 if (sub != null) body["sub"] = sub
                 api().updateTransaction(id, body)
                 reloadLoaded()
-                _state.value = _state.value.copy(message = "已归类,同商户以后自动归到这一类")
+                _state.value = _state.value.copy(message = "已归类")
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "修改失败")
             }

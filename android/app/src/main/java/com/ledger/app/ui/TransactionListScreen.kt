@@ -551,7 +551,6 @@ internal fun CategoryChoiceDialog(
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(heading, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("选一个类别,这家商户以后自动归到这一类", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
                 CategoryGrid(categories.filter { it.tx_type == txType }, selectedId, txType, onPick)
             }
         },
@@ -580,7 +579,6 @@ internal fun CategoryPickerDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val subs = categories.find { it.id == selCat }?.subs.orEmpty()
-    val catName = categories.find { it.id == selCat }?.name
     var addingSub by remember { mutableStateOf(false) }
     var deletingSub by remember { mutableStateOf<String?>(null) }
     var subMenu by remember { mutableStateOf<String?>(null) }
@@ -638,7 +636,7 @@ internal fun CategoryPickerDialog(
                         }
                     }
                 }
-                if (tx.tx_type == "expense" && catName != "我的车") {
+                if (tx.tx_type == "expense") {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                     // chips wrap onto the next line instead of cutting a label short; the last one adds a sub, a long press opens its menu
                     @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)

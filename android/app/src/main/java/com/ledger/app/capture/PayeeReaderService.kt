@@ -56,9 +56,11 @@ class PayeeReaderService : AccessibilityService() {
     }
 
     private suspend fun sendAndMaybePopup(source: String, text: String, now: Long) {
+        PopupLog.add(this, "page $source \"${text.take(40).replace('\n', ' ')}\"")
         val sent = try {
             ImmediateIngest.send(applicationContext, IngestRequest(source, null, text, now))
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            PopupLog.add(this, "page send failed (${e.javaClass.simpleName}), queued")
             CaptureQueue.add(this, CaptureQueue.Item(source, null, text, now))
             UploadWorker.enqueue(this)
             return

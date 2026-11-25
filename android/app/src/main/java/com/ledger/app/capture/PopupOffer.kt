@@ -53,12 +53,13 @@ object PopupOffer {
      *  wanted). A pick updates the transaction, or - no transaction yet - is parked on the event until the
      *  bank SMS creates it. Call from a background coroutine; [scope] runs the pick's upload. */
     suspend fun offer(c: Context, scope: CoroutineScope, api: ApiService, result: IngestResult, fallbackPayee: String) {
-        val amount = result.amount ?: return
         val app = c.applicationContext
-        if (!PaymentPopup.canShow(app)) return
+        val amount = result.amount ?: run { PopupLog.add(app, "skip: server sent no amount (status ${result.status})"); return }
+        if (!PaymentPopup.canShow(app)) { PopupLog.add(app, "skip $amount: no overlay permission"); return }
         val categories = DiskCache.get<List<CategoryDto>>(app, "categories")
-            ?: try { api.listCategories().also { DiskCache.put(app, "categories", it) } } catch (_: Exception) { return }
-        if (!claim(amount, result.transaction?.id)) return
+            ?: try { api.listCategories().also { DiskCache.put(app, "categories", it) } } catch (e: Exception) { PopupLog.add(app, "skip $amount: no categories (${e.javaClass.simpleName})"); return }
+        if (!claim(amount, result.transaction?.id)) { PopupLog.add(app, "skip $amount: already offered or muted (tx ${result.transaction?.id})"); return }
+        PopupLog.add(app, "show $amount tx ${result.transaction?.id} suggested ${result.suggested_category_id}")
         withContext(Dispatchers.Main) {
             PaymentPopup.show(
                 app, amount, result.payee?.takeIf { it.isNotBlank() } ?: fallbackPayee, categories,

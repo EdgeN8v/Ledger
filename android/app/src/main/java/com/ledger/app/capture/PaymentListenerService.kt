@@ -64,9 +64,12 @@ class PaymentListenerService : NotificationListenerService() {
 
     private suspend fun sendAndMaybePopup(item: CaptureQueue.Item, popup: Boolean = true) {
         val req = IngestRequest(item.source, item.title, item.text, item.postedAtMs, Prefs.deviceId(this), item.notifKey)
+        val t0 = System.currentTimeMillis()
+        PopupLog.add(this, "notice ${item.source.substringAfterLast('.')} \"${item.text.orEmpty().take(24).replace('\n', ' ')}\" posted ${t0 - item.postedAtMs} ms ago, popup=$popup")
         val sent = try {
-            ImmediateIngest.send(applicationContext, req)
-        } catch (_: Exception) {
+            ImmediateIngest.send(applicationContext, req).also { PopupLog.add(this, "sent in ${System.currentTimeMillis() - t0} ms: ${it.result.status}") }
+        } catch (e: Exception) {
+            PopupLog.add(this, "send failed after ${System.currentTimeMillis() - t0} ms (${e.javaClass.simpleName}), queued")
             CaptureQueue.add(this, item)
             UploadWorker.enqueue(this)
             return

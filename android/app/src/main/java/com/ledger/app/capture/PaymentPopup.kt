@@ -155,6 +155,7 @@ object PaymentPopup {
         dismiss()
         if (!canShow(c)) return
         val appCtx = c.applicationContext
+        PopupLog.add(appCtx, "popup window for $amount")
         val windowManager = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -173,6 +174,7 @@ object PaymentPopup {
         // the first composition is done by hand inside a try once the view is attached.
         val fail = { e: Throwable ->
             android.util.Log.w("PaymentPopup", "popup failed, closing it", e)
+            PopupLog.add(appCtx, "popup failed: ${e.javaClass.simpleName} ${e.message}")
             android.os.Handler(android.os.Looper.getMainLooper()).post { dismiss() }
             Unit
         }
@@ -193,9 +195,9 @@ object PaymentPopup {
                         PaymentPopupCard(
                             amount = amount, shop = shop, categories = categories,
                             initialCategoryId = suggestedCategoryId, initialSub = suggestedSub,
-                            onPick = { catId, sub, note -> onPick(catId, sub, note?.trim()?.takeIf { it.isNotEmpty() }); dismiss() },
+                            onPick = { catId, sub, note -> PopupLog.add(appCtx, "popup picked cat $catId sub $sub"); onPick(catId, sub, note?.trim()?.takeIf { it.isNotEmpty() }); dismiss() },
                             onTyping = { timeoutJob?.cancel(); timeoutJob = null },
-                            onDismiss = { dismiss() }
+                            onDismiss = { PopupLog.add(appCtx, "popup closed by user"); dismiss() }
                         )
                     }
                 }
@@ -206,10 +208,11 @@ object PaymentPopup {
         owner = o; view = frame; wm = windowManager; this.rScope = rScope
         try {
             windowManager.addView(frame, lp)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            PopupLog.add(appCtx, "popup addView failed: ${e.javaClass.simpleName} ${e.message}")
             dismiss(); return
         }
-        timeoutJob = scope.launch { delay(25_000); dismiss() }   // don't leave a stray overlay stuck on screen forever
+        timeoutJob = scope.launch { delay(25_000); PopupLog.add(appCtx, "popup closed by 25 s timeout"); dismiss() }   // don't leave a stray overlay stuck on screen forever
     }
 }
 
