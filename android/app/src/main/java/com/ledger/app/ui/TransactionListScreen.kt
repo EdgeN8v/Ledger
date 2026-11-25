@@ -582,6 +582,16 @@ internal fun CategoryPickerDialog(
     var addingSub by remember { mutableStateOf(false) }
     var deletingSub by remember { mutableStateOf<String?>(null) }
     var subMenu by remember { mutableStateOf<String?>(null) }
+    // the fixed items a sub can be linked to are loaded when the picker opens (the last list is kept on disk), so a long
+    // press shows its whole menu at once instead of filling in a moment later
+    var fixedItems by remember { mutableStateOf(com.ledger.app.data.DiskCache.get<List<com.ledger.app.data.FixedItemDto>>(context, "fixed_links").orEmpty()) }
+    LaunchedEffect(Unit) {
+        try {
+            val fresh = ApiClient.create(context).planStatus().fixed_items.filter { it.editable != false }
+            fixedItems = fresh
+            com.ledger.app.data.DiskCache.put(context, "fixed_links", fresh)
+        } catch (_: Exception) {}
+    }
     // "吃好吃的" is a food budget: only offered (and only kept) while the category is 餐饮
     val isFood = categories.find { it.id == selCat }?.name == "餐饮"
     val treat = selTreat && isFood
@@ -646,9 +656,6 @@ internal fun CategoryPickerDialog(
                         }
                         CompactChip(text = "＋", selected = false, onClick = { addingSub = true })
                     }
-                    selSub?.takeIf { it in subs }?.let { s ->
-                        TextButton(onClick = { deletingSub = s }) { Text("删除小分类「$s」", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
-                    }
                 }
                 if (tx.tx_type == "expense" && isFood) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
@@ -675,17 +682,39 @@ internal fun CategoryPickerDialog(
             title = { Text("新小分类") },
             text = {
                 var deleted by remember { mutableStateOf<List<String>>(emptyList()) }
+                var showHistory by remember { mutableStateOf(false) }
+                var forgetting by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(Unit) { deleted = try { ApiClient.create(context).deletedSubs(selCat ?: return@LaunchedEffect) } catch (_: Exception) { emptyList() } }
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(newSub, { newSub = it.take(8) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    if (deleted.isNotEmpty()) {
-                        Text("删除过的,点一下恢复", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            deleted.forEach { d -> CompactChip(text = d, selected = newSub == d, onClick = { newSub = d }) }
+                    Text((if (showHistory) "历史分类 ▴" else "历史分类 ▾"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { showHistory = !showHistory }.padding(top = 14.dp, bottom = 4.dp))
+                    if (showHistory) {
+                        if (deleted.isEmpty()) Text("空", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        deleted.forEach { d ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text(d, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { newSub = d }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)) { Text("＋", style = MaterialTheme.typography.titleMedium) }
+                                TextButton(onClick = { forgetting = d }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)) {
+                                    Text("✕", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
                         }
                     }
+                }
+                forgetting?.let { d ->
+                    AlertDialog(
+                        onDismissRequest = { forgetting = null },
+                        title = { Text("彻底删除「$d」?") },
+                        text = { Text("旧账单上的这个小分类也会清掉,无法恢复。") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                forgetting = null
+                                scope.launch { try { deleted = ApiClient.create(context).forgetSub(selCat ?: return@launch, d) } catch (_: Exception) {} }
+                            }) { Text("彻底删除", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = { TextButton(onClick = { forgetting = null }) { Text("取消") } }
+                    )
                 }
             },
             confirmButton = {
@@ -704,10 +733,7 @@ internal fun CategoryPickerDialog(
         )
     }
     subMenu?.let { name ->
-        var items by remember { mutableStateOf<List<com.ledger.app.data.FixedItemDto>?>(null) }
-        LaunchedEffect(Unit) {
-            items = try { ApiClient.create(context).planStatus().fixed_items.filter { it.editable != false } } catch (_: Exception) { emptyList() }
-        }
+        val items = fixedItems
         AlertDialog(
             onDismissRequest = { subMenu = null },
             title = { Text(name) },

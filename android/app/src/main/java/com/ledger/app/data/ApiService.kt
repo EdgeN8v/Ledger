@@ -124,6 +124,9 @@ interface ApiService {
     @GET("categories/{id}/subs/deleted")
     suspend fun deletedSubs(@Path("id") id: Int): List<String>
 
+    @DELETE("categories/{id}/subs/deleted")
+    suspend fun forgetSub(@Path("id") id: Int, @Query("name") name: String): List<String>
+
     @DELETE("categories/{id}/subs")
     suspend fun deleteSub(@Path("id") id: Int, @Query("name") name: String): CategoryDto
 

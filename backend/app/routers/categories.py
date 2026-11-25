@@ -95,6 +95,23 @@ def deleted_subs(category_id: int, db: Session = Depends(get_db), user: models.U
     return subcats.retired_of(user.ledger_id, c.name)
 
 
+@router.delete("/{category_id}/subs/deleted", response_model=list[str])
+def forget_sub(category_id: int, name: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Delete a deleted sub-category for good: it leaves the history list, and the payments still filed under it lose it."""
+    c = _own_category(db, user, category_id)
+    gone = subcats.retired_of(user.ledger_id, c.name)
+    if name not in gone:
+        raise HTTPException(404, "not in the deleted list")
+    left = [x for x in gone if x != name]
+    subcats.save_list(db, user.ledger, "~" + c.name, left)
+    T = models.Transaction
+    db.query(T).filter(T.ledger_id == user.ledger_id, T.category_id == c.id, T.sub == name).update({T.sub: None}, synchronize_session=False)
+    db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.category_id == c.id,
+                                         models.MerchantRule.sub == name).update({models.MerchantRule.sub: None}, synchronize_session=False)
+    db.commit()
+    return left
+
+
 @router.delete("/{category_id}/subs", response_model=schemas.CategoryOut)
 def delete_sub(category_id: int, name: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Retire a sub-category: it leaves the list of choices and is not guessed for new payments, but the payments already
