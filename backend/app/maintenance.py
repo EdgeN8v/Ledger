@@ -437,3 +437,23 @@ def flag_own_name_transfers(db: Session) -> None:
                 n += 1
     if n:
         db.commit()
+
+
+def adopt_deleted_subs(db: Session) -> None:
+    """A sub-category the user deleted before deleted ones were remembered: payments still carry its name, so it is
+    recorded as deleted (not offered, but kept on those payments and restorable) instead of being tidied away.
+    Safe to run any number of times."""
+    from app import subcats
+    for l in db.query(models.Ledger).all():
+        names = {c.id: c.name for c in db.query(models.Category).filter(models.Category.ledger_id == l.id, models.Category.tx_type == models.TxType.expense)}
+        found: dict = {}
+        for cid, sub in (db.query(models.Transaction.category_id, models.Transaction.sub)
+                         .filter(models.Transaction.ledger_id == l.id, models.Transaction.sub.isnot(None)).distinct()):
+            name = names.get(cid)
+            if not name or name == subcats.CAR or not subcats.subs_of(l.id, name):
+                continue
+            if sub not in subcats.subs_of(l.id, name) and sub not in subcats.retired_of(l.id, name):
+                found.setdefault(name, []).append(sub)
+        for name, subs in found.items():
+            subcats.save_list(db, l, "~" + name, subcats.retired_of(l.id, name) + subs)
+    db.commit()

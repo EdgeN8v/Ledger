@@ -1826,6 +1826,15 @@ def test_subcategories_can_be_added_and_deleted_and_a_sub_can_be_linked_to_a_fix
     r = client.delete(f"/categories/{sub['id']}/subs", params={"name": "视频会员"})
     assert "视频会员" not in r.json()["subs"]
     assert next(t for t in client.get("/transactions").json() if t["id"] == tx["id"])["sub"] == "视频会员"
+    # ...even after the startup pass that tidies subs, and it can be brought back by adding the name again
+    from app import subcats
+    from app.database import SessionLocal
+    from app.maintenance import adopt_deleted_subs
+    db = SessionLocal(); adopt_deleted_subs(db); subcats.classify_all(db); db.close()
+    assert next(t for t in client.get("/transactions").json() if t["id"] == tx["id"])["sub"] == "视频会员"
+    assert client.get(f"/categories/{sub['id']}/subs/deleted").json() == ["视频会员"]
+    r = client.post(f"/categories/{sub['id']}/subs", json={"name": "视频会员"})
+    assert "视频会员" in r.json()["subs"] and client.get(f"/categories/{sub['id']}/subs/deleted").json() == []
 
 
 def test_a_sub_category_linked_from_the_bookkeeping_side_turns_the_fixed_item_paid(client):

@@ -81,8 +81,18 @@ def add_sub(category_id: int, payload: schemas.SubIn, db: Session = Depends(get_
     if name in cur:
         raise HTTPException(400, "already there")
     subcats.save_list(db, user.ledger, c.name, cur + [name])
+    gone = subcats.retired_of(user.ledger_id, c.name)
+    if name in gone:                                                    # bringing a deleted sub back
+        subcats.save_list(db, user.ledger, "~" + c.name, [x for x in gone if x != name])
     db.commit()
     return c
+
+
+@router.get("/{category_id}/subs/deleted", response_model=list[str])
+def deleted_subs(category_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Sub-categories deleted from this category, which can be brought back by adding the same name."""
+    c = _own_category(db, user, category_id)
+    return subcats.retired_of(user.ledger_id, c.name)
 
 
 @router.delete("/{category_id}/subs", response_model=schemas.CategoryOut)
@@ -94,7 +104,7 @@ def delete_sub(category_id: int, name: str, db: Session = Depends(get_db), user:
     if name not in cur:
         raise HTTPException(404, "no such sub-category")
     subcats.save_list(db, user.ledger, c.name, [x for x in cur if x != name])
-    db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.category_id == c.id,
-                                         models.MerchantRule.sub == name).update({models.MerchantRule.sub: None}, synchronize_session=False)
+    gone = subcats.retired_of(user.ledger_id, c.name)
+    subcats.save_list(db, user.ledger, "~" + c.name, gone + [name] if name not in gone else gone)   # shop rules keep it too: it all comes back with the name
     db.commit()
     return c

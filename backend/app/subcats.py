@@ -35,6 +35,12 @@ def subs_of(ledger_id, cat_name) -> list:
     return list(own) if own is not None else list(SUBS.get(cat_name, []))
 
 
+def retired_of(ledger_id, cat_name) -> list:
+    """Sub-categories the user deleted from a category: no longer offered, but payments filed under them keep the name,
+    and the user can bring one back. Stored beside the live lists under the key "~<category>"."""
+    return list(_OVR.get(ledger_id, {}).get("~" + cat_name, []))
+
+
 def load_lists(db: Session) -> None:
     import json
     from app import models
@@ -205,8 +211,8 @@ def classify_all(db: Session) -> int:
             if name == CAR and t.car_bucket in CAR_SUBS and t.sub != CAR_SUBS[t.car_bucket]:
                 t.sub, changed = CAR_SUBS[t.car_bucket], changed + 1   # what the user picked on the 用车 page
                 continue
-            if t.sub in allowed:
-                continue
+            if t.sub in allowed or (t.sub and t.sub in retired_of(ledger.id, name)):
+                continue                                           # a deleted sub stays on the payments already filed under it
             if name in ("购物", "餐饮", "其他支出") and not t.category_locked and "狗狗" in by_name and is_pet(t.merchant, t.note):
                 t.category_id, t.sub, changed = by_name["狗狗"], keyword_sub("狗狗", t.merchant, t.note), changed + 1
                 continue

@@ -56,7 +56,10 @@ def suggest_category(db: Session, ledger_id: int, merchant: str):
     rules = sorted(db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == ledger_id), key=lambda r: -len(r.pattern or ""))
     for rule in rules:
         if rule_applies(rule.pattern, merchant):
-            return rule.category_id, rule.sub
+            cat = db.get(models.Category, rule.category_id)
+            from app import subcats
+            ok = rule.sub and cat is not None and rule.sub in subcats.subs_of(ledger_id, cat.name)
+            return rule.category_id, (rule.sub if ok else None)        # a deleted sub is not pre-selected
     return None, None
 
 

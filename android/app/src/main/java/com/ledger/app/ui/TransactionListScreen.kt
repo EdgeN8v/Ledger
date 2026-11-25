@@ -673,7 +673,21 @@ internal fun CategoryPickerDialog(
         AlertDialog(
             onDismissRequest = { addingSub = false },
             title = { Text("新小分类") },
-            text = { OutlinedTextField(newSub, { newSub = it.take(8) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            text = {
+                var deleted by remember { mutableStateOf<List<String>>(emptyList()) }
+                LaunchedEffect(Unit) { deleted = try { ApiClient.create(context).deletedSubs(selCat ?: return@LaunchedEffect) } catch (_: Exception) { emptyList() } }
+                Column {
+                    OutlinedTextField(newSub, { newSub = it.take(8) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (deleted.isNotEmpty()) {
+                        Text("删除过的,点一下恢复", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            deleted.forEach { d -> CompactChip(text = d, selected = newSub == d, onClick = { newSub = d }) }
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(enabled = newSub.isNotBlank(), onClick = {
                     addingSub = false
