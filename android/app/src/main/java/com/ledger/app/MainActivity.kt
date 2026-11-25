@@ -12,6 +12,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -195,7 +197,22 @@ fun LedgerApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) { Snackbar(it) } }) { padding ->
+    Scaffold(snackbarHost = {
+        SnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = 24.dp)) { data ->
+            val bad = txState.error != null && txState.message == null
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                androidx.compose.material3.Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                    color = (if (bad) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.inverseSurface).copy(alpha = 0.94f),
+                    contentColor = if (bad) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.inverseOnSurface,
+                    shadowElevation = 6.dp
+                ) {
+                    Text(data.visuals.message, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp))
+                }
+            }
+        }
+    }) { padding ->
         NavHost(
             navController = navController,
             startDestination = if (authState.loggedIn) "home" else "login",
