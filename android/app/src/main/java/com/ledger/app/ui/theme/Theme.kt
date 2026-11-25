@@ -29,6 +29,8 @@ private val LedgerLight = lightColorScheme(
     background = Color(0xFFF7F6F2),
     surface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFECEAE4),
+    outline = Color(0xFFC9C5BB),
+    outlineVariant = Color(0xFFE4E1D8),
     error = Color(0xFFC62828)
 )
 
@@ -41,6 +43,8 @@ private val LedgerDark = darkColorScheme(
     background = Color(0xFF121212),
     surface = Color(0xFF1E1E1E),
     surfaceVariant = Color(0xFF2B2B2B),
+    outline = Color(0xFF55585A),
+    outlineVariant = Color(0xFF3A3C3D),
     tertiaryContainer = Color(0xFF4A3B1B),
     onTertiaryContainer = Color(0xFFFFE0B2),
     error = Color(0xFFEF9A9A)
@@ -57,6 +61,8 @@ private val SettingsLight = lightColorScheme(
     background = Color(0xFFFAF9F6),
     surface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFEFEEE9),
+    outline = Color(0xFFCBC8BF),
+    outlineVariant = Color(0xFFE6E3DB),
     error = Color(0xFFC14C4C)
 )
 
@@ -69,6 +75,8 @@ private val SettingsDark = darkColorScheme(
     background = Color(0xFF151715),
     surface = Color(0xFF1F211F),
     surfaceVariant = Color(0xFF2C2F2C),
+    outline = Color(0xFF575B58),
+    outlineVariant = Color(0xFF3B3F3C),
     tertiaryContainer = Color(0xFF4A3B1B),
     onTertiaryContainer = Color(0xFFFFE0B2),
     error = Color(0xFFE79999)
@@ -88,9 +96,11 @@ val CategoryBadgeColors: List<Color>
     )
 
 private val LedgerShapes = Shapes(
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp)
+    extraSmall = RoundedCornerShape(14.dp),      // text fields and chips: soft corners instead of a hard rectangle
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(30.dp)
 )
 
 @Composable

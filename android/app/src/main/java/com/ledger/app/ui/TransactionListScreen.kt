@@ -692,11 +692,18 @@ internal fun CategoryPickerDialog(
                     if (showHistory) {
                         if (deleted.isEmpty()) Text("空", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         deleted.forEach { d ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                                 Text(d, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { newSub = d }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)) { Text("＋", style = MaterialTheme.typography.titleMedium) }
-                                TextButton(onClick = { forgetting = d }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)) {
-                                    Text("✕", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+                                androidx.compose.material3.FilledTonalIconButton(onClick = { newSub = d }, modifier = Modifier.size(34.dp)) {
+                                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Add, contentDescription = "填入", modifier = Modifier.size(18.dp))
+                                }
+                                androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                                androidx.compose.material3.FilledTonalIconButton(
+                                    onClick = { forgetting = d }, modifier = Modifier.size(34.dp),
+                                    colors = androidx.compose.material3.IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+                                ) {
+                                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "彻底删除", modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -820,9 +827,8 @@ internal fun CategoryPickerDialog(
 private fun CompactChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
     androidx.compose.material3.Surface(
         modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+        shape = RoundedCornerShape(50),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
     ) {
         Text(
             text,
