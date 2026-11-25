@@ -87,14 +87,13 @@ def add_sub(category_id: int, payload: schemas.SubIn, db: Session = Depends(get_
 
 @router.delete("/{category_id}/subs", response_model=schemas.CategoryOut)
 def delete_sub(category_id: int, name: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """Drop a sub-category: payments filed under it go back to 'no sub' (and are not guessed into it again)."""
+    """Retire a sub-category: it leaves the list of choices and is not guessed for new payments, but the payments already
+    filed under it keep it, so past months still read the same."""
     c = _own_category(db, user, category_id)
     cur = subcats.subs_of(user.ledger_id, c.name)
     if name not in cur:
         raise HTTPException(404, "no such sub-category")
     subcats.save_list(db, user.ledger, c.name, [x for x in cur if x != name])
-    T = models.Transaction
-    db.query(T).filter(T.ledger_id == user.ledger_id, T.category_id == c.id, T.sub == name).update({T.sub: None}, synchronize_session=False)
     db.query(models.MerchantRule).filter(models.MerchantRule.ledger_id == user.ledger_id, models.MerchantRule.category_id == c.id,
                                          models.MerchantRule.sub == name).update({models.MerchantRule.sub: None}, synchronize_session=False)
     db.commit()

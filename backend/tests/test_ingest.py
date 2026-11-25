@@ -1822,10 +1822,10 @@ def test_subcategories_can_be_added_and_deleted_and_a_sub_can_be_linked_to_a_fix
     assert [f["name"] for f in s["fixed_items"]].count("视频会员") == 1 and not any(f["name"] == "视频" for f in s["fixed_items"])
     s = client.delete("/plan/fixed", params={"name": "视频会员"}).json()
     assert not any(f["name"] == "视频会员" for f in s["fixed_items"])
-    # deleting the sub clears it from the payments filed under it
+    # deleting the sub only retires it from the choices: the payments already filed under it keep it
     r = client.delete(f"/categories/{sub['id']}/subs", params={"name": "视频会员"})
     assert "视频会员" not in r.json()["subs"]
-    assert next(t for t in client.get("/transactions").json() if t["id"] == tx["id"])["sub"] is None
+    assert next(t for t in client.get("/transactions").json() if t["id"] == tx["id"])["sub"] == "视频会员"
 
 
 def test_a_sub_category_linked_from_the_bookkeeping_side_turns_the_fixed_item_paid(client):

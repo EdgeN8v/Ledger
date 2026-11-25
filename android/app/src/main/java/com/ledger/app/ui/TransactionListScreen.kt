@@ -646,6 +646,9 @@ internal fun CategoryPickerDialog(
                         }
                         CompactChip(text = "＋", selected = false, onClick = { addingSub = true })
                     }
+                    selSub?.takeIf { it in subs }?.let { s ->
+                        TextButton(onClick = { deletingSub = s }) { Text("删除小分类「$s」", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium) }
+                    }
                 }
                 if (tx.tx_type == "expense" && isFood) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
@@ -714,6 +717,7 @@ internal fun CategoryPickerDialog(
         AlertDialog(
             onDismissRequest = { deletingSub = null },
             title = { Text("删除「$name」?") },
+            text = { Text("以后选不到它,已经记在它名下的账单不变。") },
             confirmButton = {
                 TextButton(onClick = {
                     deletingSub = null
